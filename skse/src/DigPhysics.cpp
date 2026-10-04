@@ -123,6 +123,9 @@ namespace skycraft::Dig
 		{
 			float n[3];
 			float d;  // gap between the proxy and the block (negative: overlapping)
+			// Diagnostics: the block it came from, and how (f full block, p part block; r ramp, i inside).
+			std::int32_t src[3]{};
+			char         from = 0, how = 0;
 		};
 
 		// SkyCraft+ : exact block shapes. Low ledges (slabs, stair steps, carpets) get a walkable
@@ -176,7 +179,11 @@ namespace skycraft::Dig
 				return;  // something huge (a dragon): not worth it
 			}
 
-			auto add = [&](const Plane& a_plane) {
+			std::int32_t src[3]{};  // diagnostics: the block being added, part or full, and how
+			char         from = 0, how = 0;
+			auto add = [&](Plane a_plane) {
+				a_plane.src[0] = src[0], a_plane.src[1] = src[1], a_plane.src[2] = src[2];
+				a_plane.from = from, a_plane.how = how;
 				if (a_plane.d > kPlaneReach) {
 					return;
 				}
@@ -207,10 +214,12 @@ namespace skycraft::Dig
 					// Beside a low ledge: a ramp from the ground up to its top edge instead of a wall.
 					const float nx = d[0] / hlen * kRampSin, ny = d[1] / hlen * kRampSin;
 					const float ex = std::clamp(cx, b.xl, b.xh), ey = std::clamp(cy, b.yl, b.yh);
+					how = 'r';
 					add({ { nx, ny, kRampCos }, nx * (cx - ex) + ny * (cy - ey) + kRampCos * (zBot - b.zh) - r });
 					return;
 				}
 				const float len = std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+				how = 'e';
 				if (len > 1e-5f) {
 					add({ { d[0] / len, d[1] / len, d[2] / len }, len - r });
 					return;
@@ -220,6 +229,7 @@ namespace skycraft::Dig
 				const float up = b.zh - feet;
 				const float side[4] = { cx - b.xl, b.xh - cx, cy - b.yl, b.yh - cy };
 				const float nearest = std::min({ side[0], side[1], side[2], side[3] });
+				how = 'i';
 				if (up <= nearest + 0.25f || (a_freeAbove && up < 0.6f)) {
 					add({ { 0, 0, 1 }, -up });
 				} else if (nearest == side[0]) {
@@ -243,6 +253,8 @@ namespace skycraft::Dig
 							continue;
 						}
 						const bool freeAbove = !NpcBlocks::SolidAt(bx, by + 1, bz);
+						src[0] = bx, src[1] = by, src[2] = bz;
+						from = boxes == 0 ? 'f' : 'p';
 						if (boxes == 0) {
 							// A full block in Havok space.
 							addBox({ bx / k, (bx + 1) / k, -(bz + 1) / k, -bz / k, by / k, (by + 1) / k,
@@ -315,22 +327,29 @@ namespace skycraft::Dig
 				}
 				std::ranges::sort(planes, {}, &Plane::d);
 				if (isPlayer && !isPuppet && DiagnosticsEnabled()) {
-					// What Minecraft's blocks do to the player in Skyrim mode, twice a second.
-					static std::atomic<std::uint64_t> nextLog{ 0 };
+					// What Minecraft's blocks do to the player in Skyrim mode: twice a second, and at
+					// once (up to ten a second) whenever one overlaps it.
+					static std::atomic<std::uint64_t> nextLog{ 0 }, nextOverlapLog{ 0 };
 					const auto                        now = GetTickCount64();
-					if (now >= nextLog.load()) {
+					const bool overlap = std::ranges::any_of(planes, [](const Plane& a_plane) { return a_plane.d < -0.02f; });
+					if (now >= nextLog.load() || (overlap && now >= nextOverlapLog.load())) {
 						nextLog = now + 500;
+						nextOverlapLog = now + 100;
 						alignas(16) float lo[4], hi[4];
 						_mm_store_ps(lo, box.min.quad);
 						_mm_store_ps(hi, box.max.quad);
 						const float k = BlocksPerHavok();
 						std::string list;
 						for (const auto& p : planes) {
-							list += fmt::format(" [{:+.2f} {:+.2f} {:+.2f} d {:+.3f}]", p.n[0], p.n[1], p.n[2], p.d * k);
+							list += fmt::format(" [{:+.2f} {:+.2f} {:+.2f} d {:+.3f} {}{} {},{},{}]", p.n[0], p.n[1], p.n[2], p.d * k, p.from, p.how,
+								p.src[0], p.src[1], p.src[2]);
 						}
-						logger::info("dig: player at MC {:.2f} {:.2f} {:.2f} (box {:.2f} x {:.2f}, keep {:.3f}): {} block planes:{}",
-							(lo[0] + hi[0]) * 0.5f * k, lo[2] * k, -(lo[1] + hi[1]) * 0.5f * k, (hi[0] - lo[0]) * k, (hi[1] - lo[1]) * k,
-							a_proxy->keepDistance * k, planes.size(), list);
+						// Jumping needs Skyrim to count the player as supported (flags kSupport 0x100,
+						// kCanJump 0x400; state 0 = on ground).
+						logger::info("dig: {}player at MC {:.2f} {:.2f} {:.2f} (box centre {:.2f} {:.2f}, box {:.2f} x {:.2f}, keep {:.3f}; flags {:X}, state {}, want {}): {} block planes:{}",
+							overlap ? "OVERLAP " : "", centre[0] * k, lo[2] * k, -centre[1] * k, (lo[0] + hi[0]) * 0.5f * k, -(lo[1] + hi[1]) * 0.5f * k,
+							(hi[0] - lo[0]) * k, (hi[1] - lo[1]) * k, a_proxy->keepDistance * k, a_this->flags.underlying(),
+							static_cast<int>(a_this->context.currentState), static_cast<int>(a_this->wantState), planes.size(), list);
 					}
 				}
 				const int count = std::min<int>(room, static_cast<int>(planes.size()));
