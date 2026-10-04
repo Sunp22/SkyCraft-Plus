@@ -401,24 +401,37 @@ namespace skycraft::Dig
 		// SkyCraft+ : jumping off Minecraft blocks. Havok's support check counts the block planes
 		// (its state says on ground), but Skyrim's own support flags come from real contacts only,
 		// and jumping needs them: standing on a block, the player couldn't jump in Skyrim mode.
+		constexpr float kRisingSpeed = 0.3f;  // Havok units a second upwards: taking off, not standing
+
 		struct CheckSupportHook
 		{
 			static void thunk(RE::bhkCharacterController* a_this)
 			{
 				func(a_this);
-				if (!a_this || a_this != blockGroundController.load() || GetTickCount64() - blockGroundTick.load() >= 250 ||
-					a_this->context.currentState != RE::hkpCharacterStateTypes::kOnGround) {
+				if (!a_this || a_this != blockGroundController.load() || GetTickCount64() - blockGroundTick.load() >= 250) {
+					return;
+				}
+				// Not while rising: that's a jump taking off from the block.
+				RE::hkVector4 velocity;
+				a_this->GetLinearVelocityImpl(velocity);
+				alignas(16) float v[4];
+				_mm_store_ps(v, velocity.quad);
+				if (v[2] > kRisingSpeed) {
 					return;
 				}
 				// Everything Skyrim knows about the ground it stands on, as if the block were real:
-				// support flags, the support and surface normals (flat: the slope check) and no fall.
+				// support flags, a supported surface (so Havok's state machine lands it instead of
+				// leaving it "in the air" forever, with a fall timer running), the support and surface
+				// normals (flat: the slope check) and no fall.
 				alignas(16) float supportNorm[4], surfaceNorm[4];
 				_mm_store_ps(supportNorm, a_this->supportNorm.quad);
 				_mm_store_ps(surfaceNorm, a_this->surfaceInfo.surfaceNormal.quad);
+				// Logged a few times when Skyrim thought otherwise (in the air, or falling).
 				static std::atomic<int> logged{ 0 };
-				if (logged.fetch_add(1) < 3) {
-					logger::info("dig: the player stands on a Minecraft block; Skyrim had: flags {:X}, surface {} normal z {:.2f}, support normal z {:.2f}, falling {:.2f}s",
-						a_this->flags.underlying(), static_cast<int>(a_this->surfaceInfo.supportedState.get()), surfaceNorm[2], supportNorm[2], a_this->fallTime);
+				if ((a_this->context.currentState != RE::hkpCharacterStateTypes::kOnGround || a_this->fallTime > 0.25f) && logged.fetch_add(1) < 5) {
+					logger::info("dig: the player stands on a Minecraft block; Skyrim had: state {}, flags {:X}, surface {} normal z {:.2f}, support normal z {:.2f}, falling {:.2f}s, rising {:.2f}",
+						static_cast<int>(a_this->context.currentState), a_this->flags.underlying(), static_cast<int>(a_this->surfaceInfo.supportedState.get()),
+						surfaceNorm[2], supportNorm[2], a_this->fallTime, v[2]);
 				}
 				a_this->flags.set(RE::CHARACTER_FLAGS::kSupport, RE::CHARACTER_FLAGS::kCanJump);
 				a_this->surfaceInfo.supportedState = RE::hkpSurfaceInfo::SupportedState::kSupported;
