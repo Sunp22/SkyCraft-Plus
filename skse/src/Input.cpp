@@ -1,5 +1,7 @@
 #include "Game.h"
 
+#include <SimpleIni.h>
+
 namespace skycraft
 {
 	namespace
@@ -43,9 +45,86 @@ namespace skycraft
 		constexpr std::uint32_t kDikO = 0x18;        // Minecraft pause / options menu (Esc is Skyrim's)
 		constexpr std::uint32_t kDikF9 = 0x43;       // Skyrim quickload
 
+		// SkyCraft+ : extra keys from sSkyrimMenuKeys in SkyCraft.ini (e.g. Tab, I, P) that reach
+		// Skyrim's own menus (Tab menu, inventory, magic) instead of Minecraft.
+		std::array<bool, 256> extraMenuKeys{};
+
+		// "Tab", "I", "F1", "0x0F" -> DirectInput scan code, or 0 if unknown.
+		std::uint32_t DikFromName(std::string a_name)
+		{
+			std::ranges::transform(a_name, a_name.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+			if (a_name.size() == 1) {
+				static constexpr std::string_view kRows[] = { "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM" };
+				static constexpr std::uint32_t    kRowStart[] = { 0x10, 0x1E, 0x2C };
+				for (std::size_t r = 0; r < 3; ++r) {
+					if (const auto i = kRows[r].find(a_name[0]); i != std::string_view::npos) {
+						return kRowStart[r] + static_cast<std::uint32_t>(i);
+					}
+				}
+				if (a_name[0] >= '1' && a_name[0] <= '9') {
+					return 0x02 + static_cast<std::uint32_t>(a_name[0] - '1');
+				}
+				if (a_name[0] == '0') {
+					return 0x0B;
+				}
+				return 0;
+			}
+			if (a_name == "TAB") {
+				return 0x0F;
+			}
+			if (a_name.size() <= 3 && a_name[0] == 'F') {
+				const int n = std::atoi(a_name.c_str() + 1);
+				if (n >= 1 && n <= 10) {
+					return 0x3B + static_cast<std::uint32_t>(n - 1);
+				}
+				if (n == 11 || n == 12) {
+					return 0x57 + static_cast<std::uint32_t>(n - 11);
+				}
+				return 0;
+			}
+			if (a_name.starts_with("0X")) {
+				const auto v = std::strtoul(a_name.c_str() + 2, nullptr, 16);
+				return v > 0 && v < 256 ? static_cast<std::uint32_t>(v) : 0;
+			}
+			return 0;
+		}
+
+		void LoadMenuKeys()
+		{
+			CSimpleIniA ini;
+			ini.SetUnicode();
+			ini.LoadFile("Data/SKSE/Plugins/SkyCraft.ini");
+			const std::string list = ini.GetValue("Controls", "sSkyrimMenuKeys", "");
+			std::string       shown;
+			std::size_t       start = 0;
+			while (start <= list.size()) {
+				const auto  end = std::min(list.find(',', start), list.size());
+				std::string name = list.substr(start, end - start);
+				start = end + 1;
+				name.erase(0, name.find_first_not_of(" \t"));
+				name.erase(name.find_last_not_of(" \t") + 1);
+				if (name.empty()) {
+					continue;
+				}
+				const auto code = DikFromName(name);
+				if (!code) {
+					logger::warn("sSkyrimMenuKeys: unknown key '{}' (use a letter, digit, F1-F12, Tab, or a scan code like 0x0F)", name);
+				} else if (code == kDikG || code == kDikH || code == kDikO) {
+					logger::warn("sSkyrimMenuKeys: '{}' is already a SkyCraft key; ignored", name);
+				} else {
+					extraMenuKeys[code] = true;
+					shown += shown.empty() ? name : ", " + name;
+				}
+			}
+			if (!shown.empty()) {
+				logger::info("keys that open Skyrim menus: Esc, ~, J, M, F9, {}", shown);
+			}
+		}
+
 		bool IsSkyrimMenuKey(std::uint32_t a_code)
 		{
-			return a_code == kDikEscape || a_code == kDikConsole || a_code == kDikJ || a_code == kDikM || a_code == kDikF9;
+			return a_code == kDikEscape || a_code == kDikConsole || a_code == kDikJ || a_code == kDikM || a_code == kDikF9 ||
+			       (a_code < extraMenuKeys.size() && extraMenuKeys[a_code]);
 		}
 
 		float lookDx = 0.0f;
@@ -189,8 +268,9 @@ namespace skycraft
 		};
 
 		// MenuControls opens Skyrim's menus (Tab, I, J, M, Wait, quicksave, ...). While Minecraft
-		// drives the player only Esc, the console, M (map), J (journal) and F9 (quickload) reach
-		// it (F5 is Minecraft's camera); while an MC screen is open nothing does.
+		// drives the player only Esc, the console, M (map), J (journal), F9 (quickload) and the
+		// keys in sSkyrimMenuKeys reach it (F5 is Minecraft's camera); while an MC screen is open
+		// nothing does.
 		struct MenuControlsHook
 		{
 			static RE::BSEventNotifyControl thunk(RE::MenuControls* a_this, RE::InputEvent* const* a_event, RE::BSTEventSource<RE::InputEvent*>* a_source)
@@ -252,6 +332,7 @@ namespace skycraft
 	{
 		void Install()
 		{
+			LoadMenuKeys();
 			if (auto* devices = RE::BSInputDeviceManager::GetSingleton()) {
 				devices->AddEventSink(InputSink::Get());
 			}
