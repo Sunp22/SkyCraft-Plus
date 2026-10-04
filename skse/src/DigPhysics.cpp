@@ -153,12 +153,14 @@ namespace skycraft::Dig
 		// (stairs, slabs, doors, fences) count with their real boxes. a_ramps: walkable ramps up low
 		// ledges. a_maxHalfWidth, a_maxHeight (Havok units): smaller than the proxy (the player, so it fits where
 		// Minecraft's player does).
-		void BlockPlanes(const RE::hkAabb& a_box, std::vector<Plane>& a_out, bool a_ramps, float a_maxHalfWidth, float a_maxHeight)
+		void BlockPlanes(const RE::hkAabb& a_box, const float* a_centre, std::vector<Plane>& a_out, bool a_ramps, float a_maxHalfWidth, float a_maxHeight)
 		{
 			alignas(16) float lo[4], hi[4];
 			_mm_store_ps(lo, a_box.min.quad);
 			_mm_store_ps(hi, a_box.max.quad);
-			const float cx = (lo[0] + hi[0]) * 0.5f, cy = (lo[1] + hi[1]) * 0.5f;
+			// The body's axis: its position if given (the player's shape isn't round, so its box's centre
+			// moves as it turns, and a wall it stood clear of would suddenly be overlapping), else the box's centre.
+			const float cx = a_centre ? a_centre[0] : (lo[0] + hi[0]) * 0.5f, cy = a_centre ? a_centre[1] : (lo[1] + hi[1]) * 0.5f;
 			const float r = std::max(0.05f, std::min({ hi[0] - lo[0], hi[1] - lo[1], 2.0f * a_maxHalfWidth }) * 0.5f);
 			float       zBot = lo[2] + r, zTop = std::min(hi[2], lo[2] + a_maxHeight) - r;
 			if (zTop < zBot) {
@@ -301,7 +303,9 @@ namespace skycraft::Dig
 					logger::info("dig: the player's collision box is {:.2f} x {:.2f} x {:.2f} blocks (Minecraft's: 0.6 x 0.6 x 1.8)",
 						(hi[0] - lo[0]) * k, (hi[1] - lo[1]) * k, (hi[2] - lo[2]) * k);
 				}
-				BlockPlanes(box, planes, !isPuppet, halfWidth, isPlayer ? kPlayerHeight / BlocksPerHavok() : 1.0e9f);
+				alignas(16) float centre[4];
+				_mm_store_ps(centre, phantom->motionState.transform.translation.quad);
+				BlockPlanes(box, isPlayer ? centre : nullptr, planes, !isPuppet, halfWidth, isPlayer ? kPlayerHeight / BlocksPerHavok() : 1.0e9f);
 				if (isPuppet) {
 					// The player's body: only the blocks it stands on (Minecraft does the rest).
 					std::erase_if(planes, [](const Plane& a_plane) { return a_plane.n[2] < 0.7f; });
