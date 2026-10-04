@@ -66,6 +66,9 @@ namespace skycraft::Dig
 		std::atomic<int> loggedDropped{ 0 };
 		std::atomic<int> loggedPlanes{ 0 };
 		std::atomic<bool> loggedPlayerBox{ false };
+		// SkyCraft+ : the player's controller last stood on a Minecraft block at this tick.
+		std::atomic<RE::bhkCharacterController*> blockGroundController{ nullptr };
+		std::atomic<std::uint64_t>               blockGroundTick{ 0 };
 		std::atomic<const RE::hkpCollidable*> puppet{ nullptr };
 		std::atomic<float>                    puppetFeet{ 0.0f };
 		constexpr float                       kFeetSlack = 0.3f;  // Havok units above the feet still "under" them
@@ -201,13 +204,22 @@ namespace skycraft::Dig
 				d[1] = cy - std::clamp(cy, b.yl, b.yh);
 				d[2] = zTop < b.zl ? zTop - b.zl : (zBot > b.zh ? zBot - b.zh : 0.0f);
 				// Faces shared with another solid block are inside the wall: no edge planes at the
-				// seams, or walking over a block floor would snag.
-				if (d[0] > 0 && b.seam[0]) d[0] = 0;
-				if (d[0] < 0 && b.seam[1]) d[0] = 0;
-				if (d[1] > 0 && b.seam[2]) d[1] = 0;
-				if (d[1] < 0 && b.seam[3]) d[1] = 0;
-				if (d[2] > 0 && b.seam[4]) d[2] = 0;
-				if (d[2] < 0 && b.seam[5]) d[2] = 0;
+				// seams, or walking over a block floor would snag. Two seams at once (a floor
+				// block's side and its top) put the nearest point in the block diagonally between
+				// those neighbours: only if that one is solid too. Next to a doorway it isn't, and
+				// the edge of a floor block a step away became a wall right in front of the player.
+				bool drop[3] = { (d[0] > 0 && b.seam[0]) || (d[0] < 0 && b.seam[1]), (d[1] > 0 && b.seam[2]) || (d[1] < 0 && b.seam[3]),
+					(d[2] > 0 && b.seam[4]) || (d[2] < 0 && b.seam[5]) };
+				// Havok +x, +y, +z = Minecraft +x, -z, +y.
+				const int  ox = drop[0] ? (d[0] > 0 ? 1 : -1) : 0, oz = drop[1] ? (d[1] > 0 ? -1 : 1) : 0, oy = drop[2] ? (d[2] > 0 ? 1 : -1) : 0;
+				const int  dropped = int(drop[0]) + int(drop[1]) + int(drop[2]);
+				if (dropped == 1 || (dropped > 1 && FullAt(src[0] + ox, src[1] + oy, src[2] + oz))) {
+					for (int i = 0; i < 3; ++i) {
+						if (drop[i]) {
+							d[i] = 0;
+						}
+					}
+				}
 				const float hlen = std::sqrt(d[0] * d[0] + d[1] * d[1]);
 				const float step = b.zh - feet;
 				if (a_ramps && a_freeAbove && hlen > 1e-5f && step > kStepMin / k && step <= kStepMax / k) {
@@ -318,6 +330,11 @@ namespace skycraft::Dig
 				alignas(16) float centre[4];
 				_mm_store_ps(centre, phantom->motionState.transform.translation.quad);
 				BlockPlanes(box, isPlayer ? centre : nullptr, planes, !isPuppet, halfWidth, isPlayer ? kPlayerHeight / BlocksPerHavok() : 1.0e9f);
+				if (isPlayer && !isPuppet && std::ranges::any_of(planes, [](const Plane& a_plane) { return a_plane.n[2] > 0.7f && a_plane.d < 0.15f; })) {
+					// Standing on a Minecraft block (see CheckSupportHook).
+					blockGroundController.store(static_cast<RE::bhkCharacterController*>(a_this));
+					blockGroundTick.store(GetTickCount64());
+				}
 				if (isPuppet) {
 					// The player's body: only the blocks it stands on (Minecraft does the rest).
 					std::erase_if(planes, [](const Plane& a_plane) { return a_plane.n[2] < 0.7f; });
@@ -381,6 +398,27 @@ namespace skycraft::Dig
 
 	namespace
 	{
+		// SkyCraft+ : jumping off Minecraft blocks. Havok's support check counts the block planes
+		// (its state says on ground), but Skyrim's own support flags come from real contacts only,
+		// and jumping needs them: standing on a block, the player couldn't jump in Skyrim mode.
+		struct CheckSupportHook
+		{
+			static void thunk(RE::bhkCharacterController* a_this)
+			{
+				func(a_this);
+				if (a_this && a_this == blockGroundController.load() && GetTickCount64() - blockGroundTick.load() < 250 &&
+					a_this->context.currentState == RE::hkpCharacterStateTypes::kOnGround &&
+					!a_this->flags.all(RE::CHARACTER_FLAGS::kSupport, RE::CHARACTER_FLAGS::kCanJump)) {
+					a_this->flags.set(RE::CHARACTER_FLAGS::kSupport, RE::CHARACTER_FLAGS::kCanJump);
+					static std::atomic<int> logged{ 0 };
+					if (logged.fetch_add(1) < 3) {
+						logger::info("dig: the player stands on a Minecraft block: supported, can jump");
+					}
+				}
+			}
+			static inline REL::Relocation<decltype(thunk)> func;
+		};
+
 		// Every actor's movement update (AE 37507) asks for the land's height under it (TES
 		// GetLandHeight, AE 13344) and, if that's more than 30 units above the actor, puts the actor
 		// back on top of the land: Skyrim's rescue for characters that fell through the ground. In a
@@ -419,6 +457,8 @@ namespace skycraft::Dig
 		AllCdPointHook::func = plain.write_vfunc(0x1, AllCdPointHook::thunk);
 		REL::Relocation<std::uintptr_t> controller{ RE::VTABLE_bhkCharProxyController[0] };
 		ProcessConstraintsHook::func = controller.write_vfunc(0x1, ProcessConstraintsHook::thunk);
+		REL::Relocation<std::uintptr_t> controllerBase{ RE::VTABLE_bhkCharProxyController[1] };
+		CheckSupportHook::func = controllerBase.write_vfunc(0x0D, CheckSupportHook::thunk);
 		// The land-height call in the actor movement update (checked: a 5-byte call there).
 		REL::Relocation<std::uintptr_t> site{ REL::ID(37507), 0xCEA };
 		if (REL::Module::IsAE() && *reinterpret_cast<const std::uint8_t*>(site.address()) == 0xE8) {
