@@ -44,6 +44,7 @@ namespace skycraft
 	namespace NpcBlocks
 	{
 		bool SolidAt(std::int32_t a_x, std::int32_t a_y, std::int32_t a_z);
+		bool BlocksBody(std::int32_t a_x, std::int32_t a_y, std::int32_t a_z);
 	}
 
 	namespace
@@ -51,7 +52,7 @@ namespace skycraft
 		bool ColumnBlocked(int a_x, int a_z, int a_y0, int a_y1)
 		{
 			for (int y = a_y0; y <= a_y1; ++y) {
-				if (NpcBlocks::SolidAt(a_x, y, a_z)) {
+				if (NpcBlocks::BlocksBody(a_x, y, a_z)) {
 					return true;
 				}
 			}
@@ -95,7 +96,7 @@ namespace skycraft
 			section.clear();
 			const auto* boxes = reinterpret_cast<const proto::RenShapeBox*>(a_data + sizeof(proto::RenSolids));
 			for (std::uint32_t i = 0; i < count; ++i) {
-				section[boxes[i].cell].push_back(boxes[i]);
+				section[static_cast<std::uint16_t>(boxes[i].cell & proto::kShapeCellMask)].push_back(boxes[i]);
 			}
 		}
 
@@ -131,6 +132,32 @@ namespace skycraft
 				a_out->insert(a_out->end(), cell->second.begin(), cell->second.end());
 			}
 			return static_cast<int>(cell->second.size());
+		}
+
+		// SkyCraft+ : exact block shapes. A wall for NPC push-out and path avoidance: a full block,
+		// or a part block that is neither a step (slab, stair, carpet: Havok's ramps take them up)
+		// nor something mobs walk through (an open door). Fences, walls and closed doors are.
+		bool BlocksBody(std::int32_t a_x, std::int32_t a_y, std::int32_t a_z)
+		{
+			std::shared_lock lock(solidsLock);
+			const auto       sectionKey = SectionKey(FloorDiv16(a_x), FloorDiv16(a_y), FloorDiv16(a_z));
+			const auto       it = solids.find(sectionKey);
+			if (it == solids.end()) {
+				return false;
+			}
+			const int bit = (a_x & 15) + 16 * (a_z & 15) + 256 * (a_y & 15);
+			if (!((it->second[bit >> 6] >> (bit & 63)) & 1)) {
+				return false;
+			}
+			const auto section = shapes.find(sectionKey);
+			if (section == shapes.end()) {
+				return true;
+			}
+			const auto cell = section->second.find(static_cast<std::uint16_t>(bit));
+			if (cell == section->second.end() || cell->second.empty()) {
+				return true;
+			}
+			return (cell->second.front().cell & (proto::kShapeStep | proto::kShapePassable)) == 0;
 		}
 
 		std::uint32_t Generation() { return solidsGeneration.load(); }
@@ -227,7 +254,7 @@ namespace skycraft
 						for (int bz = int(std::floor(cz - r)); bz <= int(std::floor(cz + r)); ++bz) {
 							bool hit = false;
 							for (int by = y0; by <= y1 && !hit; ++by) {
-								hit = SolidAt(bx, by, bz);
+								hit = BlocksBody(bx, by, bz);
 							}
 							if (!hit) {
 								continue;

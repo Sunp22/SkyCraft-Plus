@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 14;
+	inline constexpr std::uint32_t kVersion = 15;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -374,11 +374,20 @@ namespace skycraft::proto
 	// Minecraft's axes (a fence reaches maxY 24).
 	struct RenShapeBox
 	{
-		std::uint16_t cell;    // x + 16z + 256y within the section
+		std::uint16_t cell;    // bits 0-11: x + 16z + 256y within the section; RenShapeCell flags above
 		std::uint8_t  min[3];  // x, y, z
 		std::uint8_t  max[3];
 	};
 	static_assert(sizeof(RenShapeBox) == 8);
+
+	// RenShapeBox::cell flags, the same on every box of a block. For NPC push-out and path
+	// avoidance, which work per block: such a block isn't a wall.
+	enum RenShapeCell : std::uint16_t
+	{
+		kShapeCellMask = 0x0FFF,
+		kShapeStep = 1u << 14,      // whole bottom face, open top: walked onto (slabs, stairs, carpets)
+		kShapePassable = 1u << 15,  // Minecraft's mobs path through it (open doors, open trapdoors)
+	};
 
 	struct RenDug
 	{

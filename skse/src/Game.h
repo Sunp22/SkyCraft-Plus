@@ -159,6 +159,9 @@ namespace skycraft
 		// SkyCraft+ : exact block shapes (any thread). -1: no solid block; 0: a full cube; n: a block
 		// made of n collision boxes, appended to a_out (if given).
 		int ShapeAt(std::int32_t a_x, std::int32_t a_y, std::int32_t a_z, std::vector<proto::RenShapeBox>* a_out);
+		// SkyCraft+ : exact block shapes (any thread). A wall for NPCs: not a step (slab, stair,
+		// carpet) and not something mobs walk through (open door).
+		bool BlocksBody(std::int32_t a_x, std::int32_t a_y, std::int32_t a_z);
 		// For the blocks' contact shadows (any thread): sets a_bit in a_out[x + w*(y + h*z)] for
 		// each solid block of the box at a_origin (Minecraft block coords) of a_size blocks. The
 		// generation changes whenever any section's blocks do.

@@ -63,7 +63,7 @@ namespace skycraft
 				for (int z = z0; z <= z1; ++z) {
 					int low = INT_MAX, high = INT_MIN;
 					for (int y = y0; y <= y1; ++y) {
-						if (NpcBlocks::SolidAt(x, y, z)) {
+						if (NpcBlocks::BlocksBody(x, y, z)) {
 							low = std::min(low, y);
 							high = std::max(high, y);
 						}

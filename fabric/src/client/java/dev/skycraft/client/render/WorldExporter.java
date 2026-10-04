@@ -48,6 +48,7 @@ import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.material.FluidState;
+import net.minecraft.world.level.pathfinder.PathComputationType;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
@@ -72,6 +73,8 @@ public final class WorldExporter {
 	// SkyCraft+ : exact block shapes. Sections Skyrim holds collision boxes for (blocks that aren't
 	// full cubes: stairs, slabs, doors, fences...), and this section's boxes (RenShapeBox).
 	private static final LongOpenHashSet SHAPED = new LongOpenHashSet();
+	private static final int SHAPE_STEP = 1 << 14;     // RenShapeBox cell flags (see the protocol)
+	private static final int SHAPE_PASSABLE = 1 << 15;
 	private static ByteBuffer shapeBoxes = ByteBuffer.allocate(64 * 1024).order(ByteOrder.LITTLE_ENDIAN);
 	private static final LongOpenHashSet DUG = new LongOpenHashSet(); // sections Skyrim holds dug cells for
 	private static final ByteBuffer LIGHTS = ByteBuffer.allocate(16 * 16 * 16 * 8).order(ByteOrder.LITTLE_ENDIAN);
@@ -249,8 +252,17 @@ public final class WorldExporter {
 							// Not a whole block: its real boxes, so characters fit through open doors
 							// and walk up stairs and slabs.
 							if (!Block.isShapeFullBlock(collision)) {
+								// For NPCs: a step to walk onto (whole bottom, open top: slabs, stairs,
+								// carpets), or something mobs walk through (open doors).
+								int cell = bit;
+								if (Block.isFaceFull(collision, Direction.DOWN) && !Block.isFaceFull(collision, Direction.UP)) {
+									cell |= SHAPE_STEP;
+								}
+								if (state.isPathfindable(PathComputationType.LAND)) {
+									cell |= SHAPE_PASSABLE;
+								}
 								for (AABB box : collision.toAabbs()) {
-									putShapeBox(bit, box);
+									putShapeBox(cell, box);
 									shapeCount++;
 								}
 							}
