@@ -1100,6 +1100,9 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 					case proto::kRenSolids:
 						NpcBlocks::OnSolids(a_data, a_bytes);
 						break;
+					case proto::kRenShapes:
+						NpcBlocks::OnShapes(a_data, a_bytes);
+						break;
 					case proto::kRenDug:
 						Dig::OnDug(a_data, a_bytes);
 						break;

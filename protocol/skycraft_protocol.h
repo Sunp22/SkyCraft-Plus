@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 12;
+	inline constexpr std::uint32_t kVersion = 13;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -352,6 +352,10 @@ namespace skycraft::proto
 		                      // section NPCs collide with (sent after its kRenSection; 0 = none)
 		kRenDug = 11,         // RenDug + 512-byte bitset (bit x + 16z + 256y): which blocks of a section
 		                      // were dug out of Skyrim's world (its geometry there is gone); 0 = none
+		kRenShapes = 12,      // RenSolids (count = boxes) + RenShapeBox[]: the collision boxes of a
+		                      // section's solid blocks that aren't full cubes (stairs, slabs, doors,
+		                      // fences, carpets...), which characters collide with instead of a whole
+		                      // block (sent with its kRenSolids; 0 = none)
 		kRenRagdoll = 9,      // RenAvatar + RenBatch[] + RenVertex[]: the player's body standing still,
 		                      // relative to the feet and facing +Z, split into its parts (RenBatch
 		                      // flags bits 8-11: RagdollPart). Sent about once a second while alive;
@@ -363,6 +367,16 @@ namespace skycraft::proto
 		std::int32_t  sx, sy, sz;  // section coords, as in RenSection
 		std::uint32_t count;       // solid blocks (0: none, and no bitset follows)
 	};
+
+	// One box of a block's collision shape, in sixteenths of a block from the block's corner on
+	// Minecraft's axes (a fence reaches maxY 24).
+	struct RenShapeBox
+	{
+		std::uint16_t cell;    // x + 16z + 256y within the section
+		std::uint8_t  min[3];  // x, y, z
+		std::uint8_t  max[3];
+	};
+	static_assert(sizeof(RenShapeBox) == 8);
 
 	struct RenDug
 	{

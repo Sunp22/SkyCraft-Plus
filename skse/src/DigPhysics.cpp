@@ -65,6 +65,7 @@ namespace skycraft::Dig
 
 		std::atomic<int> loggedDropped{ 0 };
 		std::atomic<int> loggedPlanes{ 0 };
+		std::atomic<bool> loggedPlayerBox{ false };
 		std::atomic<const RE::hkpCollidable*> puppet{ nullptr };
 		std::atomic<float>                    puppetFeet{ 0.0f };
 		constexpr float                       kFeetSlack = 0.3f;  // Havok units above the feet still "under" them
@@ -124,20 +125,46 @@ namespace skycraft::Dig
 			float d;  // gap between the proxy and the block (negative: overlapping)
 		};
 
+		// SkyCraft+ : exact block shapes. Low ledges (slabs, stair steps, carpets) get a walkable
+		// ramp up to their top, like the invisible ramps over Skyrim's own stairs: a character
+		// proxy can't step up by itself.
+		constexpr float kStepMin = 0.02f;         // blocks: lower than this is just ground
+		constexpr float kStepMax = 0.55f;         // blocks: Minecraft steps up to 0.6
+		constexpr float kRampSin = 0.6428f;       // a 40 degree ramp: walkable for Skyrim's characters
+		constexpr float kRampCos = 0.7660f;
+		constexpr float kPlayerHalfWidth = 0.3f;  // blocks: Minecraft's player is 0.6 wide
+
+		// A block or one box of a block's shape, in Havok space; seam: which faces (+x -x +y -y +z
+		// -z) are shared with a full neighbouring block (inside the wall).
+		struct BlockBox
+		{
+			float xl, xh, yl, yh, zl, zh;
+			bool  seam[6];
+		};
+
+		bool FullAt(std::int32_t a_x, std::int32_t a_y, std::int32_t a_z)
+		{
+			return NpcBlocks::ShapeAt(a_x, a_y, a_z, nullptr) == 0;
+		}
+
 		// Minecraft's solid blocks around a proxy, as the planes Havok would make for them. A
-		// vertical capsule stands in for the proxy's shape (its box).
-		void BlockPlanes(const RE::hkAabb& a_box, std::vector<Plane>& a_out)
+		// vertical capsule stands in for the proxy's shape (its box). Blocks that aren't full cubes
+		// (stairs, slabs, doors, fences) count with their real boxes. a_ramps: walkable ramps up low
+		// ledges. a_maxHalfWidth (Havok units): narrower than the proxy (the player, so it fits where
+		// Minecraft's player does).
+		void BlockPlanes(const RE::hkAabb& a_box, std::vector<Plane>& a_out, bool a_ramps, float a_maxHalfWidth)
 		{
 			alignas(16) float lo[4], hi[4];
 			_mm_store_ps(lo, a_box.min.quad);
 			_mm_store_ps(hi, a_box.max.quad);
 			const float cx = (lo[0] + hi[0]) * 0.5f, cy = (lo[1] + hi[1]) * 0.5f;
-			const float r = std::max(0.05f, std::min(hi[0] - lo[0], hi[1] - lo[1]) * 0.5f);
+			const float r = std::max(0.05f, std::min({ hi[0] - lo[0], hi[1] - lo[1], 2.0f * a_maxHalfWidth }) * 0.5f);
 			float       zBot = lo[2] + r, zTop = hi[2] - r;
 			if (zTop < zBot) {
 				zBot = zTop = (lo[2] + hi[2]) * 0.5f;
 			}
 			const float k = BlocksPerHavok();
+			const float feet = zBot - r;
 			// Havok box -> Minecraft blocks: x = hx, y = hz, z = -hy.
 			const int x0 = int(std::floor((lo[0] - kPlaneReach) * k)), x1 = int(std::floor((hi[0] + kPlaneReach) * k));
 			const int y0 = int(std::floor((lo[2] - kPlaneReach) * k)), y1 = int(std::floor((hi[2] + kPlaneReach) * k));
@@ -145,62 +172,87 @@ namespace skycraft::Dig
 			if ((x1 - x0 + 1) * (y1 - y0 + 1) * (z1 - z0 + 1) > 512) {
 				return;  // something huge (a dragon): not worth it
 			}
+
+			auto add = [&](const Plane& a_plane) {
+				if (a_plane.d > kPlaneReach) {
+					return;
+				}
+				for (const auto& other : a_out) {
+					if (std::fabs(other.d - a_plane.d) < 1e-3f && other.n[0] * a_plane.n[0] + other.n[1] * a_plane.n[1] + other.n[2] * a_plane.n[2] > 0.9999f) {
+						return;
+					}
+				}
+				a_out.push_back(a_plane);
+			};
+
+			auto addBox = [&](const BlockBox& b, bool a_freeAbove) {
+				float d[3];
+				d[0] = cx - std::clamp(cx, b.xl, b.xh);
+				d[1] = cy - std::clamp(cy, b.yl, b.yh);
+				d[2] = zTop < b.zl ? zTop - b.zl : (zBot > b.zh ? zBot - b.zh : 0.0f);
+				// Faces shared with another solid block are inside the wall: no edge planes at the
+				// seams, or walking over a block floor would snag.
+				if (d[0] > 0 && b.seam[0]) d[0] = 0;
+				if (d[0] < 0 && b.seam[1]) d[0] = 0;
+				if (d[1] > 0 && b.seam[2]) d[1] = 0;
+				if (d[1] < 0 && b.seam[3]) d[1] = 0;
+				if (d[2] > 0 && b.seam[4]) d[2] = 0;
+				if (d[2] < 0 && b.seam[5]) d[2] = 0;
+				const float hlen = std::sqrt(d[0] * d[0] + d[1] * d[1]);
+				const float step = b.zh - feet;
+				if (a_ramps && a_freeAbove && hlen > 1e-5f && step > kStepMin / k && step <= kStepMax / k) {
+					// Beside a low ledge: a ramp from the ground up to its top edge instead of a wall.
+					const float nx = d[0] / hlen * kRampSin, ny = d[1] / hlen * kRampSin;
+					const float ex = std::clamp(cx, b.xl, b.xh), ey = std::clamp(cy, b.yl, b.yh);
+					add({ { nx, ny, kRampCos }, nx * (cx - ex) + ny * (cy - ey) + kRampCos * (zBot - b.zh) - r });
+					return;
+				}
+				const float len = std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+				if (len > 1e-5f) {
+					add({ { d[0] / len, d[1] / len, d[2] / len }, len - r });
+					return;
+				}
+				// The capsule's core is inside the box: out through the top if the feet are near it,
+				// else the nearest side.
+				const float up = b.zh - feet;
+				const float side[4] = { cx - b.xl, b.xh - cx, cy - b.yl, b.yh - cy };
+				const float nearest = std::min({ side[0], side[1], side[2], side[3] });
+				if (up <= nearest + 0.25f || (a_freeAbove && up < 0.6f)) {
+					add({ { 0, 0, 1 }, -up });
+				} else if (nearest == side[0]) {
+					add({ { -1, 0, 0 }, -(side[0] + r) });
+				} else if (nearest == side[1]) {
+					add({ { 1, 0, 0 }, -(side[1] + r) });
+				} else if (nearest == side[2]) {
+					add({ { 0, -1, 0 }, -(side[2] + r) });
+				} else {
+					add({ { 0, 1, 0 }, -(side[3] + r) });
+				}
+			};
+
+			static thread_local std::vector<proto::RenShapeBox> parts;
 			for (int by = y0; by <= y1; ++by) {
 				for (int bz = z0; bz <= z1; ++bz) {
 					for (int bx = x0; bx <= x1; ++bx) {
-						if (!NpcBlocks::SolidAt(bx, by, bz)) {
+						parts.clear();
+						const int boxes = NpcBlocks::ShapeAt(bx, by, bz, &parts);
+						if (boxes < 0) {
 							continue;
 						}
-						// The block in Havok space.
-						const float bxl = bx / k, bxh = (bx + 1) / k;
-						const float byl = -(bz + 1) / k, byh = -bz / k;
-						const float bzl = by / k, bzh = (by + 1) / k;
-						float d[3];
-						d[0] = cx - std::clamp(cx, bxl, bxh);
-						d[1] = cy - std::clamp(cy, byl, byh);
-						d[2] = zTop < bzl ? zTop - bzl : (zBot > bzh ? zBot - bzh : 0.0f);
-						// Faces shared with another solid block are inside the wall: no edge
-						// planes at the seams, or walking over a block floor would snag.
-						if (d[0] > 0 && NpcBlocks::SolidAt(bx + 1, by, bz)) d[0] = 0;
-						if (d[0] < 0 && NpcBlocks::SolidAt(bx - 1, by, bz)) d[0] = 0;
-						if (d[1] > 0 && NpcBlocks::SolidAt(bx, by, bz - 1)) d[1] = 0;
-						if (d[1] < 0 && NpcBlocks::SolidAt(bx, by, bz + 1)) d[1] = 0;
-						if (d[2] > 0 && NpcBlocks::SolidAt(bx, by + 1, bz)) d[2] = 0;
-						if (d[2] < 0 && NpcBlocks::SolidAt(bx, by - 1, bz)) d[2] = 0;
-						const float len = std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
-						Plane plane;
-						if (len > 1e-5f) {
-							plane = { { d[0] / len, d[1] / len, d[2] / len }, len - r };
-						} else {
-							// The capsule's core is inside the block: out through the top if the feet
-							// are near it, else the nearest side.
-							const float up = bzh - (zBot - r);
-							const float side[4] = { cx - bxl, bxh - cx, cy - byl, byh - cy };
-							const float nearest = std::min({ side[0], side[1], side[2], side[3] });
-							if (up <= nearest + 0.25f || (!NpcBlocks::SolidAt(bx, by + 1, bz) && up < 0.6f)) {
-								plane = { { 0, 0, 1 }, -up };
-							} else if (nearest == side[0]) {
-								plane = { { -1, 0, 0 }, -(side[0] + r) };
-							} else if (nearest == side[1]) {
-								plane = { { 1, 0, 0 }, -(side[1] + r) };
-							} else if (nearest == side[2]) {
-								plane = { { 0, -1, 0 }, -(side[2] + r) };
-							} else {
-								plane = { { 0, 1, 0 }, -(side[3] + r) };
-							}
-						}
-						if (plane.d > kPlaneReach) {
+						const bool freeAbove = !NpcBlocks::SolidAt(bx, by + 1, bz);
+						if (boxes == 0) {
+							// A full block in Havok space.
+							addBox({ bx / k, (bx + 1) / k, -(bz + 1) / k, -bz / k, by / k, (by + 1) / k,
+									   { FullAt(bx + 1, by, bz), FullAt(bx - 1, by, bz), FullAt(bx, by, bz - 1), FullAt(bx, by, bz + 1),
+										   FullAt(bx, by + 1, bz), FullAt(bx, by - 1, bz) } },
+								freeAbove);
 							continue;
 						}
-						bool duplicate = false;
-						for (const auto& other : a_out) {
-							if (std::fabs(other.d - plane.d) < 1e-3f && other.n[0] * plane.n[0] + other.n[1] * plane.n[1] + other.n[2] * plane.n[2] > 0.9999f) {
-								duplicate = true;
-								break;
-							}
-						}
-						if (!duplicate) {
-							a_out.push_back(plane);
+						for (const auto& p : parts) {
+							addBox({ (bx + p.min[0] / 16.0f) / k, (bx + p.max[0] / 16.0f) / k,
+									   -(bz + p.max[2] / 16.0f) / k, -(bz + p.min[2] / 16.0f) / k,
+									   (by + p.min[1] / 16.0f) / k, (by + p.max[1] / 16.0f) / k, {} },
+								freeAbove);
 						}
 					}
 				}
@@ -234,8 +286,22 @@ namespace skycraft::Dig
 				shape->GetAabbImpl(phantom->motionState.transform, 0.0f, box);
 				static thread_local std::vector<Plane> planes;
 				planes.clear();
-				BlockPlanes(box, planes);
-				if (&phantom->collidable == puppet.load(std::memory_order_relaxed)) {
+				const bool isPuppet = &phantom->collidable == puppet.load(std::memory_order_relaxed);
+				// The player is as wide as Minecraft's (fits through a one-block gap); ramps up low
+				// ledges for everyone but the puppet (Minecraft does its stepping).
+				auto*       player = RE::PlayerCharacter::GetSingleton();
+				const bool  isPlayer = player && player->GetCharController() == static_cast<RE::bhkCharacterController*>(a_this);
+				const float halfWidth = isPlayer ? kPlayerHalfWidth / BlocksPerHavok() : 1.0e9f;
+				if (isPlayer && !loggedPlayerBox.exchange(true)) {
+					alignas(16) float lo[4], hi[4];
+					_mm_store_ps(lo, box.min.quad);
+					_mm_store_ps(hi, box.max.quad);
+					const float k = BlocksPerHavok();
+					logger::info("dig: the player's collision box is {:.2f} x {:.2f} x {:.2f} blocks (Minecraft's: 0.6 x 0.6 x 1.8)",
+						(hi[0] - lo[0]) * k, (hi[1] - lo[1]) * k, (hi[2] - lo[2]) * k);
+				}
+				BlockPlanes(box, planes, !isPuppet, halfWidth);
+				if (isPuppet) {
 					// The player's body: only the blocks it stands on (Minecraft does the rest).
 					std::erase_if(planes, [](const Plane& a_plane) { return a_plane.n[2] < 0.7f; });
 				}

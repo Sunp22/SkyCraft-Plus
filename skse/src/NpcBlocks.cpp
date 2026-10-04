@@ -11,6 +11,9 @@ namespace skycraft
 		// Written on the main thread; read there and by Skyrim's AI threads planning NPC paths.
 		std::shared_mutex solidsLock;
 		std::atomic<std::uint32_t> solidsGeneration{ 0 };  // bumped on every change
+		// SkyCraft+ : exact block shapes. Section -> its solid blocks that aren't full cubes, with
+		// their collision boxes (proto::kRenShapes). Same lock as solids.
+		std::unordered_map<std::uint64_t, std::unordered_map<std::uint16_t, std::vector<proto::RenShapeBox>>> shapes;
 
 		std::uint64_t SectionKey(std::int32_t a_x, std::int32_t a_y, std::int32_t a_z)
 		{
@@ -74,11 +77,60 @@ namespace skycraft
 			std::memcpy(solids[key].data(), a_data + sizeof(proto::RenSolids), 512);
 		}
 
+		void OnShapes(const std::uint8_t* a_data, std::uint32_t a_bytes)
+		{
+			if (a_bytes < sizeof(proto::RenSolids)) {
+				return;
+			}
+			const auto* hdr = reinterpret_cast<const proto::RenSolids*>(a_data);
+			const auto  key = SectionKey(hdr->sx, hdr->sy, hdr->sz);
+			const auto  count = std::min<std::uint32_t>(hdr->count, (a_bytes - sizeof(proto::RenSolids)) / sizeof(proto::RenShapeBox));
+			std::unique_lock lock(solidsLock);
+			++solidsGeneration;
+			if (count == 0) {
+				shapes.erase(key);
+				return;
+			}
+			auto& section = shapes[key];
+			section.clear();
+			const auto* boxes = reinterpret_cast<const proto::RenShapeBox*>(a_data + sizeof(proto::RenSolids));
+			for (std::uint32_t i = 0; i < count; ++i) {
+				section[boxes[i].cell].push_back(boxes[i]);
+			}
+		}
+
 		void Clear()
 		{
 			std::unique_lock lock(solidsLock);
 			++solidsGeneration;
 			solids.clear();
+			shapes.clear();
+		}
+
+		int ShapeAt(std::int32_t a_x, std::int32_t a_y, std::int32_t a_z, std::vector<proto::RenShapeBox>* a_out)
+		{
+			std::shared_lock lock(solidsLock);
+			const auto       sectionKey = SectionKey(FloorDiv16(a_x), FloorDiv16(a_y), FloorDiv16(a_z));
+			const auto       it = solids.find(sectionKey);
+			if (it == solids.end()) {
+				return -1;
+			}
+			const int bit = (a_x & 15) + 16 * (a_z & 15) + 256 * (a_y & 15);
+			if (!((it->second[bit >> 6] >> (bit & 63)) & 1)) {
+				return -1;
+			}
+			const auto section = shapes.find(sectionKey);
+			if (section == shapes.end()) {
+				return 0;
+			}
+			const auto cell = section->second.find(static_cast<std::uint16_t>(bit));
+			if (cell == section->second.end()) {
+				return 0;
+			}
+			if (a_out) {
+				a_out->insert(a_out->end(), cell->second.begin(), cell->second.end());
+			}
+			return static_cast<int>(cell->second.size());
 		}
 
 		std::uint32_t Generation() { return solidsGeneration.load(); }

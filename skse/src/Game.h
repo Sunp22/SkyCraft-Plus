@@ -152,8 +152,13 @@ namespace skycraft
 	{
 		// Render messages (main thread): a section's solid Minecraft blocks; a world change.
 		void OnSolids(const std::uint8_t* a_data, std::uint32_t a_bytes);
+		// SkyCraft+ : exact block shapes. A section's boxes for blocks that aren't full cubes.
+		void OnShapes(const std::uint8_t* a_data, std::uint32_t a_bytes);
 		void Clear();
 		bool SolidAt(std::int32_t a_x, std::int32_t a_y, std::int32_t a_z);
+		// SkyCraft+ : exact block shapes (any thread). -1: no solid block; 0: a full cube; n: a block
+		// made of n collision boxes, appended to a_out (if given).
+		int ShapeAt(std::int32_t a_x, std::int32_t a_y, std::int32_t a_z, std::vector<proto::RenShapeBox>* a_out);
 		// For the blocks' contact shadows (any thread): sets a_bit in a_out[x + w*(y + h*z)] for
 		// each solid block of the box at a_origin (Minecraft block coords) of a_size blocks. The
 		// generation changes whenever any section's blocks do.

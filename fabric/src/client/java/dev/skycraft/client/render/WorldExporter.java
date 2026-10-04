@@ -69,6 +69,10 @@ public final class WorldExporter {
 	private static final LongOpenHashSet LIT = new LongOpenHashSet(); // sections Skyrim holds lights for
 	private static final LongOpenHashSet SOLID = new LongOpenHashSet(); // sections Skyrim holds NPC collision for
 	private static final long[] SOLID_BITS = new long[64]; // 4096 blocks: bit x + 16z + 256y
+	// SkyCraft+ : exact block shapes. Sections Skyrim holds collision boxes for (blocks that aren't
+	// full cubes: stairs, slabs, doors, fences...), and this section's boxes (RenShapeBox).
+	private static final LongOpenHashSet SHAPED = new LongOpenHashSet();
+	private static ByteBuffer shapeBoxes = ByteBuffer.allocate(64 * 1024).order(ByteOrder.LITTLE_ENDIAN);
 	private static final LongOpenHashSet DUG = new LongOpenHashSet(); // sections Skyrim holds dug cells for
 	private static final ByteBuffer LIGHTS = ByteBuffer.allocate(16 * 16 * 16 * 8).order(ByteOrder.LITTLE_ENDIAN);
 	private static int sentGeneration = Integer.MIN_VALUE;
@@ -136,6 +140,7 @@ public final class WorldExporter {
 		SENT.clear();
 		LIT.clear();
 		SOLID.clear();
+		SHAPED.clear();
 		DUG.clear();
 		dev.skycraft.client.SkyDigClient.resendAll();
 		// Everything already loaded needs meshing again; later chunk loads mark themselves dirty.
@@ -176,6 +181,22 @@ public final class WorldExporter {
 		}
 	}
 
+	/** One RenShapeBox: a box of a block's collision shape in sixteenths, rounded outwards. */
+	private static void putShapeBox(int cell, AABB box) {
+		if (shapeBoxes.remaining() < 8) {
+			ByteBuffer bigger = ByteBuffer.allocate(shapeBoxes.capacity() * 2).order(ByteOrder.LITTLE_ENDIAN);
+			bigger.put(shapeBoxes.flip());
+			shapeBoxes = bigger;
+		}
+		shapeBoxes.putShort((short) cell);
+		shapeBoxes.put(sixteenths(Math.floor(box.minX * 16.0))).put(sixteenths(Math.floor(box.minY * 16.0))).put(sixteenths(Math.floor(box.minZ * 16.0)));
+		shapeBoxes.put(sixteenths(Math.ceil(box.maxX * 16.0))).put(sixteenths(Math.ceil(box.maxY * 16.0))).put(sixteenths(Math.ceil(box.maxZ * 16.0)));
+	}
+
+	private static byte sixteenths(double v) {
+		return (byte) Mth.clamp((int) v, 0, 255);
+	}
+
 	private static LevelChunkSection sectionAt(ClientLevel level, LevelChunk chunk, int sy) {
 		int index = level.getSectionIndexFromSectionY(sy);
 		return index >= 0 && index < chunk.getSections().length ? chunk.getSections()[index] : null;
@@ -205,6 +226,8 @@ public final class WorldExporter {
 		int lightCount = 0;
 		java.util.Arrays.fill(SOLID_BITS, 0L);
 		int solidCount = 0;
+		shapeBoxes.clear();
+		int shapeCount = 0;
 		MESH.cardinal = level.cardinalLighting();
 		if (!empty) {
 			BlockPos origin = SectionPos.of(sx, sy, sz).origin();
@@ -218,10 +241,19 @@ public final class WorldExporter {
 							continue;
 						}
 						// Blocks Skyrim's NPCs can't walk through (anything with a collision shape).
-						if (!state.getCollisionShape(level, pos).isEmpty()) {
+						VoxelShape collision = state.getCollisionShape(level, pos);
+						if (!collision.isEmpty()) {
 							int bit = x + 16 * z + 256 * y;
 							SOLID_BITS[bit >> 6] |= 1L << (bit & 63);
 							solidCount++;
+							// Not a whole block: its real boxes, so characters fit through open doors
+							// and walk up stairs and slabs.
+							if (!Block.isShapeFullBlock(collision)) {
+								for (AABB box : collision.toAabbs()) {
+									putShapeBox(bit, box);
+									shapeCount++;
+								}
+							}
 						}
 						// Light-emitting blocks (torches, lava, glowstone, ...) light Skyrim's world too.
 						int emission = state.getLightEmission();
@@ -286,6 +318,16 @@ public final class WorldExporter {
 					SOLID.add(key);
 				} else {
 					SOLID.remove(key);
+				}
+			}
+			if (shapeCount > 0 || SHAPED.contains(key)) {
+				ByteBuffer shapeHeader = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN).putInt(sx).putInt(sy).putInt(sz).putInt(shapeCount).flip();
+				if (!SkyLink.writeRender(Proto.REN_SHAPES, shapeHeader, shapeBoxes.flip())) {
+					markDirty(sx, sy, sz);
+				} else if (shapeCount > 0) {
+					SHAPED.add(key);
+				} else {
+					SHAPED.remove(key);
 				}
 			}
 			// Cells dug out of Skyrim's world: its geometry there goes.
