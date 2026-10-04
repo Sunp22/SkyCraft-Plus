@@ -406,15 +406,58 @@ namespace skycraft::Dig
 			static void thunk(RE::bhkCharacterController* a_this)
 			{
 				func(a_this);
-				if (a_this && a_this == blockGroundController.load() && GetTickCount64() - blockGroundTick.load() < 250 &&
-					a_this->context.currentState == RE::hkpCharacterStateTypes::kOnGround &&
-					!a_this->flags.all(RE::CHARACTER_FLAGS::kSupport, RE::CHARACTER_FLAGS::kCanJump)) {
-					a_this->flags.set(RE::CHARACTER_FLAGS::kSupport, RE::CHARACTER_FLAGS::kCanJump);
+				if (!a_this || a_this != blockGroundController.load() || GetTickCount64() - blockGroundTick.load() >= 250 ||
+					a_this->context.currentState != RE::hkpCharacterStateTypes::kOnGround) {
+					return;
+				}
+				// Everything Skyrim knows about the ground it stands on, as if the block were real:
+				// support flags, the support and surface normals (flat: the slope check) and no fall.
+				alignas(16) float supportNorm[4], surfaceNorm[4];
+				_mm_store_ps(supportNorm, a_this->supportNorm.quad);
+				_mm_store_ps(surfaceNorm, a_this->surfaceInfo.surfaceNormal.quad);
+				static std::atomic<int> logged{ 0 };
+				if (logged.fetch_add(1) < 3) {
+					logger::info("dig: the player stands on a Minecraft block; Skyrim had: flags {:X}, surface {} normal z {:.2f}, support normal z {:.2f}, falling {:.2f}s",
+						a_this->flags.underlying(), static_cast<int>(a_this->surfaceInfo.supportedState.get()), surfaceNorm[2], supportNorm[2], a_this->fallTime);
+				}
+				a_this->flags.set(RE::CHARACTER_FLAGS::kSupport, RE::CHARACTER_FLAGS::kCanJump);
+				a_this->surfaceInfo.supportedState = RE::hkpSurfaceInfo::SupportedState::kSupported;
+				if (surfaceNorm[2] < 0.7f) {
+					a_this->surfaceInfo.surfaceNormal = RE::hkVector4(0.0f, 0.0f, 1.0f, 0.0f);
+				}
+				if (supportNorm[2] < 0.7f) {
+					a_this->supportNorm = RE::hkVector4(0.0f, 0.0f, 1.0f, 0.0f);
+				}
+				if (auto* player = RE::PlayerCharacter::GetSingleton()) {
+					a_this->fallStartHeight = player->GetPositionZ();
+				}
+				a_this->fallTime = 0.0f;
+			}
+			static inline REL::Relocation<decltype(thunk)> func;
+		};
+
+		// Logs only: what Skyrim's jump input sees when the player presses Jump on a Minecraft block.
+		struct JumpCanProcessHook
+		{
+			static bool thunk(RE::JumpHandler* a_this, RE::InputEvent* a_event)
+			{
+				const bool result = func(a_this, a_event);
+				auto*      events = RE::UserEvents::GetSingleton();
+				if (!a_event || !events || a_event->GetEventType() != RE::INPUT_EVENT_TYPE::kButton || !a_event->AsButtonEvent()->IsDown() ||
+					a_event->QUserEvent() != events->jump) {
+					return result;
+				}
+				auto* player = RE::PlayerCharacter::GetSingleton();
+				auto* controller = player ? player->GetCharController() : nullptr;
+				if (controller && controller == blockGroundController.load() && GetTickCount64() - blockGroundTick.load() < 250) {
 					static std::atomic<int> logged{ 0 };
-					if (logged.fetch_add(1) < 3) {
-						logger::info("dig: the player stands on a Minecraft block: supported, can jump");
+					if (logged.fetch_add(1) < 10) {
+						logger::info("dig: Jump pressed on a Minecraft block: Skyrim's jump input {} it (flags {:X}, state {}, surface {}, falling {:.2f}s)",
+							result ? "takes" : "refuses", controller->flags.underlying(), static_cast<int>(controller->context.currentState),
+							static_cast<int>(controller->surfaceInfo.supportedState.get()), controller->fallTime);
 					}
 				}
+				return result;
 			}
 			static inline REL::Relocation<decltype(thunk)> func;
 		};
@@ -459,6 +502,8 @@ namespace skycraft::Dig
 		ProcessConstraintsHook::func = controller.write_vfunc(0x1, ProcessConstraintsHook::thunk);
 		REL::Relocation<std::uintptr_t> controllerBase{ RE::VTABLE_bhkCharProxyController[1] };
 		CheckSupportHook::func = controllerBase.write_vfunc(0x0D, CheckSupportHook::thunk);
+		REL::Relocation<std::uintptr_t> jump{ RE::VTABLE_JumpHandler[0] };
+		JumpCanProcessHook::func = jump.write_vfunc(0x1, JumpCanProcessHook::thunk);
 		// The land-height call in the actor movement update (checked: a 5-byte call there).
 		REL::Relocation<std::uintptr_t> site{ REL::ID(37507), 0xCEA };
 		if (REL::Module::IsAE() && *reinterpret_cast<const std::uint8_t*>(site.address()) == 0xE8) {
