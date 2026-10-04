@@ -69,6 +69,8 @@ namespace skycraft::Dig
 		// SkyCraft+ : the player's controller last stood on a Minecraft block at this tick.
 		std::atomic<RE::bhkCharacterController*> blockGroundController{ nullptr };
 		std::atomic<std::uint64_t>               blockGroundTick{ 0 };
+		// ... and where its proxy was then (Havok space), to recognise it in Havok's state updates.
+		std::atomic<float> blockGroundX{ 0.0f }, blockGroundY{ 0.0f }, blockGroundZ{ 0.0f };
 		std::atomic<const RE::hkpCollidable*> puppet{ nullptr };
 		std::atomic<float>                    puppetFeet{ 0.0f };
 		constexpr float                       kFeetSlack = 0.3f;  // Havok units above the feet still "under" them
@@ -334,6 +336,9 @@ namespace skycraft::Dig
 					// Standing on a Minecraft block (see CheckSupportHook).
 					blockGroundController.store(static_cast<RE::bhkCharacterController*>(a_this));
 					blockGroundTick.store(GetTickCount64());
+					blockGroundX.store(centre[0]);
+					blockGroundY.store(centre[1]);
+					blockGroundZ.store(centre[2]);
 				}
 				if (isPuppet) {
 					// The player's body: only the blocks it stands on (Minecraft does the rest).
@@ -449,6 +454,64 @@ namespace skycraft::Dig
 			static inline REL::Relocation<decltype(thunk)> func;
 		};
 
+		// Havok's character states decide landing and jumping from the support its check found in
+		// the world's contacts, which our block planes aren't: on a Minecraft block it found none
+		// ("in the air" for good, a fall timer running, and Jump only twitching the animation). For
+		// the player standing on a block and not rising, its in-air and on-ground updates are told
+		// the ground there is solid and flat: it lands, stays landed, and can jump.
+		bool PlayerOnBlockGround(const RE::hkpCharacterInput& a_input)
+		{
+			if (GetTickCount64() - blockGroundTick.load() >= 250) {
+				return false;
+			}
+			alignas(16) float p[4], v[4];
+			_mm_store_ps(p, a_input.position.quad);
+			_mm_store_ps(v, a_input.velocity.quad);
+			const float dx = p[0] - blockGroundX.load(), dy = p[1] - blockGroundY.load(), dz = p[2] - blockGroundZ.load();
+			return dx * dx + dy * dy + dz * dz < 0.15f * 0.15f && v[2] <= kRisingSpeed;
+		}
+
+		void SupportOnBlock(const RE::hkpCharacterInput& a_input, const char* a_state)
+		{
+			auto& input = const_cast<RE::hkpCharacterInput&>(a_input);
+			if (input.surfaceInfo.supportedState == RE::hkpSurfaceInfo::SupportedState::kSupported) {
+				return;
+			}
+			input.surfaceInfo.supportedState = RE::hkpSurfaceInfo::SupportedState::kSupported;
+			input.surfaceInfo.surfaceNormal = RE::hkVector4(0.0f, 0.0f, 1.0f, 0.0f);
+			input.surfaceInfo.surfaceVelocity = RE::hkVector4(0.0f, 0.0f, 0.0f, 0.0f);
+			input.surfaceInfo.surfaceDistanceExcess = 0.0f;
+			input.surfaceInfo.surfaceIsDynamic = false;
+			static std::atomic<int> logged{ 0 };
+			if (logged.fetch_add(1) < 5) {
+				logger::info("dig: Havok's {} state had no ground under the player on a Minecraft block; told it the block's there", a_state);
+			}
+		}
+
+		struct InAirUpdateHook
+		{
+			static void thunk(RE::hkpCharacterState* a_this, RE::hkpCharacterContext& a_context, const RE::hkpCharacterInput& a_input, RE::hkpCharacterOutput& a_output)
+			{
+				if (PlayerOnBlockGround(a_input)) {
+					SupportOnBlock(a_input, "in-air");
+				}
+				func(a_this, a_context, a_input, a_output);
+			}
+			static inline REL::Relocation<decltype(thunk)> func;
+		};
+
+		struct OnGroundUpdateHook
+		{
+			static void thunk(RE::hkpCharacterState* a_this, RE::hkpCharacterContext& a_context, const RE::hkpCharacterInput& a_input, RE::hkpCharacterOutput& a_output)
+			{
+				if (PlayerOnBlockGround(a_input)) {
+					SupportOnBlock(a_input, "on-ground");
+				}
+				func(a_this, a_context, a_input, a_output);
+			}
+			static inline REL::Relocation<decltype(thunk)> func;
+		};
+
 		// Logs only: what Skyrim's jump input sees when the player presses Jump on a Minecraft block.
 		struct JumpCanProcessHook
 		{
@@ -515,6 +578,10 @@ namespace skycraft::Dig
 		ProcessConstraintsHook::func = controller.write_vfunc(0x1, ProcessConstraintsHook::thunk);
 		REL::Relocation<std::uintptr_t> controllerBase{ RE::VTABLE_bhkCharProxyController[1] };
 		CheckSupportHook::func = controllerBase.write_vfunc(0x0D, CheckSupportHook::thunk);
+		REL::Relocation<std::uintptr_t> inAir{ RE::VTABLE_bhkCharacterStateInAir[0] };
+		InAirUpdateHook::func = inAir.write_vfunc(0x6, InAirUpdateHook::thunk);
+		REL::Relocation<std::uintptr_t> onGround{ RE::VTABLE_bhkCharacterStateOnGround[0] };
+		OnGroundUpdateHook::func = onGround.write_vfunc(0x6, OnGroundUpdateHook::thunk);
 		REL::Relocation<std::uintptr_t> jump{ RE::VTABLE_JumpHandler[0] };
 		JumpCanProcessHook::func = jump.write_vfunc(0x1, JumpCanProcessHook::thunk);
 		// The land-height call in the actor movement update (checked: a 5-byte call there).
