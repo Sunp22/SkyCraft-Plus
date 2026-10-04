@@ -133,6 +133,7 @@ namespace skycraft::Dig
 		constexpr float kRampSin = 0.6428f;       // a 40 degree ramp: walkable for Skyrim's characters
 		constexpr float kRampCos = 0.7660f;
 		constexpr float kPlayerHalfWidth = 0.3f;  // blocks: Minecraft's player is 0.6 wide
+		constexpr float kPlayerHeight = 1.8f;     // blocks: and 1.8 tall (Skyrim's is 1.93: two-block doorways)
 
 		// A block or one box of a block's shape, in Havok space; seam: which faces (+x -x +y -y +z
 		// -z) are shared with a full neighbouring block (inside the wall).
@@ -150,16 +151,16 @@ namespace skycraft::Dig
 		// Minecraft's solid blocks around a proxy, as the planes Havok would make for them. A
 		// vertical capsule stands in for the proxy's shape (its box). Blocks that aren't full cubes
 		// (stairs, slabs, doors, fences) count with their real boxes. a_ramps: walkable ramps up low
-		// ledges. a_maxHalfWidth (Havok units): narrower than the proxy (the player, so it fits where
+		// ledges. a_maxHalfWidth, a_maxHeight (Havok units): smaller than the proxy (the player, so it fits where
 		// Minecraft's player does).
-		void BlockPlanes(const RE::hkAabb& a_box, std::vector<Plane>& a_out, bool a_ramps, float a_maxHalfWidth)
+		void BlockPlanes(const RE::hkAabb& a_box, std::vector<Plane>& a_out, bool a_ramps, float a_maxHalfWidth, float a_maxHeight)
 		{
 			alignas(16) float lo[4], hi[4];
 			_mm_store_ps(lo, a_box.min.quad);
 			_mm_store_ps(hi, a_box.max.quad);
 			const float cx = (lo[0] + hi[0]) * 0.5f, cy = (lo[1] + hi[1]) * 0.5f;
 			const float r = std::max(0.05f, std::min({ hi[0] - lo[0], hi[1] - lo[1], 2.0f * a_maxHalfWidth }) * 0.5f);
-			float       zBot = lo[2] + r, zTop = hi[2] - r;
+			float       zBot = lo[2] + r, zTop = std::min(hi[2], lo[2] + a_maxHeight) - r;
 			if (zTop < zBot) {
 				zBot = zTop = (lo[2] + hi[2]) * 0.5f;
 			}
@@ -300,7 +301,7 @@ namespace skycraft::Dig
 					logger::info("dig: the player's collision box is {:.2f} x {:.2f} x {:.2f} blocks (Minecraft's: 0.6 x 0.6 x 1.8)",
 						(hi[0] - lo[0]) * k, (hi[1] - lo[1]) * k, (hi[2] - lo[2]) * k);
 				}
-				BlockPlanes(box, planes, !isPuppet, halfWidth);
+				BlockPlanes(box, planes, !isPuppet, halfWidth, isPlayer ? kPlayerHeight / BlocksPerHavok() : 1.0e9f);
 				if (isPuppet) {
 					// The player's body: only the blocks it stands on (Minecraft does the rest).
 					std::erase_if(planes, [](const Plane& a_plane) { return a_plane.n[2] < 0.7f; });
@@ -309,6 +310,25 @@ namespace skycraft::Dig
 					return;
 				}
 				std::ranges::sort(planes, {}, &Plane::d);
+				if (isPlayer && !isPuppet && DiagnosticsEnabled()) {
+					// What Minecraft's blocks do to the player in Skyrim mode, twice a second.
+					static std::atomic<std::uint64_t> nextLog{ 0 };
+					const auto                        now = GetTickCount64();
+					if (now >= nextLog.load()) {
+						nextLog = now + 500;
+						alignas(16) float lo[4], hi[4];
+						_mm_store_ps(lo, box.min.quad);
+						_mm_store_ps(hi, box.max.quad);
+						const float k = BlocksPerHavok();
+						std::string list;
+						for (const auto& p : planes) {
+							list += fmt::format(" [{:+.2f} {:+.2f} {:+.2f} d {:+.3f}]", p.n[0], p.n[1], p.n[2], p.d * k);
+						}
+						logger::info("dig: player at MC {:.2f} {:.2f} {:.2f} (box {:.2f} x {:.2f}, keep {:.3f}): {} block planes:{}",
+							(lo[0] + hi[0]) * 0.5f * k, lo[2] * k, -(lo[1] + hi[1]) * 0.5f * k, (hi[0] - lo[0]) * k, (hi[1] - lo[1]) * k,
+							a_proxy->keepDistance * k, planes.size(), list);
+					}
+				}
 				const int count = std::min<int>(room, static_cast<int>(planes.size()));
 				if (loggedPlanes.fetch_add(1) < 3) {
 					logger::info("dig: {} Minecraft block planes for an actor (room {}, nearest {:.2f})", count, room, planes[0].d);
