@@ -10,6 +10,9 @@ import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import org.lwjgl.sdl.SDLVideo;
 
@@ -220,6 +223,34 @@ public final class SkyClient {
 		player.setDeltaMovement(Vec3.ZERO);
 		player.setPos(sky.x, sky.y, sky.z);
 		player.resetFallDistance();
+	}
+
+	/**
+	 * Skyrim mode: Skyrim's Activate found nothing of its own, so use the Minecraft block in view by
+	 * hand (doors, chests, crafting tables, levers), never the held item: a block in hand isn't placed.
+	 * Our player looks where Skyrim's camera does. The host only: a guest's server only takes a
+	 * normal use.
+	 */
+	public static void useBlockInView(Minecraft minecraft) {
+		LocalPlayer player = minecraft.player;
+		var server = minecraft.getSingleplayerServer();
+		if (player == null || server == null || minecraft.gui.screen() != null) {
+			return;
+		}
+		if (!(minecraft.hitResult instanceof BlockHitResult hit) || hit.getType() != HitResult.Type.BLOCK) {
+			SkyCraft.LOG.info("SkyCraft: Skyrim mode use: no Minecraft block in view");
+			return;
+		}
+		var uuid = player.getUUID();
+		server.execute(() -> {
+			ServerPlayer sp = server.getPlayerList().getPlayer(uuid);
+			if (sp == null) {
+				return;
+			}
+			var state = sp.level().getBlockState(hit.getBlockPos());
+			InteractionResult result = state.useWithoutItem(sp.level(), sp, hit);
+			SkyCraft.LOG.info("SkyCraft: Skyrim mode use: {} at {}: {}", state.getBlock().getName().getString(), hit.getBlockPos().toShortString(), result);
+		});
 	}
 
 	/** One health pool: back in Minecraft's hands, the player keeps Skyrim's share of their health. */

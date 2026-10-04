@@ -164,6 +164,41 @@ namespace skycraft
 			logger::info("activated {:08X} ({})", target->GetFormID(), target->GetDisplayFullName());
 		}
 
+		// SkyCraft+ : Skyrim mode block use. Skyrim's own Activate (E by default, or whatever it's
+		// bound to), pressed.
+		bool IsActivatePress(RE::InputEvent* a_event)
+		{
+			if (a_event->GetEventType() != RE::INPUT_EVENT_TYPE::kButton) {
+				return false;
+			}
+			auto* button = a_event->AsButtonEvent();
+			if (!button->IsDown()) {
+				return false;
+			}
+			auto* events = RE::UserEvents::GetSingleton();
+			if (events && button->QUserEvent() == events->activate) {
+				return true;
+			}
+			auto* controls = RE::ControlMap::GetSingleton();
+			return controls && controls->GetMappedKey("Activate", button->GetDevice()) == button->GetIDCode();
+		}
+
+		// Skyrim mode: Activate on nothing Skyrim can activate uses the Minecraft block under the
+		// crosshair instead (Minecraft's player looks the same way, see Game.cpp).
+		void UseMinecraftBlockIfNothingElse()
+		{
+			auto* pick = RE::CrosshairPickData::GetSingleton();
+			auto* player = RE::PlayerCharacter::GetSingleton();
+			if (!pick || !player) {
+				return;
+			}
+			if (auto target = pick->GetActiveTarget().get(); target && target.get() != player) {
+				return;  // Skyrim activates that itself
+			}
+			Link::Get().PushInput(proto::kInUse, 0);
+			logger::info("Skyrim mode: Activate on no Skyrim target; using the Minecraft block in view");
+		}
+
 		void OpenWaitMenu()
 		{
 			auto* player = RE::PlayerCharacter::GetSingleton();
@@ -199,9 +234,14 @@ namespace skycraft
 				if (menuOpen) {
 					st.skyrimMenuOpen = true;
 				}
-				const bool route = st.puppeting && !menuOpen;
+				// A Minecraft screen opened from Skyrim mode (a chest, a crafting table) takes the input
+				// like it does in Minecraft mode.
+				const bool route = (st.puppeting || (st.skyrimDrives && st.mcScreenOpen)) && !menuOpen;
 
 				for (auto* e = *a_event; e; e = e->next) {
+					if (st.skyrimMode && st.skyrimDrives && !menuOpen && !st.mcScreenOpen && IsActivatePress(e)) {
+						UseMinecraftBlockIfNothingElse();
+					}
 					// The mode switch key works in both modes (Skyrim mode doesn't route), never
 					// reaches Minecraft, and waits while a menu or Minecraft screen is open.
 					if (modeToggleKey && e->GetEventType() == RE::INPUT_EVENT_TYPE::kButton && e->GetDevice() == RE::INPUT_DEVICE::kKeyboard &&
@@ -300,7 +340,8 @@ namespace skycraft
 			static RE::BSEventNotifyControl thunk(RE::MenuControls* a_this, RE::InputEvent* const* a_event, RE::BSTEventSource<RE::InputEvent*>* a_source)
 			{
 				auto& st = State();
-				if (!a_event || !*a_event || !st.puppeting || st.skyrimMenuOpen || Game::SkyrimMenuOpen()) {
+				const bool mcScreenInSkyrimMode = st.skyrimDrives && st.mcScreenOpen;
+				if (!a_event || !*a_event || !(st.puppeting || mcScreenInSkyrimMode) || st.skyrimMenuOpen || Game::SkyrimMenuOpen()) {
 					return func(a_this, a_event, a_source);  // a Skyrim menu is up: all its input
 				}
 				std::vector<RE::InputEvent*> keep;
@@ -343,7 +384,9 @@ namespace skycraft
 		{
 			static RE::BSEventNotifyControl thunk(RE::PlayerControls* a_this, RE::InputEvent* const* a_event, RE::BSTEventSource<RE::InputEvent*>* a_source)
 			{
-				if (!State().minecraftOwnsPlayer || Game::SkyrimMenuOpen()) {
+				auto& st = State();
+				const bool mcScreenInSkyrimMode = st.skyrimDrives && st.mcScreenOpen;
+				if ((!st.minecraftOwnsPlayer && !mcScreenInSkyrimMode) || Game::SkyrimMenuOpen()) {
 					return func(a_this, a_event, a_source);
 				}
 				return RE::BSEventNotifyControl::kContinue;

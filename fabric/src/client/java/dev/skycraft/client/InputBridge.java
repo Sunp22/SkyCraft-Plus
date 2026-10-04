@@ -69,6 +69,7 @@ public final class InputBridge {
 					minecraft.gui.setScreen(new PauseScreen(true));
 				}
 			}
+			case Proto.IN_USE -> SkyClient.useBlockInView(minecraft);
 			default -> {
 			}
 		}
