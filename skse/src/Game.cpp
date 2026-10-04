@@ -441,6 +441,22 @@ namespace skycraft
 			a_st.pitch = pitch;
 		}
 
+		// SkyCraft+ : hand ownership. Which hands hold something equipped in Skyrim: a weapon, spell
+		// or torch in the hand, a shield on the left arm; two-handed weapons, bows and crossbows take
+		// both hands. Bare fists are nothing.
+		void SkyrimHands(RE::PlayerCharacter* a_player, bool& a_right, bool& a_left)
+		{
+			constexpr RE::FormID kUnarmed = 0x1F4;
+			auto*                right = a_player->GetEquippedObject(false);
+			auto*                left = a_player->GetEquippedObject(true);
+			a_right = right && right->GetFormID() != kUnarmed;
+			a_left = (left && left->GetFormID() != kUnarmed) || a_player->GetWornArmor(RE::BGSBipedObjectForm::BipedObjectSlot::kShield);
+			if (auto* weapon = right ? right->As<RE::TESObjectWEAP>() : nullptr;
+				weapon && (weapon->IsTwoHandedSword() || weapon->IsTwoHandedAxe() || weapon->IsBow() || weapon->IsCrossbow())) {
+				a_left = true;
+			}
+		}
+
 		// SkyCraft+ : mode switch. Sets the Skyrim player's health to this share of its maximum.
 		void SetHealthFraction(RE::PlayerCharacter* a_player, float a_fraction)
 		{
@@ -698,6 +714,15 @@ namespace skycraft
 				logger::info("puppet {}", puppet ? "on (Minecraft drives the player)" : "off");
 			}
 			st.puppeting = puppet;
+			bool rightHand = false, leftHand = false;
+			if (puppet && st.skyrimHandsOption) {
+				SkyrimHands(a_player, rightHand, leftHand);
+			}
+			if (rightHand != st.rightHandSkyrim || leftHand != st.leftHandSkyrim) {
+				logger::info("hands: right {}, left {}", rightHand ? "Skyrim's" : "Minecraft's", leftHand ? "Skyrim's" : "Minecraft's");
+			}
+			st.rightHandSkyrim = rightHand;
+			st.leftHandSkyrim = leftHand;
 			const bool skyrimDrives = takeover && haveMc && st.mcInWorld && !loading && !a_player->IsDead();
 			st.skyrimDrives = skyrimDrives;
 			if (skyrimDrives && !menu) {
@@ -933,11 +958,14 @@ namespace skycraft
 				// anyone is fighting them, and go away after. Its first-person arms and weapons stay
 				// hidden meanwhile (Minecraft shows the hands).
 				const auto weapons = a_player->AsActorState()->GetWeaponState();
-				const bool fighting = Combat::PlayerEngaged();
+				// SkyCraft+ : hand ownership. A hand Skyrim holds keeps its weapon or spell out and
+				// Skyrim's first-person arms showing.
+				const bool skyrimHand = rightHand || leftHand;
+				const bool fighting = Combat::PlayerEngaged() || skyrimHand;
 				// Always hidden while Minecraft drives (Minecraft draws the hands). Showing them again
 				// after a fight un-hid arms Skyrim had hidden itself meanwhile (putting weapons away),
 				// and they then floated in view until the model was rebuilt.
-				HideFirstPersonMeshes(a_player, true);
+				HideFirstPersonMeshes(a_player, !skyrimHand);
 
 				const float bobRollDeg = std::sin(phase) * bob * 3.0f;
 				idealRotNoRoll = BuildCameraRotation(camHeading, camPitchDeg * kDegToRad, 0.0f);
@@ -1038,7 +1066,8 @@ namespace skycraft
 			// Tell Minecraft where Skyrim's player is and where they're looking.
 			proto::SkyState sky{};
 			sky.flags = (cell ? proto::kSkyInGame : 0u) | (menu ? proto::kSkyMenuOpen : 0u) | (loading ? proto::kSkyLoading : 0u) |
-			            (skyrimDrives ? proto::kSkyDrivesPlayer : 0u);
+			            (skyrimDrives ? proto::kSkyDrivesPlayer : 0u) | (rightHand ? proto::kSkyRightHandSkyrim : 0u) |
+			            (leftHand ? proto::kSkyLeftHandSkyrim : 0u);
 			if (const float maxHealth = a_player->GetActorValueMax(RE::ActorValue::kHealth); maxHealth > 0.0f) {
 				sky.healthFrac = std::clamp(a_player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kHealth) / maxHealth, 0.0f, 1.0f);
 			}

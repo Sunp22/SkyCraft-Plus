@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 15;
+	inline constexpr std::uint32_t kVersion = 16;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -62,6 +62,11 @@ namespace skycraft::proto
 		// Skyrim drives its own player (Skyrim mode, furniture, riding, scenes): MC's player follows
 		// pos without input and can't be hurt; on the falling edge MC takes over healthFrac.
 		kSkyDrivesPlayer = 1u << 3,
+		// While Minecraft drives: Skyrim has something equipped in this hand (bSkyrimHands), so the
+		// hand is Skyrim's: Minecraft doesn't draw it or use its item, and its mouse button goes to
+		// Skyrim (left button: right hand, right button: left hand).
+		kSkyRightHandSkyrim = 1u << 4,
+		kSkyLeftHandSkyrim = 1u << 5,
 	};
 
 	// Skyrim's water (lakes, rivers, the sea) around the player, for Minecraft to treat as its own

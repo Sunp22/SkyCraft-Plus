@@ -122,6 +122,9 @@ namespace skycraft
 				logger::info("keys that open Skyrim menus: Esc, ~, J, M, F9, {}", shown);
 			}
 
+			State().skyrimHandsOption = ini.GetBoolValue("Controls", "bSkyrimHands", false);
+			logger::info("Skyrim hands (equip Skyrim gear in a Minecraft hand): {}", State().skyrimHandsOption ? "on" : "off");
+
 			const std::string toggle = ini.GetValue("Controls", "sModeToggleKey", "");
 			if (!toggle.empty()) {
 				const auto code = DikFromName(toggle);
@@ -310,6 +313,10 @@ namespace skycraft
 									}
 									break;
 								}
+								// A hand Skyrim holds: its button is Skyrim's (PlayerControlsHook lets it through).
+								if (!st.mcScreenOpen && ((code == 0 && st.rightHandSkyrim) || (code == 1 && st.leftHandSkyrim))) {
+									break;
+								}
 								static constexpr std::uint16_t kButtons[8] = { 1, 3, 2, 4, 5, 0, 0, 0 };
 								const std::uint16_t sdlButton = code < 8 ? kButtons[code] : std::uint16_t(0);
 								if (sdlButton) {
@@ -389,7 +396,39 @@ namespace skycraft
 				if ((!st.minecraftOwnsPlayer && !mcScreenInSkyrimMode) || Game::SkyrimMenuOpen()) {
 					return func(a_this, a_event, a_source);
 				}
-				return RE::BSEventNotifyControl::kContinue;
+				// SkyCraft+ : hand ownership. A hand Skyrim holds still attacks, blocks and casts in
+				// Skyrim: its Attack/Block event gets through (Minecraft never sees that button).
+				auto* events = RE::UserEvents::GetSingleton();
+				if (!a_event || !*a_event || !events || st.mcScreenOpen || !(st.rightHandSkyrim || st.leftHandSkyrim)) {
+					return RE::BSEventNotifyControl::kContinue;
+				}
+				std::vector<RE::InputEvent*> keep;
+				std::vector<RE::InputEvent*> all;
+				for (auto* e = *a_event; e; e = e->next) {
+					all.push_back(e);
+					if (e->GetEventType() == RE::INPUT_EVENT_TYPE::kButton) {
+						const auto& name = e->QUserEvent();
+						if ((st.rightHandSkyrim && name == events->rightAttack) || (st.leftHandSkyrim && name == events->leftAttack)) {
+							keep.push_back(e);
+						}
+					}
+				}
+				if (keep.empty()) {
+					return RE::BSEventNotifyControl::kContinue;
+				}
+				std::vector<RE::InputEvent*> savedNext;
+				for (auto* e : all) {
+					savedNext.push_back(e->next);
+				}
+				for (std::size_t i = 0; i < keep.size(); ++i) {
+					keep[i]->next = i + 1 < keep.size() ? keep[i + 1] : nullptr;
+				}
+				RE::InputEvent* head = keep.front();
+				const auto      result = func(a_this, &head, a_source);
+				for (std::size_t i = 0; i < all.size(); ++i) {
+					all[i]->next = savedNext[i];
+				}
+				return result;
 			}
 			static inline REL::Relocation<decltype(thunk)> func;
 		};

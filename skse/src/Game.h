@@ -24,6 +24,12 @@ namespace skycraft
 		// Skyrim drives its own player (Skyrim mode, furniture, riding, scenes) while Minecraft is in
 		// its world and follows: Minecraft's blocks are still drawn and still block NPCs.
 		std::atomic<bool> skyrimDrives{ false };
+		// SkyCraft+ : hand ownership (bSkyrimHands in SkyCraft.ini). While Minecraft drives, a hand
+		// with something equipped in Skyrim (weapon, spell, shield, torch) is Skyrim's: Skyrim draws
+		// it and gets its mouse button (left: right hand, right: left hand).
+		std::atomic<bool> skyrimHandsOption{ false };
+		std::atomic<bool> rightHandSkyrim{ false };
+		std::atomic<bool> leftHandSkyrim{ false };
 
 		// Look direction in MC degrees; integrated from raw mouse input (main thread).
 		float yaw{ 0.0f };

@@ -220,6 +220,15 @@ public final class SkyLink {
 		public boolean loading() {
 			return (this.flags & SKY_LOADING) != 0;
 		}
+
+		/** SkyCraft+ : hand ownership. Skyrim has something equipped in that hand: the hand is Skyrim's. */
+		public boolean rightHandSkyrim() {
+			return (this.flags & SKY_RIGHT_HAND_SKYRIM) != 0;
+		}
+
+		public boolean leftHandSkyrim() {
+			return (this.flags & SKY_LEFT_HAND_SKYRIM) != 0;
+		}
 	}
 
 	/** Seqlock read of SkyState into {@code out}. Returns false if the link is down. */
