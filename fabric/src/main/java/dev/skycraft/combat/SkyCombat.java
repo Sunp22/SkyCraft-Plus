@@ -55,6 +55,12 @@ public final class SkyCombat {
 	/** Skyrim damage is divided by this for Minecraft (a 15-damage bandit swing = 3 = 1.5 hearts). */
 	public static final float SKYRIM_TO_MC_DAMAGE = 5.0F;
 
+	/**
+	 * SkyCraft+ : mode switch. Skyrim drives the host's player (Skyrim mode, furniture, riding,
+	 * scenes): its Minecraft player only follows along and can't be hurt meanwhile.
+	 */
+	public static volatile boolean skyrimDrives;
+
 	private static final Map<Integer, SkyrimActorEntity> PROXIES = new HashMap<>();
 	private static final List<SkyLink.Actor> ACTORS = new ArrayList<>();
 

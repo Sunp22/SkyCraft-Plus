@@ -142,7 +142,8 @@ final class AvatarExporter implements SubmitNodeCollector {
 		this.atlas = atlas;
 		var player = minecraft.player;
 		Camera camera = minecraft.gameRenderer.mainCamera();
-		if (player == null || !camera.isDetached()) {
+		// While Skyrim drives its own player, its body is the one on screen.
+		if (player == null || !camera.isDetached() || dev.skycraft.client.SkyClient.sky().skyrimDrives()) {
 			this.sendEmpty(Proto.REN_AVATAR, false);
 			return;
 		}

@@ -19,6 +19,11 @@ namespace skycraft
 		std::atomic<bool> skyrimMenuOpen{ false };
 		// MC reports its player is in a world (overlay should be drawn).
 		std::atomic<bool> mcInWorld{ false };
+		// SkyCraft+ : mode switch. The player chose Skyrim mode (sModeToggleKey in SkyCraft.ini).
+		std::atomic<bool> skyrimMode{ false };
+		// Skyrim drives its own player (Skyrim mode, furniture, riding, scenes) while Minecraft is in
+		// its world and follows: Minecraft's blocks are still drawn and still block NPCs.
+		std::atomic<bool> skyrimDrives{ false };
 
 		// Look direction in MC degrees; integrated from raw mouse input (main thread).
 		float yaw{ 0.0f };
@@ -52,6 +57,9 @@ namespace skycraft
 		// A Skyrim menu that takes the mouse or pauses the game is open (checked live: while it
 		// pauses the game, the per-frame update that normally tracks it doesn't run).
 		bool SkyrimMenuOpen();
+		// SkyCraft+ : mode switch. Switches between Minecraft mode and Skyrim mode (needs Minecraft
+		// in its world).
+		void ToggleSkyrimMode();
 		// Called from Present: logs rendered camera vs Minecraft eye when a check is due.
 		void CheckRenderedCamera();
 		// Third-person diagnostics, from where the blocks are drawn: the camera Skyrim renders this

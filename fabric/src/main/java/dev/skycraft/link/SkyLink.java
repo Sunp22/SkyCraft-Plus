@@ -202,6 +202,7 @@ public final class SkyLink {
 		public int teleportSeq;
 		public int viewportW, viewportH;
 		public float gameHour;
+		public float healthFrac;
 
 		public boolean inGame() {
 			return (this.flags & SKY_IN_GAME) != 0;
@@ -209,6 +210,11 @@ public final class SkyLink {
 
 		public boolean menuOpen() {
 			return (this.flags & SKY_MENU_OPEN) != 0;
+		}
+
+		/** Skyrim drives its own player (Skyrim mode, furniture, riding, scenes): Minecraft follows. */
+		public boolean skyrimDrives() {
+			return (this.flags & SKY_DRIVES_PLAYER) != 0;
 		}
 
 		public boolean loading() {
@@ -283,6 +289,7 @@ public final class SkyLink {
 			out.viewportW = s.get(JAVA_INT, b + SS_VIEWPORT_W);
 			out.viewportH = s.get(JAVA_INT, b + SS_VIEWPORT_H);
 			out.gameHour = s.get(JAVA_FLOAT, b + SS_GAME_HOUR);
+			out.healthFrac = s.get(JAVA_FLOAT, b + SS_HEALTH_FRAC);
 			VarHandle.loadLoadFence();
 			int seq2 = (int) INT.getAcquire(s, b + SS_SEQ);
 			if (seq1 == seq2) {
@@ -323,6 +330,7 @@ public final class SkyLink {
 		public float tickMs = 50.0F;
 		public int cameraMode;
 		public float cameraDistance;
+		public float healthFrac;
 	}
 
 	public static void writeMcState(McState st) {
@@ -367,6 +375,7 @@ public final class SkyLink {
 		s.set(JAVA_FLOAT, b + MS_TICK_MS, st.tickMs);
 		s.set(JAVA_INT, b + MS_CAMERA_MODE, st.cameraMode);
 		s.set(JAVA_FLOAT, b + MS_CAMERA_DISTANCE, st.cameraDistance);
+		s.set(JAVA_FLOAT, b + MS_HEALTH_FRAC, st.healthFrac);
 		INT.setRelease(s, b + MS_SEQ, seq + 2);
 	}
 

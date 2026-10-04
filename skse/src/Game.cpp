@@ -383,6 +383,9 @@ namespace skycraft
 		// up again from wherever Skyrim leaves them.
 		const char* SkyrimTakeover(RE::PlayerCharacter* a_player)
 		{
+			if (State().skyrimMode) {
+				return "Skyrim mode";
+			}
 			if (a_player->AsActorState()->GetSitSleepState() != RE::SIT_SLEEP_STATE::kNormal) {
 				return "furniture";
 			}
@@ -410,6 +413,21 @@ namespace skycraft
 				}
 			}
 			return nullptr;
+		}
+
+		// SkyCraft+ : mode switch. Sets the Skyrim player's health to this share of its maximum.
+		void SetHealthFraction(RE::PlayerCharacter* a_player, float a_fraction)
+		{
+			auto*       av = a_player->AsActorValueOwner();
+			const float max = a_player->GetActorValueMax(RE::ActorValue::kHealth);
+			const float cur = av->GetActorValue(RE::ActorValue::kHealth);
+			const float target = std::max(1.0f, std::clamp(a_fraction, 0.0f, 1.0f) * max);
+			if (target < cur) {
+				av->DamageActorValue(RE::ActorValue::kHealth, cur - target);
+			} else if (target > cur) {
+				av->RestoreActorValue(RE::ActorValue::kHealth, target - cur);
+			}
+			logger::info("health: Skyrim takes Minecraft's {:.0f}% ({:.0f} -> {:.0f})", a_fraction * 100.0f, cur, target);
 		}
 
 		// Tells the player, in Skyrim's corner notifications, what Minecraft is up to while it isn't
@@ -615,6 +633,11 @@ namespace skycraft
 			if ((takeoverNow != nullptr) != (takeover != nullptr)) {
 				if (takeoverNow) {
 					logger::info("Skyrim takes the player ({})", takeoverNow);
+					// One health pool: Skyrim carries on from Minecraft's share (Minecraft takes
+					// Skyrim's back when it drives again).
+					if (st.puppeting && haveMc && mc.healthFrac > 0.0f) {
+						SetHealthFraction(a_player, mc.healthFrac);
+					}
 				} else {
 					logger::info("Skyrim hands the player back");
 					teleportPending = true;  // Minecraft picks up wherever Skyrim left the player
@@ -642,6 +665,8 @@ namespace skycraft
 				logger::info("puppet {}", puppet ? "on (Minecraft drives the player)" : "off");
 			}
 			st.puppeting = puppet;
+			const bool skyrimDrives = takeover && haveMc && st.mcInWorld && !loading && !a_player->IsDead();
+			st.skyrimDrives = skyrimDrives;
 			if (puppet) {
 				EnsureControlsEnabled();
 				Game::NoteFrameStep('P');
@@ -655,7 +680,7 @@ namespace skycraft
 			Input::SetActivatePromptKey(puppet);
 			Combat::PerFrame(a_player, puppet, a_delta);
 			WorldRender::UpdateRagdoll(a_player, haveMc && st.mcInWorld);
-			if (puppet) {
+			if (puppet || skyrimDrives) {
 				NpcBlocks::PushActorsOut(a_player, a_delta);
 			}
 
@@ -976,7 +1001,11 @@ namespace skycraft
 
 			// Tell Minecraft where Skyrim's player is and where they're looking.
 			proto::SkyState sky{};
-			sky.flags = (cell ? proto::kSkyInGame : 0u) | (menu ? proto::kSkyMenuOpen : 0u) | (loading ? proto::kSkyLoading : 0u);
+			sky.flags = (cell ? proto::kSkyInGame : 0u) | (menu ? proto::kSkyMenuOpen : 0u) | (loading ? proto::kSkyLoading : 0u) |
+			            (skyrimDrives ? proto::kSkyDrivesPlayer : 0u);
+			if (const float maxHealth = a_player->GetActorValueMax(RE::ActorValue::kHealth); maxHealth > 0.0f) {
+				sky.healthFrac = std::clamp(a_player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kHealth) / maxHealth, 0.0f, 1.0f);
+			}
 			const auto skyMc = SkyToMc(current);
 			sky.worldId = worldId;
 			sky.collisionEpoch = epoch;
@@ -1023,7 +1052,7 @@ namespace skycraft
 			}
 			// Not while the world is still settling after a load (its cells are still being attached).
 			static float digSettled = 0.0f;
-			digSettled = puppet && !loading && cell ? digSettled + a_delta : 0.0f;
+			digSettled = (puppet || skyrimDrives) && !loading && cell ? digSettled + a_delta : 0.0f;
 			{
 				Perf::Scope timer(Perf::kDigMeshes);
 				Dig::UpdateMeshes(digSettled > 3.0f ? a_player : nullptr, a_delta, !dugChanged.empty());
@@ -1289,6 +1318,21 @@ namespace skycraft
 		{
 			auto* ui = RE::UI::GetSingleton();
 			return ui && AnyBlockingMenuOpen(ui);
+		}
+
+		// SkyCraft+ : mode switch. Skyrim mode is one more reason Skyrim takes the player
+		// (SkyrimTakeover): its controls, camera, HUD, weapons and magic, while Minecraft's player
+		// follows along. Back in Minecraft mode Minecraft picks the player up where Skyrim's is.
+		void ToggleSkyrimMode()
+		{
+			auto& st = State();
+			if (!st.skyrimMode && !st.mcInWorld) {
+				return;  // nothing to switch from: Skyrim already has the player
+			}
+			st.skyrimMode = !st.skyrimMode;
+			Input::ReleaseAll();
+			logger::info("mode switch: {} mode", st.skyrimMode ? "Skyrim" : "Minecraft");
+			RE::SendHUDMessage::ShowHUDMessage(st.skyrimMode ? "SkyCraft: Skyrim mode" : "SkyCraft: Minecraft mode");
 		}
 
 		void OnGameLoaded()

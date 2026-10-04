@@ -12,6 +12,8 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import net.minecraft.server.level.ServerLevel;
 
 @Mixin(ServerPlayer.class)
 public abstract class ServerPlayerMixin {
@@ -20,6 +22,14 @@ public abstract class ServerPlayerMixin {
 	private void skycraft$critSkyrim(Entity entity, CallbackInfo ci) {
 		if (entity instanceof SkyrimActorEntity proxy) {
 			proxy.markCritical();
+		}
+	}
+
+	/** While Skyrim drives the host's player, the Minecraft one following it can't be hurt. */
+	@Inject(method = "isInvulnerableTo", at = @At("HEAD"), cancellable = true)
+	private void skycraft$followingSkyrim(ServerLevel level, DamageSource source, CallbackInfoReturnable<Boolean> cir) {
+		if (SkyCombat.skyrimDrives && dev.skycraft.net.SkyNet.isHost((ServerPlayer) (Object) this)) {
+			cir.setReturnValue(true);
 		}
 	}
 

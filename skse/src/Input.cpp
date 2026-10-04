@@ -48,6 +48,8 @@ namespace skycraft
 		// SkyCraft+ : extra keys from sSkyrimMenuKeys in SkyCraft.ini (e.g. Tab, I, P) that reach
 		// Skyrim's own menus (Tab menu, inventory, magic) instead of Minecraft.
 		std::array<bool, 256> extraMenuKeys{};
+		// SkyCraft+ : mode switch. sModeToggleKey: Minecraft mode <-> Skyrim mode (0: none).
+		std::uint32_t modeToggleKey = 0;
 
 		// "Tab", "I", "F1", "0x0F" -> DirectInput scan code, or 0 if unknown.
 		std::uint32_t DikFromName(std::string a_name)
@@ -89,7 +91,7 @@ namespace skycraft
 			return 0;
 		}
 
-		void LoadMenuKeys()
+		void LoadControls()
 		{
 			CSimpleIniA ini;
 			ini.SetUnicode();
@@ -118,6 +120,19 @@ namespace skycraft
 			}
 			if (!shown.empty()) {
 				logger::info("keys that open Skyrim menus: Esc, ~, J, M, F9, {}", shown);
+			}
+
+			const std::string toggle = ini.GetValue("Controls", "sModeToggleKey", "");
+			if (!toggle.empty()) {
+				const auto code = DikFromName(toggle);
+				if (!code) {
+					logger::warn("sModeToggleKey: unknown key '{}'; no mode switch", toggle);
+				} else if (code == kDikG || code == kDikH || code == kDikO || code == kDikEscape || code == kDikConsole || extraMenuKeys[code]) {
+					logger::warn("sModeToggleKey: '{}' already has a job; no mode switch", toggle);
+				} else {
+					modeToggleKey = code;
+					logger::info("mode switch key: {}", toggle);
+				}
 			}
 		}
 
@@ -187,6 +202,15 @@ namespace skycraft
 				const bool route = st.puppeting && !menuOpen;
 
 				for (auto* e = *a_event; e; e = e->next) {
+					// The mode switch key works in both modes (Skyrim mode doesn't route), never
+					// reaches Minecraft, and waits while a menu or Minecraft screen is open.
+					if (modeToggleKey && e->GetEventType() == RE::INPUT_EVENT_TYPE::kButton && e->GetDevice() == RE::INPUT_DEVICE::kKeyboard &&
+						e->AsButtonEvent()->GetIDCode() == modeToggleKey) {
+						if (e->AsButtonEvent()->IsDown() && !menuOpen && !st.mcScreenOpen) {
+							Game::ToggleSkyrimMode();
+						}
+						continue;
+					}
 					switch (e->GetEventType()) {
 					case RE::INPUT_EVENT_TYPE::kMouseMove:
 						{
@@ -332,7 +356,7 @@ namespace skycraft
 	{
 		void Install()
 		{
-			LoadMenuKeys();
+			LoadControls();
 			if (auto* devices = RE::BSInputDeviceManager::GetSingleton()) {
 				devices->AddEventSink(InputSink::Get());
 			}

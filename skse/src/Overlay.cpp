@@ -238,7 +238,7 @@ float4 PSMain(VSOut i) : SV_Target {
 				return;
 			}
 			UploadLatestFrame();
-			if (!haveFrame || st.skyrimMenuOpen) {
+			if (!haveFrame || st.skyrimMenuOpen || st.skyrimMode) {
 				return;
 			}
 

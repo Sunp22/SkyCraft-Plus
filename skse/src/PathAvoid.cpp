@@ -124,7 +124,7 @@ namespace skycraft
 						a_avoid->nodes.size(), static_cast<int>(n.avoidNodeType.underlying()), n.radius, n.cost);
 				}
 				AvoidArray* ours = nullptr;
-				if (a_actor && !a_actor->IsPlayerRef() && State().puppeting) {
+				if (a_actor && !a_actor->IsPlayerRef() && (State().puppeting || State().skyrimDrives)) {
 					// The goal argument is a BSPathingLocation.
 					RE::NiPoint3 goal;
 					if (ReadPosition(a_goal, goal)) {

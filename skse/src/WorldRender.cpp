@@ -1991,7 +1991,7 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 		void CaptureSunShadows(RE::BSShadowLight* a_sun)
 		{
 			auto* renderer = RE::BSGraphics::Renderer::GetSingleton();
-			if (!device || !renderer || !a_sun || !State().puppeting) {
+			if (!device || !renderer || !a_sun || !(State().puppeting || State().skyrimDrives)) {
 				return;
 			}
 			auto& descs = a_sun->GetRuntimeData().shadowmapDescriptors;
@@ -2901,7 +2901,7 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 				Game::NoteFrameStep('D');
 				Game::NoteRenderedCamera(camera->world.translate, camera->world.rotate);
 			}
-			if (!device || !atlasSrv || !inFrameEnabled || !camera || !renderer || !st.puppeting || st.skyrimMenuOpen || !depthKnown || !depthUsable) {
+			if (!device || !atlasSrv || !inFrameEnabled || !camera || !renderer || !(st.puppeting || st.skyrimDrives) || st.skyrimMenuOpen || !depthKnown || !depthUsable) {
 				return;
 			}
 			Link::Get().ReadWorldEntities(entities);
@@ -3217,7 +3217,7 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 
 			auto& st = State();
 			auto* camera = RE::Main::WorldRootCamera();
-			if (!camera || !st.puppeting || st.skyrimMenuOpen || !atlasSrv) {
+			if (!camera || !(st.puppeting || st.skyrimDrives) || st.skyrimMenuOpen || !atlasSrv) {
 				return;
 			}
 

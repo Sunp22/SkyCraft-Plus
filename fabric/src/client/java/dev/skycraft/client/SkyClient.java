@@ -2,6 +2,7 @@ package dev.skycraft.client;
 
 import dev.skycraft.SkyCraft;
 import dev.skycraft.client.render.WorldExporter;
+import dev.skycraft.combat.SkyCombat;
 import dev.skycraft.link.Proto;
 import dev.skycraft.link.SkyLink;
 import dev.skycraft.world.SkyCollision;
@@ -46,6 +47,8 @@ public final class SkyClient {
 	private static int lastPacedSeq;
 	private static boolean skyrimStalled;
 	private static int exporterErrors;
+	// SkyCraft+ : mode switch. Skyrim drives its own player and ours follows (SkyState flag).
+	private static boolean skyrimDriving;
 
 	private SkyClient() {
 	}
@@ -94,6 +97,8 @@ public final class SkyClient {
 				applyLinkedOptions();
 			} else {
 				InputBridge.releaseAll();
+				skyrimDriving = false;
+				SkyCombat.skyrimDrives = false;
 				LocalPlayer player = Minecraft.getInstance().player;
 				unlinkedHold = player != null ? player.position() : null;
 			}
@@ -133,6 +138,17 @@ public final class SkyClient {
 			teleportAck = sky.teleportSeq;
 			teleportPending = false;
 			holdPos = new Vec3(sky.x, sky.y, sky.z);
+		}
+
+		boolean drives = sky.skyrimDrives() && sky.inGame() && !sky.loading();
+		if (drives != skyrimDriving) {
+			skyrimDriving = drives;
+			SkyCombat.skyrimDrives = drives;
+			SkyCraft.LOG.info("SkyCraft: {}", drives ? "Skyrim drives the player; following it" : "Minecraft drives the player again");
+			InputBridge.releaseAll();
+			if (!drives) {
+				takeSkyrimHealth(minecraft, sky.healthFrac);
+			}
 		}
 
 		// Look direction is driven by Skyrim (zero-latency camera); MC uses it for everything else.
@@ -188,7 +204,41 @@ public final class SkyClient {
 		SkyDigClient.tick(minecraft);
 		freezeWhileUnlinked(minecraft);
 		holdUntilReady(minecraft);
+		followSkyrim(minecraft);
 		publishTick(minecraft);
+	}
+
+	/**
+	 * Skyrim drives its own player (Skyrim mode, a chair, a horse, a scene): ours stays at its feet,
+	 * so blocks, items and mobs stay loaded around it and handing back needs no jump.
+	 */
+	private static void followSkyrim(Minecraft minecraft) {
+		LocalPlayer player = minecraft.player;
+		if (!linked || !skyrimDriving || player == null || holdPos != null) {
+			return;
+		}
+		player.setDeltaMovement(Vec3.ZERO);
+		player.setPos(sky.x, sky.y, sky.z);
+		player.resetFallDistance();
+	}
+
+	/** One health pool: back in Minecraft's hands, the player keeps Skyrim's share of their health. */
+	private static void takeSkyrimHealth(Minecraft minecraft, float fraction) {
+		var server = minecraft.getSingleplayerServer();
+		LocalPlayer player = minecraft.player;
+		if (server == null || player == null || !(fraction > 0.0F)) {
+			return;
+		}
+		var uuid = player.getUUID();
+		float share = Math.min(fraction, 1.0F);
+		server.execute(() -> {
+			ServerPlayer sp = server.getPlayerList().getPlayer(uuid);
+			if (sp != null && !sp.isDeadOrDying()) {
+				float before = sp.getHealth();
+				sp.setHealth(Math.max(1.0F, share * sp.getMaxHealth()));
+				SkyCraft.LOG.info("SkyCraft: health {} -> {} (Skyrim's {}%)", before, sp.getHealth(), Math.round(share * 100.0F));
+			}
+		});
 	}
 
 	/**
@@ -376,6 +426,7 @@ public final class SkyClient {
 			boolean bob = minecraft.options.bobView().get() && entityState.isPlayer;
 			mc.bobPhase = bob ? entityState.backwardsInterpolatedWalkDistance : 0.0F;
 			mc.bobAmount = bob ? entityState.bob : 0.0F;
+			mc.healthFrac = player.getMaxHealth() > 0.0F ? Math.clamp(player.getHealth() / player.getMaxHealth(), 0.0F, 1.0F) : 0.0F;
 		}
 		if (minecraft.gui.screen() != null) {
 			flags |= Proto.MC_SCREEN_OPEN;
