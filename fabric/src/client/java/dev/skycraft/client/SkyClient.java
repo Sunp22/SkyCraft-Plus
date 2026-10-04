@@ -365,9 +365,10 @@ public final class SkyClient {
 			server.execute(() -> {
 				ServerPlayer sp = server.getPlayerList().getPlayer(uuid);
 				if (sp != null) {
-					sp.teleportTo(x, y, z);
+					// Turn first: teleportTo sends the player its rotation along with the position.
 					sp.setYRot(yaw);
 					sp.setXRot(pitch);
+					sp.teleportTo(x, y, z);
 					sp.resetFallDistance();
 				}
 			});

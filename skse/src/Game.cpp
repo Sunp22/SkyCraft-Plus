@@ -415,6 +415,32 @@ namespace skycraft
 			return nullptr;
 		}
 
+		// SkyCraft+ : mode switch. Skyrim just handed the player back: take the look from its camera.
+		bool skyrimLookPending = false;
+
+		// Look direction (MC degrees) from the camera Skyrim rendered last: its world rotation's
+		// columns are forward, up, right (Skyrim heading 0 = +Y north, clockwise).
+		void SeedLookFromCamera(Runtime& a_st, bool a_log)
+		{
+			auto* camera = RE::Main::WorldRootCamera();
+			if (!camera) {
+				return;
+			}
+			const auto& r = camera->world.rotate;
+			const float fx = r.entry[0][0], fy = r.entry[1][0], fz = r.entry[2][0];
+			const float len = std::sqrt(fx * fx + fy * fy + fz * fz);
+			if (len < 0.5f) {
+				return;
+			}
+			const float yaw = HeadingToMcYaw(std::atan2(fx, fy));
+			const float pitch = std::clamp(-std::asin(std::clamp(fz / len, -1.0f, 1.0f)) * kRadToDeg, -90.0f, 90.0f);
+			if (a_log) {
+				logger::info("look: body faces MC yaw {:.0f}, Skyrim's camera {:.0f} / pitch {:.0f}; using the camera", a_st.yaw, yaw, pitch);
+			}
+			a_st.yaw = std::fmod(yaw + 360.0f, 360.0f);
+			a_st.pitch = pitch;
+		}
+
 		// SkyCraft+ : mode switch. Sets the Skyrim player's health to this share of its maximum.
 		void SetHealthFraction(RE::PlayerCharacter* a_player, float a_fraction)
 		{
@@ -608,6 +634,12 @@ namespace skycraft
 				st.yaw = HeadingToMcYaw(a_player->data.angle.z);
 				st.pitch = a_player->data.angle.x * kRadToDeg;
 				st.lookInitialized = true;
+				// SkyCraft+ : mode switch. Back from Skyrim's own controls, keep looking where Skyrim's
+				// camera looked (its third-person camera turns without turning the body).
+				if (skyrimLookPending) {
+					skyrimLookPending = false;
+					SeedLookFromCamera(st, true);
+				}
 			}
 
 			// Mouse look (MC's formula), integrated here so the Skyrim camera has zero added latency.
@@ -641,6 +673,7 @@ namespace skycraft
 				} else {
 					logger::info("Skyrim hands the player back");
 					teleportPending = true;  // Minecraft picks up wherever Skyrim left the player
+					skyrimLookPending = true;
 				}
 			}
 			takeover = takeoverNow;
@@ -667,6 +700,9 @@ namespace skycraft
 			st.puppeting = puppet;
 			const bool skyrimDrives = takeover && haveMc && st.mcInWorld && !loading && !a_player->IsDead();
 			st.skyrimDrives = skyrimDrives;
+			if (skyrimDrives && !menu) {
+				SeedLookFromCamera(st, false);  // Minecraft's player looks where Skyrim's camera does
+			}
 			if (puppet) {
 				EnsureControlsEnabled();
 				Game::NoteFrameStep('P');
