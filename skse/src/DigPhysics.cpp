@@ -450,6 +450,15 @@ namespace skycraft::Dig
 					a_this->fallStartHeight = player->GetPositionZ();
 				}
 				a_this->fallTime = 0.0f;
+				// And the state itself: Havok left it "in the air" on a block whatever the surface
+				// said (its own support check runs on the world's contacts).
+				if (a_this->context.currentState == RE::hkpCharacterStateTypes::kInAir) {
+					a_this->context.currentState = RE::hkpCharacterStateTypes::kOnGround;
+					static std::atomic<int> forced{ 0 };
+					if (forced.fetch_add(1) < 5) {
+						logger::info("dig: the player stands on a Minecraft block: Havok's state set from in-air to on-ground");
+					}
+				}
 			}
 			static inline REL::Relocation<decltype(thunk)> func;
 		};
@@ -468,7 +477,13 @@ namespace skycraft::Dig
 			_mm_store_ps(p, a_input.position.quad);
 			_mm_store_ps(v, a_input.velocity.quad);
 			const float dx = p[0] - blockGroundX.load(), dy = p[1] - blockGroundY.load(), dz = p[2] - blockGroundZ.load();
-			return dx * dx + dy * dy + dz * dz < 0.15f * 0.15f && v[2] <= kRisingSpeed;
+			const bool  match = dx * dx + dy * dy + dz * dz < 0.15f * 0.15f;
+			static std::atomic<int> logged{ 0 };
+			if (logged.fetch_add(1) < 12) {
+				logger::info("dig: Havok state update near a block: input at {:.2f} {:.2f} {:.2f}, player's proxy at {:.2f} {:.2f} {:.2f} ({}), rising {:.2f}, userData {:X}",
+					p[0], p[1], p[2], blockGroundX.load(), blockGroundY.load(), blockGroundZ.load(), match ? "same" : "different", v[2], a_input.userData);
+			}
+			return match && v[2] <= kRisingSpeed;
 		}
 
 		void SupportOnBlock(const RE::hkpCharacterInput& a_input, const char* a_state)
@@ -492,6 +507,10 @@ namespace skycraft::Dig
 		{
 			static void thunk(RE::hkpCharacterState* a_this, RE::hkpCharacterContext& a_context, const RE::hkpCharacterInput& a_input, RE::hkpCharacterOutput& a_output)
 			{
+				static std::atomic<bool> called{ false };
+				if (!called.exchange(true)) {
+					logger::info("dig: Havok's in-air state update runs through our hook");
+				}
 				if (PlayerOnBlockGround(a_input)) {
 					SupportOnBlock(a_input, "in-air");
 				}
@@ -504,6 +523,10 @@ namespace skycraft::Dig
 		{
 			static void thunk(RE::hkpCharacterState* a_this, RE::hkpCharacterContext& a_context, const RE::hkpCharacterInput& a_input, RE::hkpCharacterOutput& a_output)
 			{
+				static std::atomic<bool> called{ false };
+				if (!called.exchange(true)) {
+					logger::info("dig: Havok's on-ground state update runs through our hook");
+				}
 				if (PlayerOnBlockGround(a_input)) {
 					SupportOnBlock(a_input, "on-ground");
 				}
