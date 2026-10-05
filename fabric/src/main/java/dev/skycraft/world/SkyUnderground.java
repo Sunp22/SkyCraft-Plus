@@ -100,6 +100,18 @@ public final class SkyUnderground {
 			&& (material == Proto.DIG_STONE || material == Proto.DIG_NONE || material == Proto.DIG_BEDROCK);
 	}
 
+	/** How far under Skyrim's land a point is surely ground, whatever Skyrim has (or hasn't) sent around it. */
+	private static final double DEEP = 8.0;
+
+	/**
+	 * Well under Skyrim's land: solid ground. Looking up for the nearest surface (SkyDig.Probe)
+	 * there finds the sunk-in undersides of rocks and took them for an overhang with open air
+	 * under it, leaving holes out of the world in the walls of deep mines. Any thread.
+	 */
+	public static boolean deep(double x, double y, double z) {
+		return enabled && SkyGround.under(x, y, z, DEEP);
+	}
+
 	/**
 	 * How the two line up, per block column: hidden y = mirror y + shift. Skyrim's land, smoothed
 	 * over ~24 blocks, sits at the hidden world's TOP, just under vanilla's own surface, so caves
@@ -300,13 +312,14 @@ public final class SkyUnderground {
 					continue;
 				}
 				budget--;
-				if (!SkyCollision.isKnown(n.getX(), n.getY(), n.getZ())) {
+				boolean deep = deep(n.getX() + 0.5, n.getY() + 0.5, n.getZ() + 0.5);
+				if (!deep && !SkyCollision.isKnown(n.getX(), n.getY(), n.getZ())) {
 					if (WAITING.size() < MAX_WAITING) {
 						WAITING.add(from.asLong());
 					}
 					continue;
 				}
-				int material = SkyDig.classify(n.getX(), n.getY(), n.getZ());
+				int material = deep ? Proto.DIG_STONE : SkyDig.classify(n.getX(), n.getY(), n.getZ());
 				if (material <= SkyDig.AIR) {
 					continue; // Skyrim's surface or a building is there: the cave stops at it
 				}

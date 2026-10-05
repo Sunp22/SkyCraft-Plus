@@ -40,6 +40,23 @@ public final class SkyGround {
 		HEIGHT.clear();
 	}
 
+	/**
+	 * A point at least {@code margin} blocks under Skyrim's land, by the lowest of the sixteen grid
+	 * heights around it (all of them known: a gap, like a hole in the land, says nothing).
+	 */
+	public static boolean under(double x, double y, double z, double margin) {
+		int cx = (int) Math.floor(x / GRID), cz = (int) Math.floor(z / GRID);
+		for (int dx = -1; dx <= 2; dx++) {
+			for (int dz = -1; dz <= 2; dz++) {
+				Float h = HEIGHT.get(key(cx + dx, cz + dz));
+				if (h == null || y > h - margin) {
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+
 	/** Skyrim's land around (x, z), averaged over SMOOTH_RADIUS blocks; NaN where none is known. */
 	public static double smoothed(int x, int z) {
 		int r = SMOOTH_RADIUS / GRID;

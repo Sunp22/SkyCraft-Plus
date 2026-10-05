@@ -412,6 +412,12 @@ public final class SkyDig {
 				this.depth = ground - py;
 				return landSurface.material == DIG_NONE ? DIG_STONE : landSurface.material;
 			}
+			// SkyCraft+ : the underground. Far under the land: inside it, whatever is buried above.
+			if (Double.isNaN(ground) && SkyUnderground.deep(px, py, pz)) {
+				this.surface = null;
+				this.depth = Double.POSITIVE_INFINITY;
+				return DIG_STONE;
+			}
 			// Above the land (or where there's none, as in interiors): inside an object if behind its
 			// nearest surface (surfaces face out of their solid side).
 			SkyTri nearest = null;

@@ -8,6 +8,7 @@ import dev.skycraft.world.SkyClip;
 import dev.skycraft.world.SkyCollision;
 import dev.skycraft.world.SkyDig;
 import dev.skycraft.world.SkyRay;
+import dev.skycraft.world.SkyUnderground;
 import it.unimi.dsi.fastutil.longs.Long2IntLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
@@ -180,11 +181,13 @@ public final class SkyDigClient {
 				if (queued.contains(n.asLong()) || SkyDig.isDug(level, world, n)) {
 					continue;
 				}
-				if (!SkyCollision.isKnown(n.getX(), n.getY(), n.getZ())) {
+				// SkyCraft+ : the underground. Far under the land it's ground, Skyrim's shape there or not.
+				boolean deep = SkyUnderground.deep(n.getX() + 0.5, n.getY() + 0.5, n.getZ() + 0.5);
+				if (!deep && !SkyCollision.isKnown(n.getX(), n.getY(), n.getZ())) {
 					waiting = true;
 					continue;
 				}
-				int material = SkyDig.classify(n.getX(), n.getY(), n.getZ());
+				int material = deep ? DIG_STONE : SkyDig.classify(n.getX(), n.getY(), n.getZ());
 				if (material <= SkyDig.AIR) {
 					continue;
 				}
