@@ -228,6 +228,13 @@ public final class SkyDig {
 
 	/** A cell wholly inside Skyrim's geometry: dug out of it, and the block it's made of put there. */
 	public static void digCell(ServerLevel level, int world, BlockPos pos, int material) {
+		// SkyCraft+ : the underground. Its hidden world is generated in the background: wait for it.
+		if (material > 0 && SkyUnderground.takes(level, material) && !SkyUnderground.ready(level, pos)) {
+			if (!isDug(level, world, pos)) {
+				SkyUnderground.waitFor(level, world, pos, material);
+			}
+			return;
+		}
 		if (!markDug(level, world, pos)) {
 			return;
 		}

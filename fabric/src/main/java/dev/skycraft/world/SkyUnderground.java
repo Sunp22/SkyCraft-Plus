@@ -27,6 +27,18 @@ import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
+import com.mojang.serialization.Codec;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import net.fabricmc.fabric.api.attachment.v1.AttachmentRegistry;
+import net.fabricmc.fabric.api.attachment.v1.AttachmentType;
+import net.minecraft.server.level.TicketType;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.chunk.LevelChunk;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Real Minecraft depth under Skyrim's open world. A hidden dimension, skycraft:underground, is a
@@ -88,9 +100,92 @@ public final class SkyUnderground {
 			&& (material == Proto.DIG_STONE || material == Proto.DIG_NONE || material == Proto.DIG_BEDROCK);
 	}
 
-	/** Mirror y minus this is the hidden world's y. */
-	private static int offset() {
-		return Math.round(SkyWorld.seaLevel()) - VANILLA_SEA;
+	/**
+	 * How the two line up, per block column: hidden y = mirror y + shift. Skyrim's land, smoothed
+	 * over ~24 blocks, sits at the hidden world's TOP, just under vanilla's own surface, so caves
+	 * start soon below Skyrim's ground and bedrock is ~125 blocks down wherever you are, like in
+	 * Minecraft. Steep land bends caves a little. Each column's shift is saved with the world the
+	 * first time it's used and never changes; where Skyrim's land around hasn't been seen, the
+	 * nearest saved column's (or the last one used) carries on.
+	 */
+	private static final int TOP = 61;
+	private static final int UNSET = Integer.MIN_VALUE;
+	public static final AttachmentType<List<Integer>> SHIFT = AttachmentRegistry.<List<Integer>>builder()
+		.persistent(Codec.INT.listOf())
+		.buildAndRegister(Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "underground_shift"));
+	private static int lastShift = UNSET;
+
+	static int shiftAt(ServerLevel level, BlockPos pos) {
+		LevelChunk chunk = level.getChunkAt(pos);
+		int index = (pos.getX() & 15) | (pos.getZ() & 15) << 4;
+		List<Integer> shifts = chunk.getAttached(SHIFT);
+		if (shifts != null && shifts.size() == 256 && shifts.get(index) != UNSET) {
+			return shifts.get(index);
+		}
+		int shift;
+		double land = SkyGround.smoothed(pos.getX(), pos.getZ());
+		if (!Double.isNaN(land)) {
+			shift = TOP - (int) Math.floor(land);
+		} else {
+			Integer near = nearestSaved(level, pos);
+			shift = near != null ? near : lastShift != UNSET ? lastShift : Math.round(VANILLA_SEA - SkyWorld.seaLevel());
+		}
+		List<Integer> updated = new ArrayList<>(shifts != null && shifts.size() == 256 ? shifts : Collections.nCopies(256, UNSET));
+		updated.set(index, shift);
+		chunk.setAttached(SHIFT, updated);
+		lastShift = shift;
+		return shift;
+	}
+
+	/** The nearest column with a saved shift, within 8 blocks, in loaded chunks. */
+	private static @Nullable Integer nearestSaved(ServerLevel level, BlockPos pos) {
+		for (int r = 1; r <= 8; r++) {
+			for (int dx = -r; dx <= r; dx++) {
+				for (int dz = -r; dz <= r; dz++) {
+					if (Math.max(Math.abs(dx), Math.abs(dz)) != r) {
+						continue;
+					}
+					int x = pos.getX() + dx, z = pos.getZ() + dz;
+					LevelChunk chunk = level.getChunkSource().getChunkNow(x >> 4, z >> 4);
+					List<Integer> shifts = chunk == null ? null : chunk.getAttached(SHIFT);
+					if (shifts != null && shifts.size() == 256) {
+						int s = shifts.get((x & 15) | (z & 15) << 4);
+						if (s != UNSET) {
+							return s;
+						}
+					}
+				}
+			}
+		}
+		return null;
+	}
+
+	/** The hidden world's chunk for this cell is generated (it's generated in the background, never on the spot). */
+	public static boolean ready(ServerLevel level, BlockPos pos) {
+		ServerLevel hidden = level.getServer().getLevel(UNDERGROUND);
+		return hidden != null && hidden.getChunkSource().getChunkNow(pos.getX() >> 4, pos.getZ() >> 4) != null;
+	}
+
+	private record Waiting(int world, BlockPos pos, int material) {
+	}
+
+	/** Cells to dig once their hidden chunk is ready, by that chunk. */
+	private static final Map<Long, List<Waiting>> FOR_CHUNK = new HashMap<>();
+
+	/** Dug where the hidden chunk isn't generated yet: generate it in the background, then dig. */
+	public static void waitFor(ServerLevel level, int world, BlockPos pos, int material) {
+		ServerLevel hidden = level.getServer().getLevel(UNDERGROUND);
+		if (hidden == null) {
+			return;
+		}
+		ChunkPos chunk = new ChunkPos(pos.getX() >> 4, pos.getZ() >> 4);
+		List<Waiting> list = FOR_CHUNK.computeIfAbsent(chunk.pack(), k -> new ArrayList<>());
+		if (list.isEmpty()) {
+			hidden.getChunkSource().addTicketWithRadius(TicketType.PORTAL, chunk, 0);
+		}
+		if (list.size() < 4096) {
+			list.add(new Waiting(world, pos.immutable(), material));
+		}
 	}
 
 	/** Brings the hidden world's block for this (already dug) cell up into the mirror world. */
@@ -99,7 +194,7 @@ public final class SkyUnderground {
 		if (hidden == null) {
 			return;
 		}
-		int vy = pos.getY() - offset();
+		int vy = pos.getY() + shiftAt(level, pos);
 		if (vy < VANILLA_BOTTOM) {
 			level.setBlock(pos, Blocks.BEDROCK.defaultBlockState(), 3);
 			return;
@@ -157,6 +252,34 @@ public final class SkyUnderground {
 		ServerLevel level = server.overworld();
 		if (!enabled || level == null) {
 			return;
+		}
+		ServerLevel hidden = server.getLevel(UNDERGROUND);
+		if (hidden == null) {
+			return;
+		}
+		if (server.getTickCount() % 20 == 0 && SkyWorld.valid() && SkyWorld.tamriel()) {
+			// The hidden world around the host is generated ahead of digging, in the background
+			// (generating it on the spot stalled the game for seconds). Portal tickets lapse by
+			// themselves once the player has moved on.
+			for (var player : server.getPlayerList().getPlayers()) {
+				if (player.level() == level && dev.skycraft.net.SkyNet.isHost(player)) {
+					hidden.getChunkSource().addTicketWithRadius(TicketType.PORTAL, new ChunkPos(player.getBlockX() >> 4, player.getBlockZ() >> 4), 2);
+				}
+			}
+		}
+		if (!FOR_CHUNK.isEmpty()) {
+			// Cells dug where the hidden world wasn't ready: dig them now that it is.
+			for (var it = FOR_CHUNK.entrySet().iterator(); it.hasNext();) {
+				var entry = it.next();
+				ChunkPos chunk = ChunkPos.unpack(entry.getKey());
+				if (hidden.getChunkSource().getChunkNow(chunk.x(), chunk.z()) == null) {
+					continue;
+				}
+				it.remove();
+				for (Waiting w : entry.getValue()) {
+					SkyDig.digCell(level, w.world(), w.pos(), w.material());
+				}
+			}
 		}
 		if (!WAITING.isEmpty() && server.getTickCount() % 20 == 0) {
 			// Skyrim's shape may have arrived for these by now.

@@ -301,6 +301,7 @@ public final class SkyCollision {
 		TRIS.clear();
 		GHOSTS.clear();
 		TRI_HASH.clear();
+		SkyGround.clear();
 		KNOWN_REGIONS.clear();
 		epoch = newEpoch;
 		SkyCraft.LOG.info("SkyCraft: collision cleared (epoch {})", newEpoch);
@@ -385,6 +386,7 @@ public final class SkyCollision {
 			int flags = s.get(JAVA_INT, e + 36);
 			hash = hash * 31 + flags;
 			SkyTri t = new SkyTri(v, 0, flags);
+			SkyGround.record(t); // SkyCraft+ : where Skyrim's land is, for the underground
 			if (t.degenerate()) {
 				continue;
 			}
