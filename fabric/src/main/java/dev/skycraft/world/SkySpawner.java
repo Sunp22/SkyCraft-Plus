@@ -26,6 +26,10 @@ import net.minecraft.world.entity.Leashable;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.entity.TamableAnimal;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.npc.villager.VillagerProfession;
+import net.minecraft.world.entity.npc.villager.VillagerType;
 import net.minecraft.world.phys.AABB;
 import org.jspecify.annotations.Nullable;
 
@@ -48,8 +52,15 @@ public final class SkySpawner {
 
 	private static boolean spawnAnimals = true;
 	private static boolean spawnMonsters = true;
+	private static boolean spawnVillagers = true;
 	private static int animalCap = 8;
 	private static int monsterCap = 6; // about half of a vanilla night around one player
+	private static int villagerCap = 6; // within VILLAGER_RANGE: a city's worth, a few streets apart
+	private static final int VILLAGER_RANGE = 64;
+	private static final List<ResourceKey<VillagerProfession>> JOBS = List.of(VillagerProfession.ARMORER, VillagerProfession.BUTCHER,
+		VillagerProfession.CARTOGRAPHER, VillagerProfession.CLERIC, VillagerProfession.FARMER, VillagerProfession.FISHERMAN,
+		VillagerProfession.FLETCHER, VillagerProfession.LEATHERWORKER, VillagerProfession.LIBRARIAN, VillagerProfession.MASON,
+		VillagerProfession.SHEPHERD, VillagerProfession.TOOLSMITH, VillagerProfession.WEAPONSMITH);
 
 	private static int lastTimeSet = -1;
 	private static int lastWeather = -1;
@@ -81,9 +92,12 @@ public final class SkySpawner {
 		}
 		spawnAnimals = Boolean.parseBoolean(p.getProperty("spawnAnimals", "true").trim());
 		spawnMonsters = Boolean.parseBoolean(p.getProperty("spawnMonsters", "true").trim());
+		spawnVillagers = Boolean.parseBoolean(p.getProperty("spawnVillagers", "true").trim());
 		animalCap = parseInt(p.getProperty("animalCap"), animalCap);
 		monsterCap = parseInt(p.getProperty("monsterCap"), monsterCap);
-		SkyCraft.LOG.info("SkyCraft: spawning animals {} (up to {}), monsters {} (up to {})", spawnAnimals, animalCap, spawnMonsters, monsterCap);
+		villagerCap = parseInt(p.getProperty("villagerCap"), villagerCap);
+		SkyCraft.LOG.info("SkyCraft: spawning animals {} (up to {}), monsters {} (up to {}), villagers in towns {} (up to {})", spawnAnimals, animalCap,
+			spawnMonsters, monsterCap, spawnVillagers, villagerCap);
 	}
 
 	private static int parseInt(@Nullable String s, int fallback) {
@@ -118,6 +132,9 @@ public final class SkySpawner {
 		if (spawnAnimals && outdoors && count(level, host, MobCategory.CREATURE) < animalCap) {
 			trySpawn(level, host, random, false);
 		}
+		if (spawnVillagers && outdoors && SkyWorld.town() && server.getTickCount() % 200 == 0 && countVillagers(level, host) < villagerCap) {
+			trySpawnVillager(level, host, random);
+		}
 		boolean monsterTime = SkyWorld.dungeon() || (outdoors && SkyWorld.night());
 		if (spawnMonsters && monsterTime && !SkyWorld.settlement() && count(level, host, MobCategory.MONSTER) < monsterCap) {
 			trySpawn(level, host, random, true);
@@ -141,6 +158,46 @@ public final class SkySpawner {
 				server.setWeatherParameters(12000, 0, false, false);
 			}
 		}
+	}
+
+	private static int countVillagers(ServerLevel level, ServerPlayer player) {
+		return level.getEntitiesOfClass(Villager.class, player.getBoundingBox().inflate(VILLAGER_RANGE), Villager::isAlive).size();
+	}
+
+	/**
+	 * Skyrim's cities and towns are villager trading posts: villagers spawn there already in a
+	 * job (no workstations in Skyrim to take one at). One point of experience, as after a first
+	 * trade, keeps the job for good. Their look follows the ground (snow, forest, sand, plains),
+	 * and they stay.
+	 */
+	private static void trySpawnVillager(ServerLevel level, ServerPlayer player, RandomSource random) {
+		double angle = random.nextDouble() * Math.PI * 2.0;
+		double distance = 8.0 + random.nextDouble() * 22.0;
+		int x = (int) Math.floor(player.getX() + Math.cos(angle) * distance);
+		int z = (int) Math.floor(player.getZ() + Math.sin(angle) * distance);
+		BlockPos ground = findGround(level, x, (int) Math.floor(player.getY()), z);
+		if (ground == null) {
+			return;
+		}
+		Villager villager = EntityTypes.VILLAGER.create(level, EntitySpawnReason.NATURAL);
+		if (villager == null) {
+			return;
+		}
+		villager.snapTo(ground.getX() + 0.5, SkyCollision.floorUnder(ground) + 0.01, ground.getZ() + 0.5, random.nextFloat() * 360.0F, 0.0F);
+		if (!level.noCollision(villager)) {
+			villager.discard();
+			return;
+		}
+		villager.finalizeSpawn(level, level.getCurrentDifficultyAt(villager.blockPosition()), EntitySpawnReason.NATURAL, null);
+		int material = groundMaterial(ground);
+		ResourceKey<VillagerType> type = material == Proto.DIG_SNOW || material == Proto.DIG_ICE ? VillagerType.SNOW
+			: material == Proto.DIG_SAND ? VillagerType.DESERT : treesNear(ground) ? VillagerType.TAIGA : VillagerType.PLAINS;
+		ResourceKey<VillagerProfession> job = JOBS.get(random.nextInt(JOBS.size()));
+		villager.setVillagerData(villager.getVillagerData().withType(level.registryAccess(), type).withProfession(level.registryAccess(), job).withLevel(1));
+		villager.setVillagerXp(1);
+		villager.setPersistenceRequired();
+		level.tryAddFreshEntityWithPassengers(villager);
+		SkyCraft.LOG.info("SkyCraft: a {} villager ({}) moved into town at {}", job.identifier().getPath(), type.identifier().getPath(), ground.toShortString());
 	}
 
 	private static int count(ServerLevel level, ServerPlayer player, MobCategory category) {

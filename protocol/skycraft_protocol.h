@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 18;
+	inline constexpr std::uint32_t kVersion = 19;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -77,6 +77,7 @@ namespace skycraft::proto
 		kPlaceDungeon = 1u << 2,     // a cave, crypt, ruin or other dungeon (monsters at any hour)
 		kPlaceRain = 1u << 3,        // rainy weather
 		kPlaceSnow = 1u << 4,        // snowy weather
+		kPlaceTown = 1u << 5,        // a city or town (villagers live there)
 	};
 
 	// Skyrim's water (lakes, rivers, the sea) around the player, for Minecraft to treat as its own

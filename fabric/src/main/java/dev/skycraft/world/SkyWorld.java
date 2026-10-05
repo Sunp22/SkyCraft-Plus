@@ -49,6 +49,11 @@ public final class SkyWorld {
 		return (placeFlags & Proto.PLACE_SETTLEMENT) != 0;
 	}
 
+	/** A city or town: villagers live there. */
+	public static boolean town() {
+		return (placeFlags & Proto.PLACE_TOWN) != 0;
+	}
+
 	public static boolean dungeon() {
 		return (placeFlags & Proto.PLACE_DUNGEON) != 0;
 	}

@@ -478,6 +478,9 @@ namespace skycraft
 			for (int depth = 0; location && depth < 8; location = location->parentLoc, ++depth) {
 				if (std::ranges::any_of(kSettlement, [&](std::string_view a_keyword) { return location->HasKeywordString(a_keyword); })) {
 					flags |= proto::kPlaceSettlement;
+				}
+				if (location->HasKeywordString("LocTypeCity") || location->HasKeywordString("LocTypeTown")) {
+					flags |= proto::kPlaceTown;
 					break;
 				}
 			}
@@ -1111,7 +1114,8 @@ namespace skycraft
 				placeTimer = 0.5f;
 				const auto flags = PlaceFlags(a_player, cell);
 				if (flags != placeFlags) {
-					logger::info("place: {}{}{}{}{}", flags & proto::kPlaceInterior ? "interior " : "exterior ", flags & proto::kPlaceSettlement ? "settlement " : "",
+					logger::info("place: {}{}{}{}{}{}", flags & proto::kPlaceInterior ? "interior " : "exterior ", flags & proto::kPlaceTown ? "town " : "",
+						flags & proto::kPlaceSettlement ? "settlement " : "",
 						flags & proto::kPlaceDungeon ? "dungeon " : "", flags & proto::kPlaceRain ? "rain " : "", flags & proto::kPlaceSnow ? "snow" : "");
 				}
 				placeFlags = flags;
