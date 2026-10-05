@@ -230,6 +230,11 @@ public final class SkyLink {
 		public boolean leftHandSkyrim() {
 			return (this.flags & SKY_LEFT_HAND_SKYRIM) != 0;
 		}
+
+		/** SkyCraft+ : the Skyrim player is blocking with a Skyrim shield or weapon. */
+		public boolean skyrimBlocking() {
+			return (this.flags & SKY_BLOCKING) != 0;
+		}
 	}
 
 	/** Seqlock read of SkyState into {@code out}. Returns false if the link is down. */

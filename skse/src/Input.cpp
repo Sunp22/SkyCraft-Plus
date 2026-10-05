@@ -167,6 +167,26 @@ namespace skycraft
 			logger::info("activated {:08X} ({})", target->GetFormID(), target->GetDisplayFullName());
 		}
 
+		// SkyCraft+ : a right click with a Skyrim left hand goes to Minecraft when its crosshair is on
+		// something used by hand (a chest, crafting table, door, villager...). Decided on the press
+		// and kept until the release, for both the input sink and PlayerControls (whichever sees the
+		// press first decides; the same event object within a few milliseconds is the same press).
+		bool RightClickToMinecraft(RE::ButtonEvent* a_button)
+		{
+			static bool                  toMinecraft = false;
+			static const RE::ButtonEvent* decidedFor = nullptr;
+			static std::uint64_t         decidedAt = 0;
+			if (a_button && a_button->IsDown()) {
+				const auto now = GetTickCount64();
+				if (a_button != decidedFor || now - decidedAt > 50) {
+					decidedFor = a_button;
+					decidedAt = now;
+					toMinecraft = State().mcUseTarget;
+				}
+			}
+			return toMinecraft;
+		}
+
 		// SkyCraft+ : Skyrim mode block use. Skyrim's own Activate (E by default, or whatever it's
 		// bound to), pressed.
 		bool IsActivatePress(RE::InputEvent* a_event)
@@ -302,6 +322,11 @@ namespace skycraft
 										}
 										break;
 									}
+									// SkyCraft+ : Skyrim's Shout key (Z, or whatever it's bound to) shouts in
+									// Skyrim (PlayerControlsHook lets it through).
+									if (auto* events = RE::UserEvents::GetSingleton(); events && button->QUserEvent() == events->shout) {
+										break;
+									}
 								}
 								if (const auto sdl = kDikToSdl[code & 0xFF]) {
 									link.PushInput(proto::kInKey, sdl, down ? 1 : 0);
@@ -313,8 +338,9 @@ namespace skycraft
 									}
 									break;
 								}
-								// A hand Skyrim holds: its button is Skyrim's (PlayerControlsHook lets it through).
-								if (!st.mcScreenOpen && ((code == 0 && st.rightHandSkyrim) || (code == 1 && st.leftHandSkyrim))) {
+								// A hand Skyrim holds: its button is Skyrim's (PlayerControlsHook lets it through),
+								// except right click on something Minecraft uses by hand (a chest, a villager).
+								if (!st.mcScreenOpen && ((code == 0 && st.rightHandSkyrim) || (code == 1 && st.leftHandSkyrim && !RightClickToMinecraft(button)))) {
 									break;
 								}
 								static constexpr std::uint16_t kButtons[8] = { 1, 3, 2, 4, 5, 0, 0, 0 };
@@ -397,9 +423,10 @@ namespace skycraft
 					return func(a_this, a_event, a_source);
 				}
 				// SkyCraft+ : hand ownership. A hand Skyrim holds still attacks, blocks and casts in
-				// Skyrim: its Attack/Block event gets through (Minecraft never sees that button).
+				// Skyrim: its Attack/Block event gets through (Minecraft never sees that button), unless
+				// right click went to something Minecraft uses by hand. Shouts always get through.
 				auto* events = RE::UserEvents::GetSingleton();
-				if (!a_event || !*a_event || !events || st.mcScreenOpen || !(st.rightHandSkyrim || st.leftHandSkyrim)) {
+				if (!a_event || !*a_event || !events || st.mcScreenOpen) {
 					return RE::BSEventNotifyControl::kContinue;
 				}
 				std::vector<RE::InputEvent*> keep;
@@ -408,7 +435,8 @@ namespace skycraft
 					all.push_back(e);
 					if (e->GetEventType() == RE::INPUT_EVENT_TYPE::kButton) {
 						const auto& name = e->QUserEvent();
-						if ((st.rightHandSkyrim && name == events->rightAttack) || (st.leftHandSkyrim && name == events->leftAttack)) {
+						if ((st.rightHandSkyrim && name == events->rightAttack) || name == events->shout ||
+							(st.leftHandSkyrim && name == events->leftAttack && !RightClickToMinecraft(e->AsButtonEvent()))) {
 							keep.push_back(e);
 						}
 					}

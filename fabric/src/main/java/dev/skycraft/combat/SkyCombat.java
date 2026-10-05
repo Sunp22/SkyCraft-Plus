@@ -61,6 +61,50 @@ public final class SkyCombat {
 	 */
 	public static volatile boolean skyrimDrives;
 
+	/** SkyCraft+ : Skyrim combat on Minecraft mobs. The host's Skyrim player is blocking. */
+	public static volatile boolean skyrimBlocking;
+
+	/**
+	 * SkyCraft+ : Skyrim combat on Minecraft mobs. A Skyrim melee hit landed (its HitFrame): it hits
+	 * the nearest Minecraft mob in front of the player within reach and in sight, or with a power
+	 * attack everything in the arc, as the player's own attack (drops and experience). A bash
+	 * mostly pushes. Skyrim's NPCs aren't touched here: Skyrim hits those itself.
+	 */
+	public static void skyrimMelee(net.minecraft.server.level.ServerPlayer player, int flags, float damage, float reach) {
+		var level = player.level();
+		boolean power = (flags & Proto.SKYRIM_HIT_POWER) != 0;
+		boolean bash = (flags & Proto.SKYRIM_HIT_BASH) != 0;
+		var eye = player.getEyePosition();
+		var look = player.getLookAngle();
+		double arcCos = power ? 0.35 : 0.6; // about 70 / 53 degrees either side
+		java.util.List<LivingEntity> targets = new java.util.ArrayList<>();
+		for (LivingEntity e : level.getEntitiesOfClass(LivingEntity.class, player.getBoundingBox().inflate(reach + 1.0),
+			e -> e != player && e.isAlive() && !(e instanceof SkyrimActorEntity) && !(e instanceof net.minecraft.world.entity.player.Player))) {
+			var centre = e.getBoundingBox().getCenter();
+			var to = centre.subtract(eye);
+			double distance = Math.max(0.0, to.length() - e.getBbWidth() * 0.5);
+			if (distance <= reach && to.normalize().dot(look) >= arcCos && player.hasLineOfSight(e)) {
+				targets.add(e);
+			}
+		}
+		if (targets.isEmpty()) {
+			return;
+		}
+		targets.sort(java.util.Comparator.comparingDouble(e -> e.distanceToSqr(player)));
+		if (!power) {
+			targets = targets.subList(0, 1);
+		}
+		var source = player.damageSources().playerAttack(player);
+		double kx = net.minecraft.util.Mth.sin(player.getYRot() * (float) (Math.PI / 180.0));
+		double kz = -net.minecraft.util.Mth.cos(player.getYRot() * (float) (Math.PI / 180.0));
+		for (LivingEntity e : targets) {
+			if (e.hurtServer(level, source, damage)) {
+				e.knockback(bash ? 1.2 : power ? 0.8 : 0.4, kx, kz, source, damage);
+			}
+		}
+		SkyCraft.LOG.info("SkyCraft: Skyrim {} hit {} Minecraft mob(s) for {}", bash ? "bash" : power ? "power attack" : "attack", targets.size(), damage);
+	}
+
 	/** SkyCraft+ : hand ownership. The host's hands Skyrim holds (set by the client each frame). */
 	public static volatile boolean rightHandSkyrim, leftHandSkyrim;
 

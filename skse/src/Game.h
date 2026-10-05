@@ -30,6 +30,9 @@ namespace skycraft
 		std::atomic<bool> skyrimHandsOption{ false };
 		std::atomic<bool> rightHandSkyrim{ false };
 		std::atomic<bool> leftHandSkyrim{ false };
+		// SkyCraft+ : Minecraft's crosshair is on something used by hand (chest, door, villager...):
+		// right click goes to Minecraft even with a Skyrim left hand.
+		std::atomic<bool> mcUseTarget{ false };
 
 		// Look direction in MC degrees; integrated from raw mouse input (main thread).
 		float yaw{ 0.0f };
@@ -132,6 +135,9 @@ namespace skycraft
 		void PerFrame(RE::PlayerCharacter* a_player, bool a_puppeting, float a_delta);
 		// Someone nearby is fighting the player (in combat with them as its target). Main thread.
 		bool PlayerEngaged();
+		// SkyCraft+ : main thread, every frame: keeps watching the player's melee HitFrames, so
+		// Skyrim weapons hit Minecraft's mobs too.
+		void WatchPlayerHits(RE::PlayerCharacter* a_player, float a_delta);
 	}
 
 	namespace BlockLights

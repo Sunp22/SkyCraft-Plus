@@ -104,6 +104,7 @@ public final class SkyClient {
 				SkyCombat.skyrimDrives = false;
 				SkyCombat.rightHandSkyrim = false;
 				SkyCombat.leftHandSkyrim = false;
+				SkyCombat.skyrimBlocking = false;
 				dev.skycraft.world.SkyWorld.clear();
 				LocalPlayer player = Minecraft.getInstance().player;
 				unlinkedHold = player != null ? player.position() : null;
@@ -147,6 +148,7 @@ public final class SkyClient {
 		}
 
 		dev.skycraft.world.SkyWorld.update(sky.inGame() && !sky.loading(), sky.gameHour, sky.placeFlags);
+		SkyCombat.skyrimBlocking = sky.skyrimBlocking();
 		SkyCombat.rightHandSkyrim = sky.rightHandSkyrim();
 		SkyCombat.leftHandSkyrim = sky.leftHandSkyrim();
 		boolean drives = sky.skyrimDrives() && sky.inGame() && !sky.loading();
@@ -468,6 +470,8 @@ public final class SkyClient {
 		}
 		if (minecraft.gui.screen() != null) {
 			flags |= Proto.MC_SCREEN_OPEN;
+		} else if (player != null && SkyHands.usableTargetInView(minecraft)) {
+			flags |= Proto.MC_USE_TARGET;
 		}
 		mc.flags = flags;
 		mc.sensitivity = minecraft.options.sensitivity().get().floatValue();

@@ -859,6 +859,12 @@ namespace skycraft
 				while (link.PopEvent(ev)) {
 					if (ev.type == proto::kEvPlayerDied && link.McAlive()) {
 						KillPlayer(a_player, ev);
+					} else if (ev.type == proto::kEvPlayerHurt && link.McAlive() && !a_player->IsDead()) {
+						// SkyCraft+ : Skyrim mode: a Minecraft mob hit the player. One health pool:
+						// the share of Minecraft's health it took, of Skyrim's.
+						const float max = a_player->GetActorValueMax(RE::ActorValue::kHealth);
+						a_player->AsActorValueOwner()->DamageActorValue(RE::ActorValue::kHealth, std::clamp(ev.a, 0.0f, 1.0f) * max);
+						logger::info("Skyrim mode: a Minecraft mob took {:.0f}% of the player's health", ev.a * 100.0f);
 					}
 				}
 				pendingExplosions.clear();
@@ -924,5 +930,83 @@ namespace skycraft
 		}
 
 		bool PlayerEngaged() { return engaged; }
+
+		// SkyCraft+ : Skyrim combat on Minecraft mobs. Skyrim's melee hits only find Skyrim's own
+		// actors; Minecraft's mobs are just drawn. At each of the player's melee HitFrames (while
+		// Minecraft is in its world: a Skyrim hand in Minecraft mode, or Skyrim mode), the hit goes
+		// to Minecraft too, which strikes the mob(s) in front of the player.
+		class HitFrameSink final : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
+		{
+		public:
+			static HitFrameSink* Get()
+			{
+				static HitFrameSink sink;
+				return &sink;
+			}
+
+			RE::BSEventNotifyControl ProcessEvent(const RE::BSAnimationGraphEvent* a_event, RE::BSTEventSource<RE::BSAnimationGraphEvent>*) override
+			{
+				auto* player = RE::PlayerCharacter::GetSingleton();
+				if (!a_event || !player || a_event->holder != player || a_event->tag != "HitFrame") {
+					return RE::BSEventNotifyControl::kContinue;
+				}
+				auto& st = State();
+				if (!(st.skyrimDrives || (st.puppeting && (st.rightHandSkyrim || st.leftHandSkyrim)))) {
+					return RE::BSEventNotifyControl::kContinue;
+				}
+				// The first- and third-person graphs both send it.
+				const auto now = GetTickCount64();
+				if (now - lastHit < 120) {
+					return RE::BSEventNotifyControl::kContinue;
+				}
+				lastHit = now;
+				auto*      process = player->GetActorRuntimeData().currentProcess;
+				auto*      attack = process && process->high ? process->high->attackData.get() : nullptr;
+				const bool left = attack && attack->IsLeftAttack();
+				const bool power = attack && attack->data.flags.any(RE::AttackData::AttackFlag::kPowerAttack);
+				const bool bash = attack && attack->data.flags.any(RE::AttackData::AttackFlag::kBashAttack);
+				auto*      form = player->GetEquippedObject(left);
+				auto*      weapon = form && form->GetFormID() != 0x1F4 ? form->As<RE::TESObjectWEAP>() : nullptr;
+				// Minecraft damage about a Minecraft weapon's: an iron sword (7) at low skill ~5.5, a
+				// daedric one (14) at skill 100 ~16. A bash mostly pushes; fists are fists.
+				float damage = 1.0f;
+				if (bash) {
+					damage = 2.0f;
+				} else if (weapon) {
+					const float skill = player->AsActorValueOwner()->GetActorValue(weapon->weaponData.skill.get());
+					damage = float(weapon->GetAttackDamage()) * (1.0f + skill / 200.0f) * 0.75f;
+				}
+				if (power) {
+					damage *= 2.0f;
+				}
+				const float          reach = 3.0f * (weapon ? std::clamp(weapon->weaponData.reach, 0.5f, 2.0f) : 0.8f);
+				const std::uint16_t flags = (power ? proto::kSkyrimHitPower : 0) | (bash ? proto::kSkyrimHitBash : 0) | (left ? proto::kSkyrimHitLeft : 0);
+				Link::Get().PushInput(proto::kInSkyrimHit, flags, static_cast<std::int32_t>(damage * 100.0f), static_cast<std::int32_t>(reach * 100.0f));
+				return RE::BSEventNotifyControl::kContinue;
+			}
+
+		private:
+			std::uint64_t lastHit = 0;
+		};
+
+		void WatchPlayerHits(RE::PlayerCharacter* a_player, float a_delta)
+		{
+			// Its animation graphs are rebuilt now and then (loads, race and 3D changes); adding the
+			// same sink again is ignored.
+			static float timer = 0.0f;
+			if (a_player && (timer -= a_delta) <= 0.0f) {
+				timer = 2.0f;
+				// Every graph (first and third person): whichever is animating sends the HitFrame.
+				RE::BSAnimationGraphManagerPtr graphs;
+				a_player->GetAnimationGraphManager(graphs);
+				if (graphs) {
+					for (const auto& graph : graphs->graphs) {
+						if (graph) {
+							graph->GetEventSource<RE::BSAnimationGraphEvent>()->AddEventSink(HitFrameSink::Get());
+						}
+					}
+				}
+			}
+		}
 	}
 }

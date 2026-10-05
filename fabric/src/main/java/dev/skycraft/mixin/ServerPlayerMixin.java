@@ -25,6 +25,38 @@ public abstract class ServerPlayerMixin {
 		}
 	}
 
+	/**
+	 * SkyCraft+ : Skyrim combat on Minecraft mobs. Hurt by a Minecraft mob, its arrow or an
+	 * explosion (not a Skyrim NPC: Skyrim handles those):
+	 * - in Skyrim mode the hit goes to the Skyrim player instead (its share of Minecraft's health,
+	 *   as Skyrim's share of its own), since the Minecraft player only follows along;
+	 * - blocking with Skyrim gear stops it from the front, as a Minecraft shield would.
+	 */
+	@Inject(method = "hurtServer", at = @At("HEAD"), cancellable = true)
+	private void skycraft$skyrimDefence(ServerLevel level, DamageSource source, float amount, CallbackInfoReturnable<Boolean> cir) {
+		ServerPlayer self = (ServerPlayer) (Object) this;
+		Entity attacker = source.getEntity();
+		boolean fromMinecraft = (attacker != null && !(attacker instanceof SkyrimActorEntity) && attacker != self)
+			|| source.is(net.minecraft.tags.DamageTypeTags.IS_EXPLOSION);
+		if (!fromMinecraft || !dev.skycraft.net.SkyNet.isHost(self) || !SkyLink.active()) {
+			return;
+		}
+		if (SkyCombat.skyrimBlocking && !source.is(net.minecraft.tags.DamageTypeTags.BYPASSES_SHIELD) && source.getSourcePosition() != null) {
+			var to = source.getSourcePosition().subtract(self.position());
+			var look = self.getLookAngle();
+			if (to.x * look.x + to.z * look.z > 0.0) {
+				level.playSound(null, self.getX(), self.getY(), self.getZ(), net.minecraft.sounds.SoundEvents.SHIELD_BLOCK.value(),
+					net.minecraft.sounds.SoundSource.PLAYERS, 1.0F, 0.8F + level.getRandom().nextFloat() * 0.4F);
+				cir.setReturnValue(false);
+				return;
+			}
+		}
+		if (SkyCombat.skyrimDrives && amount > 0.0F) {
+			SkyLink.pushEvent(Proto.EV_PLAYER_HURT, 0, amount / self.getMaxHealth(), 0, 0, 0, 0);
+			cir.setReturnValue(false);
+		}
+	}
+
 	/** While Skyrim drives the host's player, the Minecraft one following it can't be hurt. */
 	@Inject(method = "isInvulnerableTo", at = @At("HEAD"), cancellable = true)
 	private void skycraft$followingSkyrim(ServerLevel level, DamageSource source, CallbackInfoReturnable<Boolean> cir) {

@@ -644,6 +644,7 @@ namespace skycraft
 				st.cursorY = st.viewportH / 2;
 			}
 			st.mcScreenOpen = screenOpen;
+			st.mcUseTarget = haveMc && (mc.flags & proto::kMcUseTarget);
 			if (haveMc && mc.sensitivity > 0.0f) {
 				st.sensitivity = mc.sensitivity;
 			}
@@ -778,6 +779,7 @@ namespace skycraft
 			st.mcGuiScale = haveMc ? static_cast<int>(mc.guiScale) : 0;
 			Input::SetActivatePromptKey(puppet);
 			Combat::PerFrame(a_player, puppet, a_delta);
+			Combat::WatchPlayerHits(a_player, a_delta);
 			WorldRender::UpdateRagdoll(a_player, haveMc && st.mcInWorld);
 			if (puppet || skyrimDrives) {
 				NpcBlocks::PushActorsOut(a_player, a_delta);
@@ -1107,7 +1109,7 @@ namespace skycraft
 			proto::SkyState sky{};
 			sky.flags = (cell ? proto::kSkyInGame : 0u) | (menu ? proto::kSkyMenuOpen : 0u) | (loading ? proto::kSkyLoading : 0u) |
 			            (skyrimDrives ? proto::kSkyDrivesPlayer : 0u) | (rightHand ? proto::kSkyRightHandSkyrim : 0u) |
-			            (leftHand ? proto::kSkyLeftHandSkyrim : 0u);
+			            (leftHand ? proto::kSkyLeftHandSkyrim : 0u) | ((puppet || skyrimDrives) && a_player->IsBlocking() ? proto::kSkyBlocking : 0u);
 			static float         placeTimer = 0.0f;
 			static std::uint32_t placeFlags = 0;
 			if ((placeTimer -= a_delta) <= 0.0f) {

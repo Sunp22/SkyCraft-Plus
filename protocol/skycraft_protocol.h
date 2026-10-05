@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 19;
+	inline constexpr std::uint32_t kVersion = 20;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -67,6 +67,9 @@ namespace skycraft::proto
 		// Skyrim (left button: right hand, right button: left hand).
 		kSkyRightHandSkyrim = 1u << 4,
 		kSkyLeftHandSkyrim = 1u << 5,
+		// The Skyrim player is blocking (a Skyrim shield or weapon): Minecraft attacks from the front
+		// are blocked like a Minecraft shield's.
+		kSkyBlocking = 1u << 6,
 	};
 
 	// SkyState::placeFlags: where the player is and the weather, for Minecraft's spawning.
@@ -121,6 +124,9 @@ namespace skycraft::proto
 		kMcDead = 1u << 5,
 		kMcSwimming = 1u << 6,
 		kMcFlying = 1u << 7,
+		// The crosshair is on a Minecraft thing used by hand (a chest, crafting table, furnace, door,
+		// villager, horse, boat): right click goes to Minecraft even with a Skyrim left hand.
+		kMcUseTarget = 1u << 8,
 	};
 
 	struct McState
@@ -205,6 +211,8 @@ namespace skycraft::proto
 		kInOpenMenu = 8,     // open Minecraft's pause/options menu
 		kInUse = 9,          // Skyrim mode: Skyrim's Activate found nothing; use the Minecraft block the
 		                     // player looks at by hand (doors, chests, crafting tables, levers)
+		kInSkyrimHit = 10,   // a Skyrim melee hit landed (its HitFrame): code = SkyrimHitFlags, a = Minecraft damage * 100,
+		                     // b = reach in blocks * 100. Minecraft hits the mob(s) in front of the player
 	};
 
 	enum HurtKind : std::uint16_t
@@ -272,6 +280,16 @@ namespace skycraft::proto
 		                    // flags = flight pitch (float bits), weapon = arrow texture (0 plain, 1 tipped, 2 spectral)
 		kEvSkillUse = 5,    // the player used a Skyrim skill in Minecraft: formId = Skyrim skill (ActorValue: 9 Block,
 		                    // 10 Smithing, 11 Heavy Armor, 12 Light Armor), a = uses (as Skyrim's AdvanceSkill counts them)
+		kEvPlayerHurt = 6,  // Skyrim mode: a Minecraft mob or explosion hurt the player: a = share of Minecraft's max
+		                    // health it took; Skyrim takes that share of its own
+	};
+
+	// InputEvent::code for kInSkyrimHit.
+	enum SkyrimHitFlags : std::uint16_t
+	{
+		kSkyrimHitPower = 1u << 0,  // a power attack: hits everything in the arc
+		kSkyrimHitBash = 1u << 1,   // a shield or weapon bash: little damage, a big push
+		kSkyrimHitLeft = 1u << 2,   // the left hand's
 	};
 
 	enum HitFlags : std::uint32_t

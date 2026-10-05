@@ -70,6 +70,19 @@ public final class InputBridge {
 				}
 			}
 			case Proto.IN_USE -> SkyClient.useBlockInView(minecraft);
+			case Proto.IN_SKYRIM_HIT -> {
+				var server = minecraft.getSingleplayerServer();
+				var player = minecraft.player;
+				if (server != null && player != null) {
+					var uuid = player.getUUID();
+					server.execute(() -> {
+						var sp = server.getPlayerList().getPlayer(uuid);
+						if (sp != null) {
+							dev.skycraft.combat.SkyCombat.skyrimMelee(sp, code, a / 100.0F, b / 100.0F);
+						}
+					});
+				}
+			}
 			default -> {
 			}
 		}

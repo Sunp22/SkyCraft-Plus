@@ -8,7 +8,7 @@ public final class Proto {
 	}
 
 	public static final int MAGIC = 0x43594B53;
-	public static final int VERSION = 19;
+	public static final int VERSION = 20;
 	// A second client on the same PC (multiplayer testing) talks to its own stand-in Skyrim:
 	// -Dskycraft.link=Local\SkyCraft_guest (see tools/fake_guest.py).
 	public static final String MAPPING_NAME = System.getProperty("skycraft.link", "Local\\SkyCraft_v1");
@@ -41,6 +41,8 @@ public final class Proto {
 	public static final int IN_HURT = 7;
 	public static final int IN_OPEN_MENU = 8;
 	public static final int IN_USE = 9;
+	public static final int IN_SKYRIM_HIT = 10;
+	public static final int SKYRIM_HIT_POWER = 1, SKYRIM_HIT_BASH = 1 << 1, SKYRIM_HIT_LEFT = 1 << 2;
 	public static final int HURT_MELEE = 0;
 	public static final int HURT_PROJECTILE = 1;
 	public static final int HURT_MAGIC = 2;
@@ -70,6 +72,7 @@ public final class Proto {
 	public static final int EV_EXPLOSION = 3;
 	public static final int EV_ARROW_STUCK = 4;
 	public static final int EV_SKILL_USE = 5;
+	public static final int EV_PLAYER_HURT = 6;
 	// Skyrim skills (ActorValue) Minecraft reports use of; weapon skills come from EV_HIT_ACTOR.
 	public static final int SKILL_BLOCK = 9;
 	public static final int SKILL_SMITHING = 10;
@@ -155,6 +158,7 @@ public final class Proto {
 	public static final int SKY_DRIVES_PLAYER = 1 << 3;
 	public static final int SKY_RIGHT_HAND_SKYRIM = 1 << 4;
 	public static final int SKY_LEFT_HAND_SKYRIM = 1 << 5;
+	public static final int SKY_BLOCKING = 1 << 6;
 
 	public static final int PLACE_INTERIOR = 1, PLACE_SETTLEMENT = 1 << 1, PLACE_DUNGEON = 1 << 2, PLACE_RAIN = 1 << 3, PLACE_SNOW = 1 << 4,
 		PLACE_TOWN = 1 << 5;
@@ -200,6 +204,7 @@ public final class Proto {
 	public static final int MC_DEAD = 1 << 5;
 	public static final int MC_SWIMMING = 1 << 6;
 	public static final int MC_FLYING = 1 << 7;
+	public static final int MC_USE_TARGET = 1 << 8;
 
 	// Overlay
 	public static final long OC_STATE = 0x00;
