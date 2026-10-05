@@ -17,6 +17,7 @@
     "MinecraftDigMixin",
     "MinecraftMixin",
     "MinecraftUseMixin",
+    "MultiPlayerGameModeMixin",
     "RenderSetupAccessor",
     "RenderTypeAccessor",
     "ScreenMixin",

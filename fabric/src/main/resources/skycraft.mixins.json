@@ -18,6 +18,7 @@
     "ProjectileMixin",
     "ProjectileUtilMixin",
     "ServerExplosionMixin",
+    "ServerGamePacketListenerMixin",
     "ServerPlayerMixin",
     "SmithingMixin"
   ],

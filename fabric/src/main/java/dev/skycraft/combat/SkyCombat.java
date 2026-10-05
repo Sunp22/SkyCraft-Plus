@@ -61,6 +61,18 @@ public final class SkyCombat {
 	 */
 	public static volatile boolean skyrimDrives;
 
+	/** SkyCraft+ : hand ownership. The host's hands Skyrim holds (set by the client each frame). */
+	public static volatile boolean rightHandSkyrim, leftHandSkyrim;
+
+	public static boolean skyrimHolds(net.minecraft.world.entity.player.Player player, net.minecraft.world.InteractionHand hand) {
+		if (!(rightHandSkyrim || leftHandSkyrim) || !(player instanceof net.minecraft.server.level.ServerPlayer sp) || !dev.skycraft.net.SkyNet.isHost(sp)) {
+			return false;
+		}
+		var main = player.getMainArm();
+		var arm = hand == net.minecraft.world.InteractionHand.MAIN_HAND ? main : main.getOpposite();
+		return arm == net.minecraft.world.entity.HumanoidArm.RIGHT ? rightHandSkyrim : leftHandSkyrim;
+	}
+
 	private static final Map<Integer, SkyrimActorEntity> PROXIES = new HashMap<>();
 	private static final List<SkyLink.Actor> ACTORS = new ArrayList<>();
 

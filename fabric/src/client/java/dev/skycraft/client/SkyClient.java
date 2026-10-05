@@ -102,6 +102,8 @@ public final class SkyClient {
 				InputBridge.releaseAll();
 				skyrimDriving = false;
 				SkyCombat.skyrimDrives = false;
+				SkyCombat.rightHandSkyrim = false;
+				SkyCombat.leftHandSkyrim = false;
 				LocalPlayer player = Minecraft.getInstance().player;
 				unlinkedHold = player != null ? player.position() : null;
 			}
@@ -143,6 +145,8 @@ public final class SkyClient {
 			holdPos = new Vec3(sky.x, sky.y, sky.z);
 		}
 
+		SkyCombat.rightHandSkyrim = sky.rightHandSkyrim();
+		SkyCombat.leftHandSkyrim = sky.leftHandSkyrim();
 		boolean drives = sky.skyrimDrives() && sky.inGame() && !sky.loading();
 		if (drives != skyrimDriving) {
 			skyrimDriving = drives;
