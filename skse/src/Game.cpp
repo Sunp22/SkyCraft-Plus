@@ -474,6 +474,17 @@ namespace skycraft
 				"LocTypeDwelling", "LocTypeInn", "LocTypeHouse", "LocTypePlayerHouse", "LocTypeCastle", "LocTypeJail", "LocTypeStore",
 				"LocTypeTemple", "LocTypeFarm" };
 			std::uint32_t flags = a_cell && a_cell->IsInteriorCell() ? proto::kPlaceInterior : 0u;
+			if (!(flags & proto::kPlaceInterior)) {
+				// Tamriel itself (0x3C) or a worldspace inside it (Whiterun, Solitude...: same coordinates).
+				constexpr RE::FormID kTamriel = 0x3C;
+				auto*                world = a_player->GetWorldspace();
+				for (int depth = 0; world && depth < 8; world = world->parentWorld, ++depth) {
+					if (world->GetFormID() == kTamriel) {
+						flags |= proto::kPlaceTamriel;
+						break;
+					}
+				}
+			}
 			auto*         location = a_player->GetCurrentLocation();
 			if (location && location->HasKeywordString("LocTypeDungeon")) {
 				flags |= proto::kPlaceDungeon;
@@ -1119,11 +1130,13 @@ namespace skycraft
 			            (leftHand ? proto::kSkyLeftHandSkyrim : 0u) | ((puppet || skyrimDrives) && a_player->IsBlocking() ? proto::kSkyBlocking : 0u);
 			static float         placeTimer = 0.0f;
 			static std::uint32_t placeFlags = 0;
-			if ((placeTimer -= a_delta) <= 0.0f) {
+			static std::uint32_t placeWorld = 0;
+			if ((placeTimer -= a_delta) <= 0.0f || placeWorld != worldId) {  // at once on a world change (Minecraft picks its dimension)
+				placeWorld = worldId;
 				placeTimer = 0.5f;
 				const auto flags = PlaceFlags(a_player, cell);
 				if (flags != placeFlags) {
-					logger::info("place: {}{}{}{}{}{}", flags & proto::kPlaceInterior ? "interior " : "exterior ", flags & proto::kPlaceTown ? "town " : "",
+					logger::info("place: {}{}{}{}{}{}{}", flags & proto::kPlaceInterior ? "interior " : "exterior ", flags & proto::kPlaceTamriel ? "tamriel " : "", flags & proto::kPlaceTown ? "town " : "",
 						flags & proto::kPlaceSettlement ? "settlement " : "",
 						flags & proto::kPlaceDungeon ? "dungeon " : "", flags & proto::kPlaceRain ? "rain " : "", flags & proto::kPlaceSnow ? "snow" : "");
 				}

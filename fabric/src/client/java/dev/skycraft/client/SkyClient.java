@@ -393,21 +393,47 @@ public final class SkyClient {
 		return !Double.isNaN(ground) && ground > pos.y ? new Vec3(pos.x, ground, pos.z) : pos;
 	}
 
+	/** SkyCraft+ : interiors. Each kind of Skyrim world has its own Minecraft dimension, so they don't share blocks. */
+	public static final net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> INTERIORS = net.minecraft.resources.ResourceKey.create(
+		net.minecraft.core.registries.Registries.DIMENSION, net.minecraft.resources.Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "interiors"));
+	public static final net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> WORLDSPACES = net.minecraft.resources.ResourceKey.create(
+		net.minecraft.core.registries.Registries.DIMENSION, net.minecraft.resources.Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "worldspaces"));
+
+	/**
+	 * Tamriel and its walled cities (same coordinates): the overworld, where the underground goes.
+	 * Interiors: their own dimension. Other worldspaces (Solstheim, Blackreach, Sovngarde...): another,
+	 * since their coordinates overlap Tamriel's.
+	 */
+	private static net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> dimensionFor(SkyLink.SkyState sky) {
+		if ((sky.placeFlags & Proto.PLACE_INTERIOR) != 0) {
+			return INTERIORS;
+		}
+		return (sky.placeFlags & Proto.PLACE_TAMRIEL) != 0 ? net.minecraft.world.level.Level.OVERWORLD : WORLDSPACES;
+	}
+
 	private static void requestTeleport(Minecraft minecraft, double x, double y, double z, float yaw, float pitch) {
 		LocalPlayer player = minecraft.player;
 		player.setPos(x, y, z);
 		player.setDeltaMovement(Vec3.ZERO);
 		player.resetFallDistance();
 		var server = minecraft.getSingleplayerServer();
+		var dimension = dimensionFor(sky);
 		if (server != null) {
 			var uuid = player.getUUID();
 			server.execute(() -> {
 				ServerPlayer sp = server.getPlayerList().getPlayer(uuid);
 				if (sp != null) {
-					// Turn first: teleportTo sends the player its rotation along with the position.
-					sp.setYRot(yaw);
-					sp.setXRot(pitch);
-					sp.teleportTo(x, y, z);
+					var target = server.getLevel(dimension);
+					if (target != null && target != sp.level()) {
+						// SkyCraft+ : interiors and other worldspaces have dimensions of their own.
+						sp.teleportTo(target, x, y, z, java.util.Set.of(), yaw, pitch, true);
+						SkyCraft.LOG.info("SkyCraft: into {}", dimension.identifier());
+					} else {
+						// Turn first: teleportTo sends the player its rotation along with the position.
+						sp.setYRot(yaw);
+						sp.setXRot(pitch);
+						sp.teleportTo(x, y, z);
+					}
 					sp.resetFallDistance();
 				}
 			});
