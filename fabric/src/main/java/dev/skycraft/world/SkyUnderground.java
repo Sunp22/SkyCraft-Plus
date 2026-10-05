@@ -38,6 +38,11 @@ import net.fabricmc.fabric.api.attachment.v1.AttachmentType;
 import net.minecraft.server.level.TicketType;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.portal.TeleportTransition;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -60,6 +65,7 @@ public final class SkyUnderground {
 	private static final int MAX_WAITING = 20000;
 
 	private static boolean enabled = true;
+	private static int caveMonsterCap = 10;
 
 	/** Cells whose neighbours are to be revealed (a cave opening up), for one Skyrim world. */
 	private static final LongArrayFIFOQueue OPENING = new LongArrayFIFOQueue();
@@ -91,7 +97,20 @@ public final class SkyUnderground {
 			}
 		}
 		enabled = Boolean.parseBoolean(p.getProperty("deepUnderground", "true").trim());
+		boolean caves = Boolean.parseBoolean(p.getProperty("caveMonsters", "true").trim());
+		int cap = 10;
+		try {
+			cap = Math.max(0, Integer.parseInt(p.getProperty("caveMonsterCap", "10").trim()));
+		} catch (NumberFormatException e) {
+			// keep the default
+		}
+		caveMonsterCap = caves ? cap : 0;
 		SkyCraft.LOG.info("SkyCraft: Minecraft's underground under Skyrim {}", enabled ? "on" : "off");
+	}
+
+	/** How many monsters the dark of the underground holds around the host (0: none; SkyCaves). */
+	static int caveMonsterCap() {
+		return enabled ? caveMonsterCap : 0;
 	}
 
 	/** This dug cell of Skyrim's ground (a Proto.DIG_* material) comes from the hidden world. */
@@ -110,6 +129,11 @@ public final class SkyUnderground {
 	 */
 	public static boolean deep(double x, double y, double z) {
 		return enabled && SkyGround.under(x, y, z, DEEP);
+	}
+
+	/** Under Skyrim's land at all (no sun reaches there). Any thread. */
+	public static boolean underLand(double x, double y, double z) {
+		return enabled && SkyGround.under(x, y, z, 1.0);
 	}
 
 	/**
@@ -224,6 +248,7 @@ public final class SkyUnderground {
 			if (!state.isAir()) {
 				level.setBlock(pos, state, 3);
 			}
+			bringUpEntities(hidden, level, at, pos);
 			open(world, pos);
 			return;
 		}
@@ -244,9 +269,27 @@ public final class SkyUnderground {
 				level.setBlockEntity(copy);
 			}
 		}
+		if (!state.canOcclude()) {
+			bringUpEntities(hidden, level, at, pos); // a minecart on rails, say
+		}
 		if (logged < 20 && !state.is(Blocks.STONE) && !state.is(Blocks.DEEPSLATE)) {
 			logged++;
 			SkyCraft.LOG.info("SkyCraft: underground: {} at {} (Minecraft y {})", state.getBlock().getName().getString(), pos.toShortString(), vy);
+		}
+	}
+
+	/**
+	 * What generation left in this cell of the hidden world comes up with it: the chest minecarts
+	 * of mineshafts and the like (the hidden world has no players, so nothing else lives there).
+	 */
+	private static void bringUpEntities(ServerLevel hidden, ServerLevel level, BlockPos at, BlockPos pos) {
+		List<Entity> found = hidden.getEntities((Entity) null, new AABB(at), e -> !(e instanceof Player) && e.isAlive() && e.blockPosition().equals(at));
+		for (Entity e : found) {
+			Vec3 to = e.position().add(0.0, pos.getY() - at.getY(), 0.0);
+			Entity moved = e.teleport(new TeleportTransition(level, to, e.getDeltaMovement(), e.getYRot(), e.getXRot(), TeleportTransition.DO_NOTHING));
+			if (moved != null) {
+				SkyCraft.LOG.info("SkyCraft: underground: {} at {}", moved.getType().toShortString(), moved.blockPosition().toShortString());
+			}
 		}
 	}
 

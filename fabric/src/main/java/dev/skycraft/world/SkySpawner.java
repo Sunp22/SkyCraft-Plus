@@ -139,6 +139,10 @@ public final class SkySpawner {
 		if (spawnMonsters && monsterTime && !SkyWorld.settlement() && count(level, host, MobCategory.MONSTER) < monsterCap) {
 			trySpawn(level, host, random, true);
 		}
+		// SkyCraft+ : the underground. Its caves have monsters of their own, at any hour.
+		if (spawnMonsters && SkyUnderground.caveMonsterCap() > 0) {
+			SkyCaves.tick(level, host, random, SkyUnderground.caveMonsterCap());
+		}
 	}
 
 	/** Minecraft's clock and weather follow Skyrim's (its time doesn't run on its own here). */

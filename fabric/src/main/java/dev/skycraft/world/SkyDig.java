@@ -654,7 +654,7 @@ public final class SkyDig {
 		}
 	}
 
-	private static int worldFor(Level level) {
+	static int worldFor(Level level) {
 		if (level.isClientSide()) {
 			DugLookup lookup = clientDug;
 			return lookup != null ? clientWorld : 0;
