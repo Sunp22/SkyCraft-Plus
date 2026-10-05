@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 17;
+	inline constexpr std::uint32_t kVersion = 18;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -69,6 +69,16 @@ namespace skycraft::proto
 		kSkyLeftHandSkyrim = 1u << 5,
 	};
 
+	// SkyState::placeFlags: where the player is and the weather, for Minecraft's spawning.
+	enum PlaceFlags : std::uint32_t
+	{
+		kPlaceInterior = 1u << 0,    // an interior cell
+		kPlaceSettlement = 1u << 1,  // a city, town, settlement, inn, home, castle... (no monsters)
+		kPlaceDungeon = 1u << 2,     // a cave, crypt, ruin or other dungeon (monsters at any hour)
+		kPlaceRain = 1u << 3,        // rainy weather
+		kPlaceSnow = 1u << 4,        // snowy weather
+	};
+
 	// Skyrim's water (lakes, rivers, the sea) around the player, for Minecraft to treat as its own
 	// water: swimming, floating, drowning. Seqlock like SkyState.
 	inline constexpr std::uint32_t kWaterGridSize = 24;
@@ -95,7 +105,7 @@ namespace skycraft::proto
 		std::uint32_t viewportW, viewportH;
 		float         gameHour;
 		float         healthFrac;  // Skyrim player health / max (0..1)
-		std::uint32_t pad44;
+		std::uint32_t placeFlags;  // PlaceFlags: where the player is and the weather (spawning)
 	};
 	static_assert(sizeof(SkyState) == 0x48);
 

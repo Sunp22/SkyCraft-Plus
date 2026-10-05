@@ -203,6 +203,7 @@ public final class SkyLink {
 		public int viewportW, viewportH;
 		public float gameHour;
 		public float healthFrac;
+		public int placeFlags;
 
 		public boolean inGame() {
 			return (this.flags & SKY_IN_GAME) != 0;
@@ -299,6 +300,7 @@ public final class SkyLink {
 			out.viewportH = s.get(JAVA_INT, b + SS_VIEWPORT_H);
 			out.gameHour = s.get(JAVA_FLOAT, b + SS_GAME_HOUR);
 			out.healthFrac = s.get(JAVA_FLOAT, b + SS_HEALTH_FRAC);
+			out.placeFlags = s.get(JAVA_INT, b + SS_PLACE_FLAGS);
 			VarHandle.loadLoadFence();
 			int seq2 = (int) INT.getAcquire(s, b + SS_SEQ);
 			if (seq1 == seq2) {

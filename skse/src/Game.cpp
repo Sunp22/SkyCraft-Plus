@@ -461,6 +461,37 @@ namespace skycraft
 			}
 		}
 
+		// SkyCraft+ : living world. Where the player is and the weather, for Minecraft's spawning:
+		// interiors; settlements (the location or one it's in is a city, town, settlement, home,
+		// inn, castle...: no monsters); dungeons (caves, crypts, ruins: monsters at any hour); rain
+		// or snow.
+		std::uint32_t PlaceFlags(RE::PlayerCharacter* a_player, RE::TESObjectCELL* a_cell)
+		{
+			static constexpr std::string_view kSettlement[] = { "LocTypeCity", "LocTypeTown", "LocTypeSettlement", "LocTypeHabitation",
+				"LocTypeDwelling", "LocTypeInn", "LocTypeHouse", "LocTypePlayerHouse", "LocTypeCastle", "LocTypeJail", "LocTypeStore",
+				"LocTypeTemple", "LocTypeFarm" };
+			std::uint32_t flags = a_cell && a_cell->IsInteriorCell() ? proto::kPlaceInterior : 0u;
+			auto*         location = a_player->GetCurrentLocation();
+			if (location && location->HasKeywordString("LocTypeDungeon")) {
+				flags |= proto::kPlaceDungeon;
+			}
+			for (int depth = 0; location && depth < 8; location = location->parentLoc, ++depth) {
+				if (std::ranges::any_of(kSettlement, [&](std::string_view a_keyword) { return location->HasKeywordString(a_keyword); })) {
+					flags |= proto::kPlaceSettlement;
+					break;
+				}
+			}
+			if (auto* sky = RE::Sky::GetSingleton(); sky && sky->currentWeather && !(flags & proto::kPlaceInterior)) {
+				if (sky->currentWeather->data.flags.any(RE::TESWeather::WeatherDataFlag::kRainy)) {
+					flags |= proto::kPlaceRain;
+				}
+				if (sky->currentWeather->data.flags.any(RE::TESWeather::WeatherDataFlag::kSnow)) {
+					flags |= proto::kPlaceSnow;
+				}
+			}
+			return flags;
+		}
+
 		// SkyCraft+ : mode switch. Sets the Skyrim player's health to this share of its maximum.
 		void SetHealthFraction(RE::PlayerCharacter* a_player, float a_fraction)
 		{
@@ -1074,6 +1105,18 @@ namespace skycraft
 			sky.flags = (cell ? proto::kSkyInGame : 0u) | (menu ? proto::kSkyMenuOpen : 0u) | (loading ? proto::kSkyLoading : 0u) |
 			            (skyrimDrives ? proto::kSkyDrivesPlayer : 0u) | (rightHand ? proto::kSkyRightHandSkyrim : 0u) |
 			            (leftHand ? proto::kSkyLeftHandSkyrim : 0u);
+			static float         placeTimer = 0.0f;
+			static std::uint32_t placeFlags = 0;
+			if ((placeTimer -= a_delta) <= 0.0f) {
+				placeTimer = 0.5f;
+				const auto flags = PlaceFlags(a_player, cell);
+				if (flags != placeFlags) {
+					logger::info("place: {}{}{}{}{}", flags & proto::kPlaceInterior ? "interior " : "exterior ", flags & proto::kPlaceSettlement ? "settlement " : "",
+						flags & proto::kPlaceDungeon ? "dungeon " : "", flags & proto::kPlaceRain ? "rain " : "", flags & proto::kPlaceSnow ? "snow" : "");
+				}
+				placeFlags = flags;
+			}
+			sky.placeFlags = placeFlags;
 			if (const float maxHealth = a_player->GetActorValueMax(RE::ActorValue::kHealth); maxHealth > 0.0f) {
 				sky.healthFrac = std::clamp(a_player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kHealth) / maxHealth, 0.0f, 1.0f);
 			}

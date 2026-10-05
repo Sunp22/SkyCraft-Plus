@@ -1,0 +1,335 @@
+// SkyCraft+ : living world
+package dev.skycraft.world;
+
+import dev.skycraft.SkyCraft;
+import dev.skycraft.link.Proto;
+import java.io.IOException;
+import java.io.Reader;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Properties;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.core.BlockPos;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EntityTypes;
+import net.minecraft.world.entity.Leashable;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.MobCategory;
+import net.minecraft.world.entity.TamableAnimal;
+import net.minecraft.world.phys.AABB;
+import org.jspecify.annotations.Nullable;
+
+/**
+ * A living Minecraft world in Skyrim. The mirror world is a void with no biomes, so vanilla
+ * spawning finds nowhere to put anything. This spawns around the host on Skyrim's ground instead:
+ * animals by what the ground is (grass, snow, sand, rock, forest), monsters at Skyrim's night in
+ * the wilds and at any hour in dungeons, never in settlements. Minecraft's clock and weather follow
+ * Skyrim's. Settings in config/skycraft.properties (spawnAnimals, spawnMonsters, animalCap,
+ * monsterCap).
+ */
+public final class SkySpawner {
+	/** Animals this spawned: put away again when the player is far (unless tamed, leashed or named). */
+	public static final String SPAWNED_TAG = "skycraft_spawned";
+
+	private static final int RANGE = 48;           // blocks around the player that count against the caps
+	private static final int MIN_DISTANCE = 24;    // outdoors: out of sight, as vanilla
+	private static final int MAX_DISTANCE = 42;    // inside the Skyrim ground the player has had sent
+	private static final int DESPAWN_DISTANCE = 64;
+
+	private static boolean spawnAnimals = true;
+	private static boolean spawnMonsters = true;
+	private static int animalCap = 8;
+	private static int monsterCap = 6; // about half of a vanilla night around one player
+
+	private static int lastTimeSet = -1;
+	private static int lastWeather = -1;
+
+	private record Weighted(EntityType<? extends Mob> type, int weight, int minGroup, int maxGroup) {
+	}
+
+	private SkySpawner() {
+	}
+
+	public static void init() {
+		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+			loadSettings();
+			lastTimeSet = -1;
+			lastWeather = -1;
+		});
+		ServerTickEvents.END_SERVER_TICK.register(SkySpawner::tick);
+	}
+
+	private static void loadSettings() {
+		Path file = FabricLoader.getInstance().getConfigDir().resolve("skycraft.properties");
+		Properties p = new Properties();
+		if (Files.exists(file)) {
+			try (Reader in = Files.newBufferedReader(file)) {
+				p.load(in);
+			} catch (IOException e) {
+				SkyCraft.LOG.warn("SkyCraft: couldn't read {}: {}", file, e.toString());
+			}
+		}
+		spawnAnimals = Boolean.parseBoolean(p.getProperty("spawnAnimals", "true").trim());
+		spawnMonsters = Boolean.parseBoolean(p.getProperty("spawnMonsters", "true").trim());
+		animalCap = parseInt(p.getProperty("animalCap"), animalCap);
+		monsterCap = parseInt(p.getProperty("monsterCap"), monsterCap);
+		SkyCraft.LOG.info("SkyCraft: spawning animals {} (up to {}), monsters {} (up to {})", spawnAnimals, animalCap, spawnMonsters, monsterCap);
+	}
+
+	private static int parseInt(@Nullable String s, int fallback) {
+		try {
+			return s == null ? fallback : Math.max(0, Integer.parseInt(s.trim()));
+		} catch (NumberFormatException e) {
+			return fallback;
+		}
+	}
+
+	private static void tick(MinecraftServer server) {
+		if (!SkyWorld.valid() || !SkyCollision.active() || server.getTickCount() % 20 != 0) {
+			return;
+		}
+		ServerPlayer host = null;
+		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+			if (dev.skycraft.net.SkyNet.isHost(player)) {
+				host = player;
+				break;
+			}
+		}
+		syncTimeAndWeather(server);
+		if (host == null || !host.isAlive() || host.isSpectator()) {
+			return;
+		}
+		ServerLevel level = host.level();
+		if (server.getTickCount() % 100 == 0) {
+			despawnFarAnimals(level);
+		}
+		RandomSource random = level.getRandom();
+		boolean outdoors = !SkyWorld.interior();
+		if (spawnAnimals && outdoors && count(level, host, MobCategory.CREATURE) < animalCap) {
+			trySpawn(level, host, random, false);
+		}
+		boolean monsterTime = SkyWorld.dungeon() || (outdoors && SkyWorld.night());
+		if (spawnMonsters && monsterTime && !SkyWorld.settlement() && count(level, host, MobCategory.MONSTER) < monsterCap) {
+			trySpawn(level, host, random, true);
+		}
+	}
+
+	/** Minecraft's clock and weather follow Skyrim's (its time doesn't run on its own here). */
+	private static void syncTimeAndWeather(MinecraftServer server) {
+		// Minecraft's day starts at 6am (0) with noon at 6000 and midnight at 18000.
+		int ticks = Math.floorMod(Math.round((SkyWorld.hour() - 6.0F) * 1000.0F), 24000);
+		if (lastTimeSet < 0 || Math.abs(ticks - lastTimeSet) >= 10) {
+			lastTimeSet = ticks;
+			server.getCommands().performPrefixedCommand(server.createCommandSourceStack().withSuppressedOutput(), "time set " + ticks);
+		}
+		int weather = SkyWorld.rain() || SkyWorld.snow() ? 1 : 0;
+		if (weather != lastWeather) {
+			lastWeather = weather;
+			if (weather == 1) {
+				server.setWeatherParameters(0, 12000, true, false);
+			} else {
+				server.setWeatherParameters(12000, 0, false, false);
+			}
+		}
+	}
+
+	private static int count(ServerLevel level, ServerPlayer player, MobCategory category) {
+		AABB box = player.getBoundingBox().inflate(RANGE);
+		return level.getEntitiesOfClass(Mob.class, box, mob -> mob.isAlive() && mob.getType().getCategory() == category).size();
+	}
+
+	private static void trySpawn(ServerLevel level, ServerPlayer player, RandomSource random, boolean monster) {
+		boolean indoors = SkyWorld.interior();
+		int minDistance = indoors ? 10 : MIN_DISTANCE, maxDistance = indoors ? 28 : MAX_DISTANCE;
+		double angle = random.nextDouble() * Math.PI * 2.0;
+		double distance = minDistance + random.nextDouble() * (maxDistance - minDistance);
+		int x = (int) Math.floor(player.getX() + Math.cos(angle) * distance);
+		int z = (int) Math.floor(player.getZ() + Math.sin(angle) * distance);
+		BlockPos ground = findGround(level, x, (int) Math.floor(player.getY()), z);
+		if (ground == null) {
+			return;
+		}
+		Weighted pick = monster ? pickMonster(level, ground, random) : pickAnimal(level, ground, random);
+		if (pick == null) {
+			return;
+		}
+		int group = pick.minGroup() + random.nextInt(pick.maxGroup() - pick.minGroup() + 1);
+		double floor = SkyCollision.floorUnder(ground);
+		for (int i = 0; i < group; i++) {
+			double px = ground.getX() + 0.5 + (i == 0 ? 0.0 : random.nextInt(5) - 2);
+			double pz = ground.getZ() + 0.5 + (i == 0 ? 0.0 : random.nextInt(5) - 2);
+			BlockPos at = i == 0 ? ground : findGround(level, (int) Math.floor(px), ground.getY(), (int) Math.floor(pz));
+			if (at == null) {
+				continue;
+			}
+			double y = i == 0 ? floor : SkyCollision.floorUnder(at);
+			spawn(level, pick.type(), px, y, pz, random, !monster);
+		}
+	}
+
+	private static void spawn(ServerLevel level, EntityType<? extends Mob> type, double x, double y, double z, RandomSource random, boolean animal) {
+		Mob mob = type.create(level, EntitySpawnReason.NATURAL);
+		if (mob == null) {
+			return;
+		}
+		mob.snapTo(x, y + 0.01, z, random.nextFloat() * 360.0F, 0.0F);
+		if (!level.noCollision(mob)) {
+			mob.discard();
+			return;
+		}
+		mob.finalizeSpawn(level, level.getCurrentDifficultyAt(mob.blockPosition()), EntitySpawnReason.NATURAL, null);
+		if (animal) {
+			mob.addTag(SPAWNED_TAG);
+		}
+		level.tryAddFreshEntityWithPassengers(mob);
+	}
+
+	/**
+	 * A spot on Skyrim's ground near (x, z), within a few blocks of the player's height: held up by
+	 * Skyrim ground, room for a mob above it, not under water and inside what Skyrim has sent.
+	 */
+	private static @Nullable BlockPos findGround(ServerLevel level, int x, int playerY, int z) {
+		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+		for (int y = playerY + 10; y >= playerY - 16; y--) {
+			pos.set(x, y, z);
+			if (!SkyCollision.isKnown(x, y, z) || SkyCollision.blocksPath(pos) || Double.isNaN(SkyCollision.floorUnder(pos))) {
+				continue;
+			}
+			BlockPos above = pos.above();
+			if (SkyCollision.blocksPath(above) || !level.getBlockState(pos).isAir() || !level.getBlockState(above).isAir() || SkyWater.depthIn(pos) > 0.0F) {
+				continue;
+			}
+			return pos.immutable();
+		}
+		return null;
+	}
+
+	/** What Skyrim's ground under this spot is made of (Proto.DIG_*), and whether trees are near. */
+	private static int groundMaterial(BlockPos pos) {
+		List<SkyTri> tris = new ArrayList<>();
+		double floor = SkyCollision.floorUnder(pos);
+		SkyCollision.trianglesNear(new AABB(pos.getX(), floor - 1.0, pos.getZ(), pos.getX() + 1.0, floor + 0.25, pos.getZ() + 1.0), tris);
+		int material = Proto.DIG_NONE;
+		double best = Double.NEGATIVE_INFINITY;
+		for (SkyTri t : tris) {
+			if (t.walkable && t.maxY > best) {
+				best = t.maxY;
+				material = t.material;
+			}
+		}
+		return material;
+	}
+
+	private static boolean treesNear(BlockPos pos) {
+		List<SkyTri> tris = new ArrayList<>();
+		SkyCollision.trianglesNear(new AABB(pos).inflate(6.0, 2.0, 6.0).expandTowards(0.0, 6.0, 0.0), tris);
+		for (SkyTri t : tris) {
+			if (t.material == Proto.DIG_OAK_LOG || t.material == Proto.DIG_SPRUCE_LOG || t.material == Proto.DIG_BIRCH_LOG) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static @Nullable Weighted pickAnimal(ServerLevel level, BlockPos pos, RandomSource random) {
+		int material = groundMaterial(pos);
+		List<Weighted> list = new ArrayList<>();
+		switch (material) {
+			case Proto.DIG_SNOW, Proto.DIG_ICE -> {
+				list.add(new Weighted(EntityTypes.RABBIT, 8, 2, 3));
+				list.add(new Weighted(EntityTypes.FOX, 6, 1, 2));
+				list.add(new Weighted(EntityTypes.GOAT, 3, 1, 2));
+				list.add(new Weighted(EntityTypes.WOLF, 3, 2, 4));
+				list.add(new Weighted(EntityTypes.POLAR_BEAR, 1, 1, 2));
+			}
+			case Proto.DIG_SAND -> list.add(new Weighted(EntityTypes.RABBIT, 6, 2, 3));
+			case Proto.DIG_STONE, Proto.DIG_COBBLE, Proto.DIG_GRAVEL -> {
+				list.add(new Weighted(EntityTypes.GOAT, 3, 1, 2));
+				list.add(new Weighted(EntityTypes.RABBIT, 2, 1, 2));
+			}
+			case Proto.DIG_GRASS, Proto.DIG_DIRT, Proto.DIG_MUD -> {
+				list.add(new Weighted(EntityTypes.SHEEP, 12, 2, 4));
+				list.add(new Weighted(EntityTypes.PIG, 10, 2, 4));
+				list.add(new Weighted(EntityTypes.COW, 8, 2, 4));
+				list.add(new Weighted(EntityTypes.CHICKEN, 10, 2, 4));
+				list.add(new Weighted(EntityTypes.RABBIT, 3, 2, 3));
+				if (treesNear(pos)) {
+					list.add(new Weighted(EntityTypes.WOLF, 5, 2, 4));
+					list.add(new Weighted(EntityTypes.FOX, 4, 1, 2));
+				} else {
+					list.add(new Weighted(EntityTypes.HORSE, 2, 2, 4));
+				}
+			}
+			default -> {
+				return null; // roads, wood, metal...: nothing grazes there
+			}
+		}
+		return pick(list, random);
+	}
+
+	private static @Nullable Weighted pickMonster(ServerLevel level, BlockPos pos, RandomSource random) {
+		boolean snowy = groundMaterial(pos) == Proto.DIG_SNOW || SkyWorld.snow();
+		List<Weighted> list = new ArrayList<>();
+		list.add(new Weighted(EntityTypes.ZOMBIE, 40, 1, 2));
+		list.add(new Weighted(snowy ? EntityTypes.STRAY : EntityTypes.SKELETON, 30, 1, 1));
+		list.add(new Weighted(EntityTypes.SPIDER, 25, 1, 1));
+		list.add(new Weighted(EntityTypes.CREEPER, 25, 1, 1));
+		list.add(new Weighted(EntityTypes.ENDERMAN, 6, 1, 1));
+		if (!SkyWorld.interior()) {
+			list.add(new Weighted(EntityTypes.WITCH, 2, 1, 1));
+		}
+		return pick(list, random);
+	}
+
+	private static @Nullable Weighted pick(List<Weighted> list, RandomSource random) {
+		int total = 0;
+		for (Weighted w : list) {
+			total += w.weight();
+		}
+		if (total <= 0) {
+			return null;
+		}
+		int r = random.nextInt(total);
+		for (Weighted w : list) {
+			r -= w.weight();
+			if (r < 0) {
+				return w;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Animals this spawned don't pile up all over Skyrim: far from every player (beyond the Skyrim
+	 * ground Minecraft knows about), they go, unless tamed, leashed, named or ridden.
+	 */
+	private static void despawnFarAnimals(ServerLevel level) {
+		List<Entity> gone = new ArrayList<>();
+		for (Entity e : level.getAllEntities()) {
+			if (!(e instanceof Mob mob) || !mob.entityTags().contains(SPAWNED_TAG)) {
+				continue;
+			}
+			if (mob.hasCustomName() || mob.isVehicle() || mob.isPersistenceRequired() || (mob instanceof TamableAnimal tame && tame.isTame())
+				|| (mob instanceof Leashable leash && leash.isLeashed())) {
+				mob.removeTag(SPAWNED_TAG); // the player has taken it on: it stays for good
+				continue;
+			}
+			if (level.getNearestPlayer(mob, DESPAWN_DISTANCE) == null) {
+				gone.add(mob);
+			}
+		}
+		for (Entity e : gone) {
+			e.discard();
+		}
+	}
+}
