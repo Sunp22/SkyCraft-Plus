@@ -231,6 +231,11 @@ public final class SkyLink {
 			return (this.flags & SKY_LEFT_HAND_SKYRIM) != 0;
 		}
 
+		/** SkyCraft+ : a Skyrim menu has paused the game; Minecraft pauses too. */
+		public boolean skyrimPaused() {
+			return (this.flags & SKY_PAUSED) != 0;
+		}
+
 		/** SkyCraft+ : the Skyrim player is blocking with a Skyrim shield or weapon. */
 		public boolean skyrimBlocking() {
 			return (this.flags & SKY_BLOCKING) != 0;

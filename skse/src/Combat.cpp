@@ -122,13 +122,36 @@ namespace skycraft
 			essentialSet = a_on;
 		}
 
+		// SkyCraft+ : a healing effect (spell, potion, ...) is restoring the player's health.
+		bool HealingNow(RE::PlayerCharacter* a_player)
+		{
+			auto* effects = a_player->GetActiveEffectList();
+			if (!effects) {
+				return false;
+			}
+			using Arch = RE::EffectArchetypes::ArchetypeID;
+			for (auto* active : *effects) {
+				auto* base = active && !active->flags.any(RE::ActiveEffect::Flag::kInactive) ? active->GetBaseObject() : nullptr;
+				if (base && base->data.primaryAV == RE::ActorValue::kHealth && !base->IsDetrimental() &&
+					(base->HasArchetype(Arch::kValueModifier) || base->HasArchetype(Arch::kPeakValueModifier) || base->HasArchetype(Arch::kDualValueModifier))) {
+					return true;
+				}
+			}
+			return false;
+		}
+
 		// Minecraft owns the player's health: Skyrim damage is refunded here and sent to Minecraft.
+		// SkyCraft+ : Skyrim's health is held at Minecraft's share (never under half, so one big
+		// hit can't send the player into bleedout) instead of full, so a heal has room to work:
+		// what a healing spell or potion restores goes to Minecraft's hearts. Skyrim's own slow
+		// regeneration doesn't (Minecraft heals by eating).
 		void BridgePlayerDamage(RE::PlayerCharacter* a_player, float a_delta)
 		{
 			auto*       av = a_player->AsActorValueOwner();
 			const float max = a_player->GetActorValueMax(RE::ActorValue::kHealth);
 			const float cur = av->GetActorValue(RE::ActorValue::kHealth);
-			const float deficit = max - cur;
+			const float held = std::clamp(State().mcHealthFrac.load(), 0.5f, 1.0f) * max;
+			const float deficit = held - cur;
 			lastHit.age += a_delta;
 			lastDamagerAge += a_delta;
 			if (!healthPrimed) {
@@ -136,8 +159,17 @@ namespace skycraft
 				healthPrimed = true;
 				if (deficit > 0.0f) {
 					av->RestoreActorValue(RE::ActorValue::kHealth, deficit);
+				} else if (deficit < 0.0f) {
+					av->DamageActorValue(RE::ActorValue::kHealth, -deficit);
 				}
 				return;
+			}
+			if (deficit < -0.01f) {
+				const float gained = -deficit;
+				av->DamageActorValue(RE::ActorValue::kHealth, gained);
+				if (HealingNow(a_player) && max > 0.0f) {
+					Link::Get().PushInput(proto::kInHeal, 0, static_cast<std::int32_t>(gained / max * 10000.0f));
+				}
 			}
 			if (deficit > 0.01f) {
 				av->RestoreActorValue(RE::ActorValue::kHealth, deficit);

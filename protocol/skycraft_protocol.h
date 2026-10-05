@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 21;
+	inline constexpr std::uint32_t kVersion = 22;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -71,6 +71,9 @@ namespace skycraft::proto
 		// The Skyrim player is blocking (a Skyrim shield or weapon): Minecraft attacks from the front
 		// are blocked like a Minecraft shield's.
 		kSkyBlocking = 1u << 6,
+		// A Skyrim menu has paused the game (inventory, magic, map...): Minecraft pauses too, as its
+		// own pause menu does, so its mobs don't attack the player meanwhile.
+		kSkyPaused = 1u << 7,
 	};
 
 	// SkyState::placeFlags: where the player is and the weather, for Minecraft's spawning.
@@ -214,6 +217,7 @@ namespace skycraft::proto
 		                     // player looks at by hand (doors, chests, crafting tables, levers)
 		kInSkyrimHit = 10,   // a Skyrim melee hit landed (its HitFrame): code = SkyrimHitFlags, a = Minecraft damage * 100,
 		                     // b = reach in blocks * 100. Minecraft hits the mob(s) in front of the player
+		kInHeal = 11,        // a Skyrim healing effect healed the player: a = share of max health * 10000
 	};
 
 	enum HurtKind : std::uint16_t

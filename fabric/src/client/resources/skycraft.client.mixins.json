@@ -16,6 +16,7 @@
     "LevelRendererMixin",
     "MinecraftDigMixin",
     "MinecraftMixin",
+    "MinecraftPauseMixin",
     "MinecraftUseMixin",
     "MultiPlayerGameModeMixin",
     "RenderSetupAccessor",

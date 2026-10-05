@@ -36,6 +36,9 @@ namespace skycraft
 		bool           haveLastSet = false;
 		float          hudTimer = 0.0f;
 		bool           hudRightHand = false, hudLeftHand = false;  // SkyCraft+ : the hands the HUD was last set for
+		// SkyCraft+ : the last SkyState the per-frame update wrote, and when (see ReportPause).
+		proto::SkyState            lastSky{};
+		std::atomic<std::uint64_t> lastSkyTick{ 0 };
 		float          savedGravity = -1.0f;  // Skyrim's controller gravity while Minecraft drives
 		// Minecraft's physics ticks, on our clock. Minecraft ticks exactly every tickMs, but stamps a
 		// tick only after that frame's network work and the tick itself (a few ms; more while terrain
@@ -645,6 +648,9 @@ namespace skycraft
 			}
 			st.mcScreenOpen = screenOpen;
 			st.mcUseTarget = haveMc && (mc.flags & proto::kMcUseTarget);
+			if (haveMc && mc.healthFrac > 0.0f) {
+				st.mcHealthFrac = mc.healthFrac;
+			}
 			if (haveMc && mc.sensitivity > 0.0f) {
 				st.sensitivity = mc.sensitivity;
 			}
@@ -1142,6 +1148,8 @@ namespace skycraft
 				sky.gameHour = calendar->GetHour();
 			}
 			link.WriteSkyState(sky);
+			lastSky = sky;
+			lastSkyTick = GetTickCount64();
 
 			settleTimer -= a_delta;
 			if (haveMc && !loading && cell && settleTimer <= 0.0f) {
@@ -1470,6 +1478,20 @@ namespace skycraft
 				bone->Update(update);
 				collapsed.reset(bone);
 			}
+		}
+
+		void ReportPause()
+		{
+			auto*      ui = RE::UI::GetSingleton();
+			const auto now = GetTickCount64();
+			const auto last = lastSkyTick.load();
+			// Only once the per-frame update has really stopped (it writes the state otherwise).
+			if (!ui || !ui->GameIsPaused() || last == 0 || now - last < 150) {
+				return;
+			}
+			auto sky = lastSky;
+			sky.flags |= proto::kSkyPaused | proto::kSkyMenuOpen;
+			Link::Get().WriteSkyState(sky);
 		}
 
 		// SkyCraft+ : mode switch. Skyrim mode is one more reason Skyrim takes the player

@@ -33,6 +33,8 @@ namespace skycraft
 		// SkyCraft+ : Minecraft's crosshair is on something used by hand (chest, door, villager...):
 		// right click goes to Minecraft even with a Skyrim left hand.
 		std::atomic<bool> mcUseTarget{ false };
+		// SkyCraft+ : Minecraft's player health / max (Skyrim's is held at it while Minecraft drives).
+		std::atomic<float> mcHealthFrac{ 1.0f };
 
 		// Look direction in MC degrees; integrated from raw mouse input (main thread).
 		float yaw{ 0.0f };
@@ -72,6 +74,9 @@ namespace skycraft
 		// SkyCraft+ : hand ownership. Right before Skyrim draws the frame (after all its animation):
 		// hides Skyrim's first-person arm on the side Minecraft holds.
 		void BeforeRenderWorld();
+		// SkyCraft+ : from Present (which runs while the game is paused, unlike the player update):
+		// while a Skyrim menu pauses the game, Minecraft is told to pause too.
+		void ReportPause();
 		// Called from Present: logs rendered camera vs Minecraft eye when a check is due.
 		void CheckRenderedCamera();
 		// Third-person diagnostics, from where the blocks are drawn: the camera Skyrim renders this
