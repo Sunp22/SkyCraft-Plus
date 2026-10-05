@@ -152,8 +152,20 @@ namespace skycraft
 		{
 			auto*       av = a_player->AsActorValueOwner();
 			const float max = a_player->GetActorValueMax(RE::ActorValue::kHealth);
-			const float cur = av->GetActorValue(RE::ActorValue::kHealth);
 			const float held = std::clamp(State().mcHealthFrac.load(), 0.5f, 1.0f) * max;
+			// Minecraft's hearts moved (healed, hurt, eaten): Skyrim's health follows quietly. Only
+			// what's left after that is Skyrim's doing; taken as a hit, Minecraft healing above half
+			// sent damage back to Minecraft over and over.
+			static float lastHeld = -1.0f;
+			if (healthPrimed && lastHeld >= 0.0f && std::fabs(held - lastHeld) > 0.001f) {
+				if (held > lastHeld) {
+					av->RestoreActorValue(RE::ActorValue::kHealth, held - lastHeld);
+				} else {
+					av->DamageActorValue(RE::ActorValue::kHealth, lastHeld - held);
+				}
+			}
+			lastHeld = held;
+			const float cur = av->GetActorValue(RE::ActorValue::kHealth);
 			const float deficit = held - cur;
 			lastHit.age += a_delta;
 			lastDamagerAge += a_delta;
