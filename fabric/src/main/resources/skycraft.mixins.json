@@ -15,6 +15,7 @@
     "ItemMixin",
     "MinecraftServerFlightMixin",
     "PathNavigationMixin",
+    "PathTypeCacheMixin",
     "PlayerEdgeMixin",
     "PressurePlateMixin",
     "ProjectileMixin",

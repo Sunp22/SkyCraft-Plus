@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 16;
+	inline constexpr std::uint32_t kVersion = 17;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -71,7 +71,7 @@ namespace skycraft::proto
 
 	// Skyrim's water (lakes, rivers, the sea) around the player, for Minecraft to treat as its own
 	// water: swimming, floating, drowning. Seqlock like SkyState.
-	inline constexpr std::uint32_t kWaterGridSize = 16;
+	inline constexpr std::uint32_t kWaterGridSize = 24;
 	inline constexpr float         kNoWater = -1.0e30f;
 
 	struct WaterGrid
