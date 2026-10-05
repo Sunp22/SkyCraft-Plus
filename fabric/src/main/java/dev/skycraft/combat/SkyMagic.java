@@ -30,8 +30,9 @@ import net.minecraft.world.phys.Vec3;
  */
 public final class SkyMagic {
 	private static final List<SkyLink.Shot> SHOTS = new ArrayList<>();
-	/** Shot id -> the mobs it has hit (a stopping shot that hit something holds STOPPED). */
-	private static final Map<Integer, Set<Integer>> HIT = new HashMap<>();
+	/** Shot id -> the mobs it has hit and when (server tick; a stopping shot that hit something holds STOPPED). */
+	private static final Map<Integer, Map<Integer, Integer>> HIT = new HashMap<>();
+	private static final int REPEAT_TICKS = 10; // sprays and beams: each mob again every half second
 	private static final int STOPPED = Integer.MIN_VALUE;
 	private static int logged;
 	private static int readsLogged;
@@ -80,8 +81,10 @@ public final class SkyMagic {
 	}
 
 	private static void apply(ServerPlayer player, SkyLink.Shot shot) {
-		Set<Integer> hit = HIT.computeIfAbsent(shot.id(), k -> new HashSet<>());
-		if (hit.contains(STOPPED)) {
+		Map<Integer, Integer> hit = HIT.computeIfAbsent(shot.id(), k -> new HashMap<>());
+		int now = player.level().getServer().getTickCount();
+		boolean repeats = (shot.flags() & Proto.SHOT_REPEATS) != 0;
+		if (hit.containsKey(STOPPED)) {
 			return;
 		}
 		ServerLevel level = player.level();
@@ -91,7 +94,7 @@ public final class SkyMagic {
 		double reach = (flags & Proto.SHOT_CONE) != 0 ? 0.0 : shot.radius();
 		AABB area = new AABB(a, b).inflate((flags & (Proto.SHOT_CONE | Proto.SHOT_EXPLOSION)) != 0 ? Math.max(shot.radius(), a.distanceTo(b)) + 1.0 : reach + 1.0);
 		List<LivingEntity> candidates = level.getEntitiesOfClass(LivingEntity.class, area,
-			e -> e.isAlive() && !(e instanceof SkyrimActorEntity) && !(e instanceof Player) && !hit.contains(e.getId()));
+			e -> e.isAlive() && !(e instanceof SkyrimActorEntity) && !(e instanceof Player) && !recentlyHit(hit, e.getId(), now, repeats));
 		if (candidates.isEmpty()) {
 			return;
 		}
@@ -139,14 +142,20 @@ public final class SkyMagic {
 			if (nearest != null) {
 				targets.add(nearest);
 				if ((flags & Proto.SHOT_STOPS) != 0) {
-					hit.add(STOPPED);
+					hit.put(STOPPED, now);
 				}
 			}
 		}
 		for (LivingEntity e : targets) {
-			hit.add(e.getId());
+			hit.put(e.getId(), now);
 			affect(level, player, e, shot, a);
 		}
+	}
+
+	/** Hit by this shot already (a lasting spray or beam: within the last half second). */
+	private static boolean recentlyHit(Map<Integer, Integer> hit, int entity, int now, boolean repeats) {
+		Integer at = hit.get(entity);
+		return at != null && (!repeats || now - at < REPEAT_TICKS);
 	}
 
 	private static void affect(ServerLevel level, ServerPlayer player, LivingEntity e, SkyLink.Shot shot, Vec3 from) {
@@ -185,6 +194,9 @@ public final class SkyMagic {
 		}
 		if ((flags & Proto.SHOT_BEAM) != 0) {
 			return "beam";
+		}
+		if ((flags & Proto.SHOT_SPRAY) != 0) {
+			return "spray";
 		}
 		return (flags & Proto.SHOT_STOPS) != 0 ? "bolt or arrow" : "stream";
 	}

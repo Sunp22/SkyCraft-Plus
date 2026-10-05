@@ -11,7 +11,7 @@ namespace skycraft::SkyrimShots
 	namespace
 	{
 		constexpr float kSpellToMc = 0.25f;        // a firebolt (25) ~6, like a Minecraft iron sword
-		constexpr float kConcentrationShare = 0.3f; // flames and the like: many small shots a second
+		constexpr float kConcentrationShare = 0.5f; // flames and the like: a hit every half second
 		constexpr float kArrowToMc = 0.35f;        // a hunting bow with iron arrows (~17) ~6
 		constexpr float kKeepAfterGone = 0.4f;     // seconds a finished shot stays listed
 
@@ -81,7 +81,11 @@ namespace skycraft::SkyrimShots
 				shot.flags = 0;
 				const auto type = a_projectile->GetFormType();
 				if (type == RE::FormType::ProjectileBeam) {
-					shot.flags |= proto::kShotBeam;
+					shot.flags |= proto::kShotBeam | proto::kShotRepeats;
+				} else if (type == RE::FormType::ProjectileFlame) {
+					// One flame projectile sits at the hand for the whole cast (the spray is only its
+					// look): what it burns is out along the aim.
+					shot.flags |= proto::kShotSpray | proto::kShotRepeats;
 				} else if (type == RE::FormType::ProjectileCone) {
 					shot.flags |= proto::kShotCone;
 				} else {
@@ -105,20 +109,25 @@ namespace skycraft::SkyrimShots
 				}
 			}
 			shot.x1 = float(here.x), shot.y1 = float(here.y), shot.z1 = float(here.z);
-			if (shot.flags & proto::kShotBeam) {
-				// The beam reaches out along the projectile's aim, as far as the spell's range.
-				const float heading = a_projectile->data.angle.z, pitch = a_projectile->data.angle.x;
-				const float range = std::min(base ? base->data.range : 2000.0f, 3000.0f);
+			if (shot.flags & (proto::kShotBeam | proto::kShotSpray)) {
+				// From the hand out along the player's aim (the projectile itself stays at the hand),
+				// as far as the spell reaches: a beam its range, a spray a few blocks.
+				auto*       player = RE::PlayerCharacter::GetSingleton();
+				const float heading = player ? player->data.angle.z : a_projectile->data.angle.z;
+				const float pitch = player ? player->data.angle.x : a_projectile->data.angle.x;
+				const float range = (shot.flags & proto::kShotSpray) ? std::clamp(base ? base->data.range : 420.0f, 210.0f, 560.0f)
+				                                                     : std::min(base ? base->data.range : 2000.0f, 3000.0f);
 				const RE::NiPoint3 end = a_projectile->GetPosition() +
 				                         RE::NiPoint3(std::sin(heading) * std::cos(pitch), std::cos(heading) * std::cos(pitch), -std::sin(pitch)) * range;
 				const auto endMc = ToMc(end);
+				shot.x0 = float(here.x), shot.y0 = float(here.y), shot.z0 = float(here.z);
 				shot.x1 = float(endMc.x), shot.y1 = float(endMc.y), shot.z1 = float(endMc.z);
 			}
 			if (shot.flags & proto::kShotCone) {
 				const float spread = base ? base->data.coneSpread : 0.6f;
 				shot.radius = std::clamp(spread > 3.2f ? spread * 0.0174533f : spread, 0.2f, 1.2f);  // degrees or radians
 			} else {
-				shot.radius = std::max(0.3f, (base ? base->data.collisionRadius : 10.0f) / float(proto::kUnitsPerBlock));
+				shot.radius = std::max((shot.flags & proto::kShotSpray) ? 0.7f : 0.3f, (base ? base->data.collisionRadius : 10.0f) / float(proto::kUnitsPerBlock));
 			}
 			a_tracked.seen = true;
 			a_tracked.gone = -1.0f;
@@ -163,7 +172,7 @@ namespace skycraft::SkyrimShots
 					}
 					if (t.explosionRadius > 0.0f) {
 						// It went off where it was last seen.
-						t.shot.flags = (t.shot.flags & ~(proto::kShotPath | proto::kShotBeam | proto::kShotCone | proto::kShotStops)) | proto::kShotExplosion;
+						t.shot.flags = (t.shot.flags & ~(proto::kShotPath | proto::kShotBeam | proto::kShotCone | proto::kShotStops | proto::kShotSpray | proto::kShotRepeats)) | proto::kShotExplosion;
 						t.shot.radius = t.explosionRadius;
 						t.shot.id ^= 0x80000000u;  // a new shot: everything in the blast is hit, even what the bolt hit
 					}
