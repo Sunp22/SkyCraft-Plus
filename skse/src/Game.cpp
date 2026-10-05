@@ -1143,6 +1143,12 @@ namespace skycraft
 				placeFlags = flags;
 			}
 			sky.placeFlags = placeFlags;
+			// SkyCraft+ : the underground lines up with Tamriel's sea level (cities share its coordinates).
+			static float seaLevel = [] {
+				auto* tamriel = RE::TESForm::LookupByID<RE::TESWorldSpace>(0x3C);
+				return tamriel ? tamriel->GetDefaultWaterHeight() / float(proto::kUnitsPerBlock) : 0.0f;
+			}();
+			sky.seaLevel = seaLevel;
 			if (const float maxHealth = a_player->GetActorValueMax(RE::ActorValue::kHealth); maxHealth > 0.0f) {
 				sky.healthFrac = std::clamp(a_player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kHealth) / maxHealth, 0.0f, 1.0f);
 			}

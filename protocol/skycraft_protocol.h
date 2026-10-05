@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 24;
+	inline constexpr std::uint32_t kVersion = 25;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -116,8 +116,10 @@ namespace skycraft::proto
 		float         gameHour;
 		float         healthFrac;  // Skyrim player health / max (0..1)
 		std::uint32_t placeFlags;  // PlaceFlags: where the player is and the weather (spawning)
+		float         seaLevel;    // Tamriel's sea level (MC y): the Minecraft underground lines up with it
+		std::uint32_t pad4C;
 	};
-	static_assert(sizeof(SkyState) == 0x48);
+	static_assert(sizeof(SkyState) == 0x50);
 
 	// ---- MC -> Skyrim state @0x200 (seqlock) ------------------------------------------------
 	enum McFlags : std::uint32_t

@@ -234,6 +234,11 @@ public final class SkyDig {
 		BlockState here = level.getBlockState(pos);
 		// Keep whatever Minecraft block is already there (someone built into the ground).
 		if (material > 0 && (here.isAir() || here.canBeReplaced())) {
+			// SkyCraft+ : the underground. Deep ground in the open world comes from real Minecraft.
+			if (SkyUnderground.takes(level, material)) {
+				SkyUnderground.bringUp(level, world, pos);
+				return;
+			}
 			level.setBlock(pos, blockFor(level, pos, material), 3);
 		}
 	}

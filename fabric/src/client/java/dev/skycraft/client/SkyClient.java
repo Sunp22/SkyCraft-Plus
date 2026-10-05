@@ -147,7 +147,7 @@ public final class SkyClient {
 			holdPos = new Vec3(sky.x, sky.y, sky.z);
 		}
 
-		dev.skycraft.world.SkyWorld.update(sky.inGame() && !sky.loading(), sky.gameHour, sky.placeFlags);
+		dev.skycraft.world.SkyWorld.update(sky.inGame() && !sky.loading(), sky.gameHour, sky.placeFlags, sky.seaLevel);
 		SkyCombat.skyrimBlocking = sky.skyrimBlocking();
 		SkyCombat.rightHandSkyrim = sky.rightHandSkyrim();
 		SkyCombat.leftHandSkyrim = sky.leftHandSkyrim();

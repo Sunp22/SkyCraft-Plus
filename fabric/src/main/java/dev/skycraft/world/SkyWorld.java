@@ -15,10 +15,23 @@ public final class SkyWorld {
 	private SkyWorld() {
 	}
 
-	public static void update(boolean inGame, float hour, int flags) {
+	private static volatile float seaLevel;
+
+	public static void update(boolean inGame, float hour, int flags, float sea) {
 		gameHour = hour;
 		placeFlags = flags;
+		seaLevel = sea;
 		valid = inGame;
+	}
+
+	/** Tamriel's sea level (Minecraft y): the underground lines up with it. */
+	public static float seaLevel() {
+		return seaLevel;
+	}
+
+	/** Tamriel or one of its walled cities (the overworld, with the underground under it). */
+	public static boolean tamriel() {
+		return (placeFlags & Proto.PLACE_TAMRIEL) != 0;
 	}
 
 	public static void clear() {
