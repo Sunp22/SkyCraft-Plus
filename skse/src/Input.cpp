@@ -444,15 +444,6 @@ namespace skycraft
 				if (keep.empty()) {
 					return RE::BSEventNotifyControl::kContinue;
 				}
-				for (auto* e : keep) {
-					static int logged = 0;
-					if (e->QUserEvent() == events->shout && e->AsButtonEvent()->IsDown() && logged++ < 10) {
-						auto* player = RE::PlayerCharacter::GetSingleton();
-						auto* shout = player ? player->GetCurrentShout() : nullptr;
-						logger::info("shout pressed in Minecraft mode: equipped shout {}, voice recovering {:.1f}s more",
-							shout ? shout->GetName() : "(none)", player ? player->GetVoiceRecoveryTime() : 0.0f);
-					}
-				}
 				std::vector<RE::InputEvent*> savedNext;
 				for (auto* e : all) {
 					savedNext.push_back(e->next);
