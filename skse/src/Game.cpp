@@ -35,6 +35,7 @@ namespace skycraft
 		RE::NiPoint3   lastSetPos{};
 		bool           haveLastSet = false;
 		float          hudTimer = 0.0f;
+		bool           hudRightHand = false, hudLeftHand = false;  // SkyCraft+ : the hands the HUD was last set for
 		float          savedGravity = -1.0f;  // Skyrim's controller gravity while Minecraft drives
 		// Minecraft's physics ticks, on our clock. Minecraft ticks exactly every tickMs, but stamps a
 		// tick only after that frame's network work and the tick itself (a few ms; more while terrain
@@ -330,7 +331,9 @@ namespace skycraft
 
 		// Hide Skyrim's HUD except the compass, the activation prompt and the enemy health bar
 		// (Minecraft's HUD shows the player's own health, hunger and hotbar).
-		void HideHud(RE::UI* a_ui, bool a_hide)
+		// a_skyrimHands (SkyCraft+ : hand ownership): a hand Skyrim holds needs its magicka, stamina,
+		// charge meters and arrow count; health stays Minecraft's hearts.
+		void HideHud(RE::UI* a_ui, bool a_hide, bool a_skyrimHands)
 		{
 			auto hud = a_ui->GetMenu(RE::HUDMenu::MENU_NAME);
 			if (!hud || !hud->uiMovie) {
@@ -344,8 +347,9 @@ namespace skycraft
 				"_root.HUDMovieBaseInstance.RightChargeMeter",
 				"_root.HUDMovieBaseInstance.ArrowInfoInstance",
 			};
-			const RE::GFxValue visible(!a_hide);
 			for (const auto* path : kElements) {
+				const bool         health = path == kElements[0];
+				const RE::GFxValue visible(!a_hide || (a_skyrimHands && !health));
 				hud->uiMovie->SetVariable((std::string(path) + "._visible").c_str(), visible);
 			}
 		}
@@ -1058,9 +1062,11 @@ namespace skycraft
 
 			captureTimer -= a_delta;
 			hudTimer -= a_delta;
-			if (hudTimer <= 0.0f) {
+			if (hudTimer <= 0.0f || rightHand != hudRightHand || leftHand != hudLeftHand) {
 				hudTimer = 0.5f;
-				HideHud(ui, puppet);
+				hudRightHand = rightHand;
+				hudLeftHand = leftHand;
+				HideHud(ui, puppet, rightHand || leftHand);
 			}
 
 			// Tell Minecraft where Skyrim's player is and where they're looking.
@@ -1383,6 +1389,37 @@ namespace skycraft
 		{
 			auto* ui = RE::UI::GetSingleton();
 			return ui && AnyBlockingMenuOpen(ui);
+		}
+
+		// SkyCraft+ : hand ownership. With one hand Skyrim's and the other Minecraft's, Skyrim's
+		// first-person arm on Minecraft's side is collapsed (its upper arm bone scaled to almost
+		// nothing, which takes the forearm and hand with it) right before the frame is drawn, after
+		// all of the frame's animation: Minecraft draws that hand. Put back when it isn't needed.
+		void BeforeRenderWorld()
+		{
+			static RE::NiPointer<RE::NiAVObject> collapsed;
+			auto&                                st = State();
+			auto*                                player = RE::PlayerCharacter::GetSingleton();
+			RE::NiAVObject*                      bone = nullptr;
+			if (player && st.puppeting && st.rightHandSkyrim != st.leftHandSkyrim) {
+				if (auto* root = player->Get3D(true)) {
+					bone = root->GetObjectByName(st.rightHandSkyrim ? "NPC L UpperArm [LUar]" : "NPC R UpperArm [RUar]");
+				}
+			}
+			RE::NiUpdateData update{};
+			if (collapsed && collapsed.get() != bone) {
+				collapsed->local.scale = 1.0f;
+				collapsed->Update(update);
+				collapsed.reset();
+			}
+			if (bone) {
+				if (!collapsed) {
+					logger::info("hands: Skyrim's first-person {} arm hidden (Minecraft's hand)", st.rightHandSkyrim ? "left" : "right");
+				}
+				bone->local.scale = 0.001f;
+				bone->Update(update);
+				collapsed.reset(bone);
+			}
 		}
 
 		// SkyCraft+ : mode switch. Skyrim mode is one more reason Skyrim takes the player

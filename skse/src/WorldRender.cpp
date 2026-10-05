@@ -3027,6 +3027,7 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 		{
 			static void thunk(bool a_unk)
 			{
+				Game::BeforeRenderWorld();
 				func(a_unk);
 				Perf::Scope timer(Perf::kInFrame);
 				DrawInFrame();

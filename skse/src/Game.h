@@ -66,6 +66,9 @@ namespace skycraft
 		// SkyCraft+ : mode switch. Switches between Minecraft mode and Skyrim mode (needs Minecraft
 		// in its world).
 		void ToggleSkyrimMode();
+		// SkyCraft+ : hand ownership. Right before Skyrim draws the frame (after all its animation):
+		// hides Skyrim's first-person arm on the side Minecraft holds.
+		void BeforeRenderWorld();
 		// Called from Present: logs rendered camera vs Minecraft eye when a check is due.
 		void CheckRenderedCamera();
 		// Third-person diagnostics, from where the blocks are drawn: the camera Skyrim renders this
