@@ -111,11 +111,11 @@ namespace skycraft::SkyrimShots
 			shot.x1 = float(here.x), shot.y1 = float(here.y), shot.z1 = float(here.z);
 			if (shot.flags & (proto::kShotBeam | proto::kShotSpray)) {
 				// From the hand out along the player's aim (the projectile itself stays at the hand),
-				// as far as the spell reaches: a beam its range, a spray a few blocks.
+				// as far as the spell reaches: a beam its range, a spray 10-15 blocks.
 				auto*       player = RE::PlayerCharacter::GetSingleton();
 				const float heading = player ? player->data.angle.z : a_projectile->data.angle.z;
 				const float pitch = player ? player->data.angle.x : a_projectile->data.angle.x;
-				const float range = (shot.flags & proto::kShotSpray) ? std::clamp(base ? base->data.range : 420.0f, 210.0f, 560.0f)
+				const float range = (shot.flags & proto::kShotSpray) ? std::clamp(base ? base->data.range : 840.0f, 700.0f, 1050.0f)
 				                                                     : std::min(base ? base->data.range : 2000.0f, 3000.0f);
 				const RE::NiPoint3 end = a_projectile->GetPosition() +
 				                         RE::NiPoint3(std::sin(heading) * std::cos(pitch), std::cos(heading) * std::cos(pitch), -std::sin(pitch)) * range;
