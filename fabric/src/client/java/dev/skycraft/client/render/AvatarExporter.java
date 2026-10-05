@@ -56,7 +56,12 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.animal.happyghast.HappyGhast;
+import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
+import net.minecraft.world.entity.boss.wither.WitherBoss;
 import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.monster.Ghast;
 import net.minecraft.world.entity.projectile.ItemSupplier;
 import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
 import net.minecraft.world.item.ItemDisplayContext;
@@ -88,6 +93,7 @@ final class AvatarExporter implements SubmitNodeCollector {
 	private static final Direction[] FACES_AND_NONE = { null, Direction.DOWN, Direction.UP, Direction.NORTH, Direction.SOUTH, Direction.WEST, Direction.EAST };
 	private static final double SCENE_RANGE = 64.0;
 	private static final int SCENE_MAX_ENTITIES = 48;
+	private static final double FAR_SCENE_RANGE = 192.0; // SkyCraft+ : bosses and ghasts
 	private static final double BLOCK_ENTITY_RANGE = 48.0;
 	private static final int SCENE_MAX_BLOCK_ENTITIES = 256;
 	private static boolean warnedBlockEntity;
@@ -295,11 +301,18 @@ final class AvatarExporter implements SubmitNodeCollector {
 		PoseStack pose = new PoseStack();
 		int entities = 0;
 		for (Entity e : level.entitiesForRendering()) {
+			// SkyCraft+ : the Nether and the End. The big ones that fight from afar (the Ender Dragon
+			// and its crystals, the Wither, ghasts) are drawn as far as Minecraft tracks them, and
+			// don't count against the limit.
+			boolean big = e instanceof EnderDragon || e instanceof EndCrystal || e instanceof WitherBoss || e instanceof Ghast || e instanceof HappyGhast;
+			double range = big ? FAR_SCENE_RANGE : SCENE_RANGE;
 			if (e == player || e instanceof ItemEntity || e instanceof AbstractArrow || e instanceof ItemSupplier || e instanceof SkyrimActorEntity
-				|| e.distanceToSqr(cam) > SCENE_RANGE * SCENE_RANGE || entities >= SCENE_MAX_ENTITIES) {
+				|| e.distanceToSqr(cam) > range * range || (!big && entities >= SCENE_MAX_ENTITIES)) {
 				continue;
 			}
-			entities++;
+			if (!big) {
+				entities++;
+			}
 			try {
 				EntityRenderState state = dispatcher.extractEntity(e, partialTick);
 				dispatcher.submit(state, cameraState, state.x - origin[0], state.y - origin[1], state.z - origin[2], pose, this);
