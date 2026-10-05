@@ -8,7 +8,7 @@ public final class Proto {
 	}
 
 	public static final int MAGIC = 0x43594B53;
-	public static final int VERSION = 25;
+	public static final int VERSION = 26;
 	// A second client on the same PC (multiplayer testing) talks to its own stand-in Skyrim:
 	// -Dskycraft.link=Local\SkyCraft_guest (see tools/fake_guest.py).
 	public static final String MAPPING_NAME = System.getProperty("skycraft.link", "Local\\SkyCraft_v1");
@@ -169,6 +169,7 @@ public final class Proto {
 	public static final int SKY_LEFT_HAND_SKYRIM = 1 << 5;
 	public static final int SKY_BLOCKING = 1 << 6;
 	public static final int SKY_PAUSED = 1 << 7;
+	public static final int SKY_PARKED = 1 << 8; // SkyCraft+ : v26
 
 	public static final int PLACE_INTERIOR = 1, PLACE_SETTLEMENT = 1 << 1, PLACE_DUNGEON = 1 << 2, PLACE_RAIN = 1 << 3, PLACE_SNOW = 1 << 4,
 		PLACE_TOWN = 1 << 5, PLACE_TAMRIEL = 1 << 6;
@@ -205,6 +206,7 @@ public final class Proto {
 	public static final long MS_CAMERA_MODE = 0xC0;
 	public static final long MS_CAMERA_DISTANCE = 0xC4;
 	public static final long MS_HEALTH_FRAC = 0xC8;
+	public static final long MS_DIMENSION = 0xCC; // SkyCraft+ : v26
 
 	public static final int MC_IN_WORLD = 1;
 	public static final int MC_SCREEN_OPEN = 1 << 1;
@@ -215,6 +217,14 @@ public final class Proto {
 	public static final int MC_SWIMMING = 1 << 6;
 	public static final int MC_FLYING = 1 << 7;
 	public static final int MC_USE_TARGET = 1 << 8;
+
+	// SkyCraft+ : McState dimension (v26). 3 and up: Minecraft's own worlds, Skyrim parks its player.
+	public static final int DIM_TAMRIEL = 0;
+	public static final int DIM_INTERIORS = 1;
+	public static final int DIM_WORLDSPACES = 2;
+	public static final int DIM_NETHER = 3;
+	public static final int DIM_END = 4;
+	public static final int DIM_OTHER = 5;
 
 	// Overlay
 	public static final long OC_STATE = 0x00;

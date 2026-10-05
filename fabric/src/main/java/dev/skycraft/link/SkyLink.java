@@ -241,6 +241,11 @@ public final class SkyLink {
 		public boolean skyrimBlocking() {
 			return (this.flags & SKY_BLOCKING) != 0;
 		}
+
+		/** SkyCraft+ : Skyrim's player is parked while Minecraft's is in the Nether or the End. */
+		public boolean parked() {
+			return (this.flags & SKY_PARKED) != 0;
+		}
 	}
 
 	/** Seqlock read of SkyState into {@code out}. Returns false if the link is down. */
@@ -354,6 +359,7 @@ public final class SkyLink {
 		public int cameraMode;
 		public float cameraDistance;
 		public float healthFrac;
+		public int dimension; // Proto.DIM_*
 	}
 
 	public static void writeMcState(McState st) {
@@ -399,6 +405,7 @@ public final class SkyLink {
 		s.set(JAVA_INT, b + MS_CAMERA_MODE, st.cameraMode);
 		s.set(JAVA_FLOAT, b + MS_CAMERA_DISTANCE, st.cameraDistance);
 		s.set(JAVA_FLOAT, b + MS_HEALTH_FRAC, st.healthFrac);
+		s.set(JAVA_INT, b + MS_DIMENSION, st.dimension);
 		INT.setRelease(s, b + MS_SEQ, seq + 2);
 	}
 

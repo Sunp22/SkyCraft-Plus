@@ -1786,6 +1786,28 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 			a_fc.sunColor[3] = float(count);
 			a_fc.shadowParams[0] = (!interior && dirLight && a_fc.sunDir[2] > 0.03f) ? 1.0f : 0.0f;
 
+			// SkyCraft+ : the Nether and the End. Skyrim's player waits in an empty cell whose lighting
+			// means nothing there: the dimension's own instead. No sun; the Nether's dim red with its
+			// close red fog, the End's pale violet.
+			if (State().parked) {
+				const bool end = State().mcWorld == proto::kDimEnd;
+				for (auto& a : a_fc.ambient) {
+					Set4(a, end ? 0.75f : 1.0f, end ? 0.7f : 0.55f, end ? 0.9f : 0.45f, 0.0f);
+				}
+				a_fc.sunColor[0] = a_fc.sunColor[1] = a_fc.sunColor[2] = 0.0f;
+				a_fc.shadowParams[0] = 0.0f;
+				Set4(a_fc.grade, 1, 1, 1, 0);
+				if (end) {
+					a_fc.fogNear[3] = 0.0f;
+					Set4(a_fc.fogRange, 0.0f, 0.0f, 1.0f, 0.0f);
+				} else {
+					constexpr float nearD = 20.0f * 70.0f, farD = 96.0f * 70.0f;
+					Set4(a_fc.fogNear, 0.2f, 0.03f, 0.03f, 1.0f);
+					Set4(a_fc.fogFar, 0.2f, 0.03f, 0.03f, 0.0f);
+					Set4(a_fc.fogRange, 1.0f / (farD - nearD), nearD / (farD - nearD), 1.0f, 0.9f);
+				}
+			}
+
 			// What Skyrim gave us, now and then, for tuning.
 			static RE::TESObjectCELL* loggedCell = nullptr;
 			static auto               lastLog = std::chrono::steady_clock::time_point{};

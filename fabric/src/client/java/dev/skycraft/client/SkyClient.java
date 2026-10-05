@@ -140,6 +140,12 @@ public final class SkyClient {
 			lastTeleportSeq = sky.teleportSeq;
 			teleportPending = true;
 		}
+		if (teleportPending && sky.inGame() && !sky.loading() && (inMinecraftWorld(minecraft) || sky.parked())) {
+			// SkyCraft+ : the Nether and the End. Skyrim has nowhere there to put us: it follows
+			// (it parks its player in an empty cell), so its teleports are acknowledged, not taken.
+			teleportAck = sky.teleportSeq;
+			teleportPending = false;
+		}
 		if (teleportPending && sky.inGame() && !sky.loading()) {
 			requestTeleport(minecraft, sky.x, sky.y, sky.z, sky.yaw, sky.pitch);
 			teleportAck = sky.teleportSeq;
@@ -362,6 +368,10 @@ public final class SkyClient {
 		if (holdSince == 0) {
 			holdSince = System.currentTimeMillis();
 		}
+		if (inMinecraftWorld(minecraft) && sky.inGame() && !sky.loading()) {
+			holdPos = null; // SkyCraft+ : the Nether and the End are all Minecraft's blocks: nothing to wait for
+			return;
+		}
 		int bx = (int) Math.floor(holdPos.x), by = (int) Math.floor(holdPos.y), bz = (int) Math.floor(holdPos.z);
 		boolean known = SkyCollision.isKnown(bx, by - 1, bz) && SkyCollision.isKnown(bx, by, bz)
 			&& SkyCollision.isKnown(bx, by - SkyCollision.REGION_SIZE, bz);
@@ -409,6 +419,28 @@ public final class SkyClient {
 			return INTERIORS;
 		}
 		return (sky.placeFlags & Proto.PLACE_TAMRIEL) != 0 ? net.minecraft.world.level.Level.OVERWORLD : WORLDSPACES;
+	}
+
+	/** SkyCraft+ : the Nether and the End. Where the player is, as Skyrim is told (Proto.DIM_*). */
+	public static int dimensionCode(net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> dimension) {
+		if (dimension == net.minecraft.world.level.Level.OVERWORLD) {
+			return Proto.DIM_TAMRIEL;
+		}
+		if (dimension == INTERIORS) {
+			return Proto.DIM_INTERIORS;
+		}
+		if (dimension == WORLDSPACES) {
+			return Proto.DIM_WORLDSPACES;
+		}
+		if (dimension == net.minecraft.world.level.Level.NETHER) {
+			return Proto.DIM_NETHER;
+		}
+		return dimension == net.minecraft.world.level.Level.END ? Proto.DIM_END : Proto.DIM_OTHER;
+	}
+
+	/** SkyCraft+ : in a world of Minecraft's own (the Nether, the End): Skyrim follows, never the other way. */
+	public static boolean inMinecraftWorld(Minecraft minecraft) {
+		return minecraft.level != null && dimensionCode(minecraft.level.dimension()) >= Proto.DIM_NETHER;
 	}
 
 	private static void requestTeleport(Minecraft minecraft, double x, double y, double z, float yaw, float pitch) {
@@ -493,6 +525,7 @@ public final class SkyClient {
 			mc.bobPhase = bob ? entityState.backwardsInterpolatedWalkDistance : 0.0F;
 			mc.bobAmount = bob ? entityState.bob : 0.0F;
 			mc.healthFrac = player.getMaxHealth() > 0.0F ? Math.clamp(player.getHealth() / player.getMaxHealth(), 0.0F, 1.0F) : 0.0F;
+			mc.dimension = dimensionCode(minecraft.level.dimension());
 		}
 		if (minecraft.gui.screen() != null) {
 			flags |= Proto.MC_SCREEN_OPEN;

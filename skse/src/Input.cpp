@@ -125,6 +125,12 @@ namespace skycraft
 			State().skyrimHandsOption = ini.GetBoolValue("Controls", "bSkyrimHands", false);
 			logger::info("Skyrim hands (equip Skyrim gear in a Minecraft hand): {}", State().skyrimHandsOption ? "on" : "off");
 
+			// SkyCraft+ : the Nether and the End.
+			State().minecraftWorldsOption = ini.GetBoolValue("Worlds", "bMinecraftWorlds", true);
+			State().waitingCellId = static_cast<std::uint32_t>(ini.GetLongValue("Worlds", "iWaitingCell", 0x6F3EB));
+			logger::info("Minecraft's own worlds (Nether, End): {} (waiting cell {:08X})", State().minecraftWorldsOption ? "on" : "off",
+				State().waitingCellId.load());
+
 			const std::string toggle = ini.GetValue("Controls", "sModeToggleKey", "");
 			if (!toggle.empty()) {
 				const auto code = DikFromName(toggle);

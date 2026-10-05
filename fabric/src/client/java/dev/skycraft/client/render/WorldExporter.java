@@ -116,6 +116,7 @@ public final class WorldExporter {
 			resendEverything(minecraft, level);
 		}
 		meshDirtySections(level);
+		forgetFar(minecraft);
 		// Animated textures (water, lava, fire, ...): the frame for this game tick.
 		atlas.animate(level.getGameTime(), region -> {
 			ByteBuffer header = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN).putInt(region.x()).putInt(region.y()).putInt(region.w()).putInt(region.h()).flip();
@@ -123,6 +124,56 @@ public final class WorldExporter {
 		});
 		exportEntities(minecraft, level, partialTick);
 		AvatarExporter.frame(minecraft, atlas, partialTick);
+	}
+
+	// SkyCraft+ : the Nether and the End. Skyrim keeps every section it has been sent (the mirror
+	// world's builds are few, and seen from afar); a world of Minecraft's own is terrain everywhere,
+	// so there what's left well beyond the render distance goes.
+	private static int forgetFrames;
+
+	private static void forgetFar(Minecraft minecraft) {
+		if (++forgetFrames % 30 != 0 || !dev.skycraft.client.SkyClient.inMinecraftWorld(minecraft) || minecraft.player == null) {
+			return;
+		}
+		int radius = minecraft.options.getEffectiveRenderDistance() + 3;
+		int pcx = SectionPos.blockToSectionCoord(minecraft.player.getBlockX()), pcz = SectionPos.blockToSectionCoord(minecraft.player.getBlockZ());
+		LongOpenHashSet held = new LongOpenHashSet(SENT);
+		held.addAll(LIT);
+		held.addAll(SOLID);
+		held.addAll(SHAPED);
+		int forgotten = 0;
+		for (long key : held.toLongArray()) {
+			if (Math.abs(SectionPos.x(key) - pcx) > radius || Math.abs(SectionPos.z(key) - pcz) > radius) {
+				if (minecraft.level != null && minecraft.level.getChunkSource().getChunk(SectionPos.x(key), SectionPos.z(key), ChunkStatus.FULL, false) != null) {
+					continue; // still loaded here: it would never be sent again
+				}
+				if (!forget(key)) {
+					break; // ring full: carry on next time
+				}
+				forgotten++;
+			}
+		}
+		if (forgotten > 0 && SkyCraft.LOG.isDebugEnabled()) {
+			SkyCraft.LOG.debug("SkyCraft: {} far sections dropped from Skyrim", forgotten);
+		}
+	}
+
+	/** Empties one section in Skyrim: no mesh, lights, solids or shapes. False if the ring is full. */
+	private static boolean forget(long key) {
+		int sx = SectionPos.x(key), sy = SectionPos.y(key), sz = SectionPos.z(key);
+		Object[][] kinds = { { Proto.REN_SECTION, SENT }, { Proto.REN_LIGHTS, LIT }, { Proto.REN_SOLIDS, SOLID }, { Proto.REN_SHAPES, SHAPED } };
+		for (Object[] kind : kinds) {
+			LongOpenHashSet set = (LongOpenHashSet) kind[1];
+			if (!set.contains(key)) {
+				continue;
+			}
+			ByteBuffer header = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN).putInt(sx).putInt(sy).putInt(sz).putInt(0).flip();
+			if (!SkyLink.tryWriteRender((Integer) kind[0], header, ByteBuffer.allocate(0))) {
+				return false;
+			}
+			set.remove(key);
+		}
+		return true;
 	}
 
 	private static void resendEverything(Minecraft minecraft, ClientLevel level) {

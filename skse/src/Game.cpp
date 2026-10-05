@@ -625,6 +625,106 @@ namespace skycraft
 			}
 		}
 
+		// SkyCraft+ : the Nether and the End. Skyrim has nothing for a world of Minecraft's own, so its
+		// player waits in an empty cell (SkyCraft.ini iWaitingCell) meanwhile, following Minecraft's
+		// there, and only Minecraft is drawn. When Minecraft's player comes out of a portal into the
+		// open world again, Skyrim's goes there. Returns true while parked in the waiting cell.
+		bool MinecraftWorlds(RE::PlayerCharacter* a_player, RE::TESObjectCELL* a_cell, bool a_loading, bool a_mcInWorld, float a_delta)
+		{
+			auto&        st = State();
+			static float retry = 0.0f;  // seconds before a move is tried again
+			static bool  toldStuck = false;
+			// Where Skyrim's player was in the open world when it went to wait, for coming back from a death
+			// or the End's exit portal (Minecraft puts the player at its spawn, which means nothing here).
+			static RE::NiPoint3   entryPos;
+			static bool           haveEntry = false;
+			static bool           diedAway = false;
+			static std::uint32_t  awayWorld = 0;
+			auto*        waiting = st.minecraftWorldsOption ? RE::TESForm::LookupByID<RE::TESObjectCELL>(st.waitingCellId) : nullptr;
+			const bool   parked = waiting && a_cell == waiting;
+			const auto   world = mc.dimension;
+			if (parked && world >= proto::kDimNether) {
+				awayWorld = world;
+				if (mc.flags & proto::kMcDead) {
+					diedAway = true;
+				}
+			}
+			retry -= a_delta;
+			if (!waiting || a_loading || !a_mcInWorld || a_player->IsDead() || retry > 0.0f) {
+				return parked;
+			}
+			if (!parked && world >= proto::kDimNether) {
+				logger::info("Minecraft's player went into {}: Skyrim's waits in cell {:08X}", world == proto::kDimNether ? "the Nether" : world == proto::kDimEnd ? "the End" : "a world of Minecraft's own",
+					waiting->GetFormID());
+				if (st.skyrimMode) {
+					st.skyrimMode = false;  // nothing of Skyrim's to walk on there
+					logger::info("Skyrim mode off (Minecraft's own world)");
+				}
+				if (auto* lighting = waiting->GetLighting()) {
+					// Skyrim's backdrop there: the Nether's dark red, the End's near black.
+					const bool end = world == proto::kDimEnd;
+					lighting->fogColorNear = end ? RE::Color(10, 8, 14, 0) : RE::Color(51, 8, 8, 0);
+					lighting->fogColorFar = lighting->fogColorNear;
+					lighting->ambient = end ? RE::Color(48, 44, 60, 0) : RE::Color(64, 32, 26, 0);
+				}
+				auto* tamrielNow = RE::TESForm::LookupByID<RE::TESWorldSpace>(0x3C);
+				haveEntry = tamrielNow && a_player->GetWorldspace() == tamrielNow;
+				entryPos = a_player->GetPosition();
+				diedAway = false;
+				a_player->CenterOnCell(waiting);
+				retry = 5.0f;
+				toldStuck = false;
+				return parked;
+			}
+			if (parked && world == proto::kDimTamriel) {
+				// Out of a portal into the open world: Skyrim's player goes where Minecraft's came out.
+				// Moved like a reference to an editor location: the position in Tamriel, anchored on
+				// one of its persistent references (any will do).
+				auto*            tamriel = RE::TESForm::LookupByID<RE::TESWorldSpace>(0x3C);
+				RE::TESObjectREFR* anchor = nullptr;
+				if (tamriel && tamriel->persistentCell) {
+					tamriel->persistentCell->ForEachReference([&](RE::TESObjectREFR* a_ref) {
+						if (a_ref && a_ref->GetWorldspace() == tamriel) {
+							anchor = a_ref;
+							return RE::BSContainer::ForEachResult::kStop;
+						}
+						return RE::BSContainer::ForEachResult::kContinue;
+					});
+				}
+				if (!anchor) {
+					if (!toldStuck) {
+						toldStuck = true;
+						logger::warn("couldn't find Tamriel to go back to; use a door or coc");
+						RE::SendHUDMessage::ShowHUDMessage("SkyCraft: couldn't take you back to Skyrim; use the console (coc) to leave.");
+					}
+					retry = 5.0f;
+					return parked;
+				}
+				const bool toEntry = haveEntry && (diedAway || awayWorld == proto::kDimEnd);
+				const auto pos = toEntry ? entryPos : McToSky(mc.x, mc.y, mc.z);
+				if (toEntry) {
+					logger::info("{}: back to where the player left the open world", diedAway ? "died away from Skyrim" : "out of the End");
+				}
+				diedAway = false;
+				awayWorld = 0;
+				logger::info("Minecraft's player is back in the open world: Skyrim's goes to ({:.0f}, {:.0f}, {:.0f})", pos.x, pos.y, pos.z);
+				// TESObjectREFR::MoveTo_Impl (SE 56227, AE 56626), private in CommonLib.
+				using MoveToFn = void (*)(RE::TESObjectREFR*, const RE::ObjectRefHandle&, RE::TESObjectCELL*, RE::TESWorldSpace*, const RE::NiPoint3&, const RE::NiPoint3&);
+				static REL::Relocation<MoveToFn> moveTo{ RELOCATION_ID(56227, 56626) };
+				const RE::ObjectRefHandle anchorHandle = anchor->CreateRefHandle();
+				moveTo(a_player, anchorHandle, anchor->GetParentCell(), tamriel, pos, RE::NiPoint3(0.0f, 0.0f, McYawToHeading(mc.yaw)));
+				retry = 5.0f;
+				return parked;
+			}
+			if (parked && world < proto::kDimNether && !toldStuck) {
+				// A save made in the Nether loaded with Minecraft somewhere else: nothing to follow.
+				toldStuck = true;
+				logger::warn("Skyrim's player is in the waiting cell but Minecraft's is in a Skyrim interior or worldspace");
+				RE::SendHUDMessage::ShowHUDMessage("SkyCraft: Minecraft isn't in the Nether or the End; use the console (coc) to leave this empty cell.");
+			}
+			return parked;
+		}
+
 		void PerFrame(RE::PlayerCharacter* a_player, float a_delta)
 		{
 			auto& st = State();
@@ -699,6 +799,12 @@ namespace skycraft
 				logger::info("Skyrim moved the player ({:.0f} units); resyncing Minecraft", current.GetDistance(lastSetPos));
 				teleportPending = true;
 				haveLastSet = false;
+			}
+			// SkyCraft+ : the Nether and the End. While parked, Minecraft leads: it gets no teleports.
+			st.mcWorld = haveMc ? mc.dimension : 0u;
+			st.parked = MinecraftWorlds(a_player, cell, loading, haveMc && st.mcInWorld, a_delta);
+			if (st.parked) {
+				teleportPending = false;
 			}
 			if (teleportPending && !loading) {
 				++teleportSeq;
@@ -937,7 +1043,10 @@ namespace skycraft
 				motion.frameMsMax = std::max(motion.frameMsMax, frameMs);
 			}
 
-			if (puppet) {
+			// SkyCraft+ : the Nether and the End. On the way into the waiting cell, Skyrim's player
+			// stays put (Minecraft's position there means nothing in Skyrim's world).
+			const bool onTheWay = st.mcWorld >= proto::kDimNether && !st.parked;
+			if (puppet && !onTheWay) {
 				const auto pos = McToSky(feetX, feetY, feetZ);
 				a_player->SetPosition(pos, true);
 				if (auto* controller = a_player->GetCharController()) {
@@ -1135,7 +1244,8 @@ namespace skycraft
 			proto::SkyState sky{};
 			sky.flags = (cell ? proto::kSkyInGame : 0u) | (menu ? proto::kSkyMenuOpen : 0u) | (loading ? proto::kSkyLoading : 0u) |
 			            (skyrimDrives ? proto::kSkyDrivesPlayer : 0u) | (rightHand ? proto::kSkyRightHandSkyrim : 0u) |
-			            (leftHand ? proto::kSkyLeftHandSkyrim : 0u) | ((puppet || skyrimDrives) && a_player->IsBlocking() ? proto::kSkyBlocking : 0u);
+			            (leftHand ? proto::kSkyLeftHandSkyrim : 0u) | ((puppet || skyrimDrives) && a_player->IsBlocking() ? proto::kSkyBlocking : 0u) |
+			            (st.parked ? proto::kSkyParked : 0u);
 			static float         placeTimer = 0.0f;
 			static std::uint32_t placeFlags = 0;
 			static std::uint32_t placeWorld = 0;
@@ -1529,6 +1639,11 @@ namespace skycraft
 			auto& st = State();
 			if (!st.skyrimMode && !st.mcInWorld) {
 				return;  // nothing to switch from: Skyrim already has the player
+			}
+			if (!st.skyrimMode && (st.parked || st.mcWorld >= proto::kDimNether)) {
+				// SkyCraft+ : the Nether and the End have nothing of Skyrim's to walk on.
+				RE::SendHUDMessage::ShowHUDMessage("SkyCraft: Skyrim mode isn't available in Minecraft's own worlds");
+				return;
 			}
 			st.skyrimMode = !st.skyrimMode;
 			Input::ReleaseAll();

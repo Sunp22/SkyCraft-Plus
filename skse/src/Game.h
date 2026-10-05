@@ -35,6 +35,13 @@ namespace skycraft
 		std::atomic<bool> mcUseTarget{ false };
 		// SkyCraft+ : Minecraft's player health / max (Skyrim's is held at it while Minecraft drives).
 		std::atomic<float> mcHealthFrac{ 1.0f };
+		// SkyCraft+ : the Nether and the End ([Worlds] in SkyCraft.ini). While Minecraft's player is in
+		// a world of Minecraft's own, Skyrim's waits in an empty cell (parked) and only Minecraft is
+		// drawn; mcWorld is where Minecraft's player is (proto::McDimension).
+		std::atomic<bool>          minecraftWorldsOption{ true };
+		std::atomic<std::uint32_t> waitingCellId{ 0x6F3EB };
+		std::atomic<std::uint32_t> mcWorld{ 0 };
+		std::atomic<bool>          parked{ false };
 
 		// Look direction in MC degrees; integrated from raw mouse input (main thread).
 		float yaw{ 0.0f };

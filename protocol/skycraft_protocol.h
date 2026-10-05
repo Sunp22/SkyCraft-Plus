@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 25;
+	inline constexpr std::uint32_t kVersion = 26;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -74,6 +74,9 @@ namespace skycraft::proto
 		// A Skyrim menu has paused the game (inventory, magic, map...): Minecraft pauses too, as its
 		// own pause menu does, so its mobs don't attack the player meanwhile.
 		kSkyPaused = 1u << 7,
+		// SkyCraft+ : the Nether and the End (v26). Skyrim's player is parked in an empty cell while
+		// Minecraft's is in a world of its own: Minecraft takes no teleports to Skyrim's position.
+		kSkyParked = 1u << 8,
 	};
 
 	// SkyState::placeFlags: where the player is and the weather, for Minecraft's spawning.
@@ -137,6 +140,18 @@ namespace skycraft::proto
 		kMcUseTarget = 1u << 8,
 	};
 
+	// SkyCraft+ : McState::dimension. 3 and up are Minecraft's own worlds: Skyrim parks its player in
+	// an empty cell and only Minecraft is drawn.
+	enum McDimension : std::uint32_t
+	{
+		kDimTamriel = 0,     // the open world (Tamriel and its walled cities)
+		kDimInteriors = 1,   // Skyrim's interiors
+		kDimWorldspaces = 2, // Skyrim's other worldspaces
+		kDimNether = 3,
+		kDimEnd = 4,
+		kDimOther = 5,       // any other Minecraft-only world (a mod's)
+	};
+
 	struct McState
 	{
 		std::uint32_t seq;
@@ -171,7 +186,9 @@ namespace skycraft::proto
 		std::uint32_t cameraMode;
 		float         cameraDistance;
 		float         healthFrac;  // MC player health / max (0..1); Skyrim takes it over when it drives
-		std::uint32_t padCC;
+		// SkyCraft+ : the Nether and the End (v26). Where the Minecraft player is: one of Skyrim's
+		// mirror worlds, or a world of Minecraft's own that Skyrim has nothing for (McDimension).
+		std::uint32_t dimension;
 	};
 	static_assert(sizeof(McState) == 0xD0);
 	static_assert(sizeof(McState) <= 0x100);
