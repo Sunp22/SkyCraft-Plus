@@ -97,6 +97,12 @@ namespace skycraft::SkyrimShots
 				}
 				auto* explosion = runtime.explosion ? runtime.explosion : (base ? base->data.explosionType : nullptr);
 				a_tracked.explosionRadius = explosion ? explosion->data.radius / float(proto::kUnitsPerBlock) : 0.0f;
+				static int logged = 0;
+				if (logged++ < 15) {
+					logger::info("shots: new {} ({:X}) from {}: flags {:X}, damage {:.2f}, push {:.1f}, power {:.2f}, weapon damage {:.1f}, explosion {:.1f} blocks",
+						static_cast<int>(type), a_id, runtime.spell ? runtime.spell->GetName() : "(no spell)", shot.flags, shot.damage, shot.push,
+						runtime.power, runtime.weaponDamage, a_tracked.explosionRadius);
+				}
 			}
 			shot.x1 = float(here.x), shot.y1 = float(here.y), shot.z1 = float(here.z);
 			if (shot.flags & proto::kShotBeam) {
@@ -150,6 +156,11 @@ namespace skycraft::SkyrimShots
 			if (!t.seen) {
 				if (t.gone < 0.0f) {
 					t.gone = 0.0f;
+					static int logged = 0;
+					if (logged++ < 15) {
+						const float dx = t.shot.x1 - t.shot.x0, dy = t.shot.y1 - t.shot.y0, dz = t.shot.z1 - t.shot.z0;
+						logger::info("shots: {:X} gone after {:.1f} blocks (radius {:.2f})", t.shot.id, std::sqrt(dx * dx + dy * dy + dz * dz), t.shot.radius);
+					}
 					if (t.explosionRadius > 0.0f) {
 						// It went off where it was last seen.
 						t.shot.flags = (t.shot.flags & ~(proto::kShotPath | proto::kShotBeam | proto::kShotCone | proto::kShotStops)) | proto::kShotExplosion;
