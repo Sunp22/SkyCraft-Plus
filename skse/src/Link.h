@@ -34,6 +34,8 @@ namespace skycraft
 
 		// Actor table (producer, main thread): nearby actors Minecraft mirrors as hittable stand-ins.
 		void WriteActors(const proto::ActorRecord* a_records, std::uint32_t a_count);
+		// SkyCraft+ : the Skyrim player's projectiles this frame (main thread).
+		void WriteSkyrimShots(const proto::SkyrimShot* a_shots, std::uint32_t a_count);
 		// Event ring (consumer, main thread). Returns false when empty.
 		bool PopEvent(proto::McEvent& a_out);
 		// World entities + block outline (seqlock read, render thread).

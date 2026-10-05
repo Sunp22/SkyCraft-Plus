@@ -8,7 +8,7 @@ public final class Proto {
 	}
 
 	public static final int MAGIC = 0x43594B53;
-	public static final int VERSION = 20;
+	public static final int VERSION = 21;
 	// A second client on the same PC (multiplayer testing) talks to its own stand-in Skyrim:
 	// -Dskycraft.link=Local\SkyCraft_guest (see tools/fake_guest.py).
 	public static final String MAPPING_NAME = System.getProperty("skycraft.link", "Local\\SkyCraft_v1");
@@ -33,6 +33,13 @@ public final class Proto {
 	public static final long OFF_ACTOR_TABLE = 0x12000;
 	public static final long OFF_EVENT_RING = 0x17000;
 	public static final long OFF_WORLD_ENTITIES = 0x1C000;
+	public static final long OFF_SKYRIM_SHOTS = 0x1B100;
+
+	// SkyCraft+ : the Skyrim player's projectiles (relative to OFF_SKYRIM_SHOTS), see SkyrimShots
+	public static final int MAX_SKYRIM_SHOTS = 64, SKYRIM_SHOT_BYTES = 48;
+	public static final long SHOTS_SEQ = 0x0, SHOTS_COUNT = 0x4, SHOTS_RECORDS = 0x40;
+	public static final int SHOT_PATH = 1, SHOT_BEAM = 1 << 1, SHOT_CONE = 1 << 2, SHOT_EXPLOSION = 1 << 3, SHOT_STOPS = 1 << 4,
+		SHOT_FIRE = 1 << 8, SHOT_FROST = 1 << 9, SHOT_SHOCK = 1 << 10, SHOT_PUSH = 1 << 11;
 	public static final long OFF_RENDER_RING = OFF_OVERLAY_PIXELS + OVERLAY_SLOT_BYTES * OVERLAY_SLOTS;
 	public static final long RENDER_RING_BYTES = 64L << 20;
 	public static final long MAPPING_BYTES = OFF_RENDER_RING + RENDER_RING_BYTES;

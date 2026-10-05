@@ -1,0 +1,173 @@
+// SkyCraft+ : Skyrim magic, arrows and shouts on Minecraft mobs
+#include "Game.h"
+
+// Skyrim's spells and shouts only find Skyrim's own actors; Minecraft's mobs are just drawn.
+// Nearly every spell and shout is a projectile (bolts, flames, beams, cones) and so are arrows,
+// so each frame the player's live projectiles go to Minecraft with their whole path so far, what
+// they carry (damage, fire, frost, shock, a push) and, a moment after one is gone, the explosion
+// where it ended. Minecraft hits each mob once per shot (proto::SkyrimShots).
+namespace skycraft::SkyrimShots
+{
+	namespace
+	{
+		constexpr float kSpellToMc = 0.25f;        // a firebolt (25) ~6, like a Minecraft iron sword
+		constexpr float kConcentrationShare = 0.3f; // flames and the like: many small shots a second
+		constexpr float kArrowToMc = 0.35f;        // a hunting bow with iron arrows (~17) ~6
+		constexpr float kKeepAfterGone = 0.4f;     // seconds a finished shot stays listed
+
+		struct Tracked
+		{
+			proto::SkyrimShot shot{};
+			bool              seen = false;
+			float             gone = -1.0f;  // seconds since it disappeared (-1: still flying)
+			float             explosionRadius = 0.0f;
+		};
+		std::unordered_map<std::uint32_t, Tracked> tracked;
+
+		McVec ToMc(const RE::NiPoint3& a_pos) { return SkyToMc(a_pos); }
+
+		// What a spell does to whatever it hits, from its effects.
+		void ReadSpell(RE::MagicItem* a_spell, float a_power, proto::SkyrimShot& a_shot)
+		{
+			float damage = 0.0f, push = 0.0f;
+			for (auto* effect : a_spell->effects) {
+				auto* base = effect ? effect->baseEffect : nullptr;
+				if (!base) {
+					continue;
+				}
+				using Arch = RE::EffectArchetypes::ArchetypeID;
+				const auto arch = base->GetArchetype();
+				if ((arch == Arch::kValueModifier || arch == Arch::kDualValueModifier || arch == Arch::kPeakValueModifier) &&
+					base->data.primaryAV == RE::ActorValue::kHealth && base->IsDetrimental()) {
+					damage += effect->GetMagnitude();
+				}
+				if (arch == Arch::kStagger) {
+					push = std::max(push, 1.0f + effect->GetMagnitude() * 2.0f);
+				}
+				switch (base->data.resistVariable) {
+				case RE::ActorValue::kResistFire:
+					a_shot.flags |= proto::kShotFire;
+					break;
+				case RE::ActorValue::kResistFrost:
+					a_shot.flags |= proto::kShotFrost;
+					break;
+				case RE::ActorValue::kResistShock:
+					a_shot.flags |= proto::kShotShock;
+					break;
+				default:
+					break;
+				}
+			}
+			if (a_spell->GetCastingType() == RE::MagicSystem::CastingType::kConcentration) {
+				damage *= kConcentrationShare;
+			}
+			a_shot.damage = damage * kSpellToMc * std::max(a_power, 0.25f);
+			if (push > 0.0f) {
+				a_shot.flags |= proto::kShotPush;
+				a_shot.push = std::min(push * std::max(a_power, 0.5f), 4.0f);
+			}
+		}
+
+		void Describe(RE::Projectile* a_projectile, std::uint32_t a_id, Tracked& a_tracked)
+		{
+			auto&      runtime = a_projectile->GetProjectileRuntimeData();
+			auto*      base = a_projectile->GetProjectileBase();
+			const auto here = ToMc(a_projectile->GetPosition());
+			auto&      shot = a_tracked.shot;
+			const bool fresh = shot.id == 0;
+			shot.id = a_id;
+			if (fresh) {
+				shot.x0 = float(here.x), shot.y0 = float(here.y), shot.z0 = float(here.z);  // where it was first seen
+				shot.flags = 0;
+				const auto type = a_projectile->GetFormType();
+				if (type == RE::FormType::ProjectileBeam) {
+					shot.flags |= proto::kShotBeam;
+				} else if (type == RE::FormType::ProjectileCone) {
+					shot.flags |= proto::kShotCone;
+				} else {
+					shot.flags |= proto::kShotPath;
+					if (type == RE::FormType::ProjectileArrow || type == RE::FormType::ProjectileMissile) {
+						shot.flags |= proto::kShotStops;
+					}
+				}
+				if (runtime.spell) {
+					ReadSpell(runtime.spell, runtime.power, shot);
+				} else {
+					shot.damage = runtime.weaponDamage * kArrowToMc;  // an arrow or bolt
+				}
+				auto* explosion = runtime.explosion ? runtime.explosion : (base ? base->data.explosionType : nullptr);
+				a_tracked.explosionRadius = explosion ? explosion->data.radius / float(proto::kUnitsPerBlock) : 0.0f;
+			}
+			shot.x1 = float(here.x), shot.y1 = float(here.y), shot.z1 = float(here.z);
+			if (shot.flags & proto::kShotBeam) {
+				// The beam reaches out along the projectile's aim, as far as the spell's range.
+				const float heading = a_projectile->data.angle.z, pitch = a_projectile->data.angle.x;
+				const float range = std::min(base ? base->data.range : 2000.0f, 3000.0f);
+				const RE::NiPoint3 end = a_projectile->GetPosition() +
+				                         RE::NiPoint3(std::sin(heading) * std::cos(pitch), std::cos(heading) * std::cos(pitch), -std::sin(pitch)) * range;
+				const auto endMc = ToMc(end);
+				shot.x1 = float(endMc.x), shot.y1 = float(endMc.y), shot.z1 = float(endMc.z);
+			}
+			if (shot.flags & proto::kShotCone) {
+				const float spread = base ? base->data.coneSpread : 0.6f;
+				shot.radius = std::clamp(spread > 3.2f ? spread * 0.0174533f : spread, 0.2f, 1.2f);  // degrees or radians
+			} else {
+				shot.radius = std::max(0.3f, (base ? base->data.collisionRadius : 10.0f) / float(proto::kUnitsPerBlock));
+			}
+			a_tracked.seen = true;
+			a_tracked.gone = -1.0f;
+		}
+	}
+
+	void PerFrame(RE::PlayerCharacter* a_player, bool a_active, float a_delta)
+	{
+		if (!a_active || !a_player) {
+			if (!tracked.empty()) {
+				tracked.clear();
+				Link::Get().WriteSkyrimShots(nullptr, 0);
+			}
+			return;
+		}
+		for (auto& [id, t] : tracked) {
+			t.seen = false;
+		}
+		if (auto* manager = RE::Projectile::Manager::GetSingleton()) {
+			RE::BSSpinLockGuard guard(manager->projectileLock);
+			for (auto* list : { &manager->unlimited, &manager->limited }) {
+				for (auto& handle : *list) {
+					auto projectile = handle.get();
+					if (!projectile || projectile->GetProjectileRuntimeData().shooter.get().get() != a_player) {
+						continue;
+					}
+					const auto id = projectile->GetFormID();
+					Describe(projectile.get(), id, tracked[id]);
+				}
+			}
+		}
+		std::vector<proto::SkyrimShot> shots;
+		for (auto it = tracked.begin(); it != tracked.end();) {
+			auto& t = it->second;
+			if (!t.seen) {
+				if (t.gone < 0.0f) {
+					t.gone = 0.0f;
+					if (t.explosionRadius > 0.0f) {
+						// It went off where it was last seen.
+						t.shot.flags = (t.shot.flags & ~(proto::kShotPath | proto::kShotBeam | proto::kShotCone | proto::kShotStops)) | proto::kShotExplosion;
+						t.shot.radius = t.explosionRadius;
+						t.shot.id ^= 0x80000000u;  // a new shot: everything in the blast is hit, even what the bolt hit
+					}
+				}
+				t.gone += a_delta;
+				if (t.gone > kKeepAfterGone) {
+					it = tracked.erase(it);
+					continue;
+				}
+			}
+			if (shots.size() < proto::kMaxSkyrimShots && (t.shot.damage > 0.0f || (t.shot.flags & (proto::kShotPush | proto::kShotFire | proto::kShotFrost)))) {
+				shots.push_back(t.shot);
+			}
+			++it;
+		}
+		Link::Get().WriteSkyrimShots(shots.data(), static_cast<std::uint32_t>(shots.size()));
+	}
+}

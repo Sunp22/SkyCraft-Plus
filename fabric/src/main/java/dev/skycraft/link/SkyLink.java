@@ -440,6 +440,40 @@ public final class SkyLink {
 	}
 
 	/** Seqlock read of the actor table. Returns false (leaving {@code out} empty) on a torn read. */
+	/** SkyCraft+ : one of the Skyrim player's projectiles (see SkyrimShot in the protocol). */
+	public record Shot(int id, int flags, float x0, float y0, float z0, float x1, float y1, float z1, float radius, float damage, float push) {
+	}
+
+	/** Seqlock read of the Skyrim player's projectiles; false if the link is down or Skyrim is mid-write. */
+	public static boolean readSkyrimShots(java.util.List<Shot> out) {
+		out.clear();
+		MemorySegment s = shm;
+		if (s == null) {
+			return false;
+		}
+		long b = OFF_SKYRIM_SHOTS;
+		for (int attempt = 0; attempt < 16; attempt++) {
+			int seq1 = (int) INT.getAcquire(s, b + SHOTS_SEQ);
+			if ((seq1 & 1) != 0) {
+				Thread.onSpinWait();
+				continue;
+			}
+			int count = Math.min(s.get(JAVA_INT, b + SHOTS_COUNT), MAX_SKYRIM_SHOTS);
+			for (int i = 0; i < count; i++) {
+				long r = b + SHOTS_RECORDS + (long) i * SKYRIM_SHOT_BYTES;
+				out.add(new Shot(s.get(JAVA_INT, r), s.get(JAVA_INT, r + 4), s.get(JAVA_FLOAT, r + 8), s.get(JAVA_FLOAT, r + 12), s.get(JAVA_FLOAT, r + 16),
+					s.get(JAVA_FLOAT, r + 20), s.get(JAVA_FLOAT, r + 24), s.get(JAVA_FLOAT, r + 28), s.get(JAVA_FLOAT, r + 32), s.get(JAVA_FLOAT, r + 36),
+					s.get(JAVA_FLOAT, r + 40)));
+			}
+			VarHandle.loadLoadFence();
+			if ((int) INT.getAcquire(s, b + SHOTS_SEQ) == seq1) {
+				return true;
+			}
+			out.clear();
+		}
+		return false;
+	}
+
 	public static boolean readActors(java.util.List<Actor> out) {
 		out.clear();
 		MemorySegment s = shm;

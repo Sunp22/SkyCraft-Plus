@@ -780,6 +780,7 @@ namespace skycraft
 			Input::SetActivatePromptKey(puppet);
 			Combat::PerFrame(a_player, puppet, a_delta);
 			Combat::WatchPlayerHits(a_player, a_delta);
+			SkyrimShots::PerFrame(a_player, (puppet || skyrimDrives) && haveMc && st.mcInWorld, a_delta);
 			WorldRender::UpdateRagdoll(a_player, haveMc && st.mcInWorld);
 			if (puppet || skyrimDrives) {
 				NpcBlocks::PushActorsOut(a_player, a_delta);

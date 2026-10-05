@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 20;
+	inline constexpr std::uint32_t kVersion = 21;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -36,6 +36,7 @@ namespace skycraft::proto
 	inline constexpr std::uint32_t kOverlaySlots = 3;
 	inline constexpr std::uint64_t kOffActorTable = 0x12000;   // Skyrim -> MC, see ActorTable
 	inline constexpr std::uint64_t kOffEventRing = 0x17000;    // MC -> Skyrim, see McEvent
+	inline constexpr std::uint64_t kOffSkyrimShots = 0x1B100;    // Skyrim -> MC, see SkyrimShots
 	inline constexpr std::uint64_t kOffWorldEntities = 0x1C000;  // MC -> Skyrim, see WorldEntities
 	inline constexpr std::uint64_t kOffRenderRing = kOffOverlayPixels + kOverlaySlotBytes * kOverlaySlots;
 	inline constexpr std::uint64_t kRenderRingBytes = 64ull << 20;
@@ -360,6 +361,49 @@ namespace skycraft::proto
 	};
 	static_assert(sizeof(WorldEntities) == 0x40 + sizeof(WorldEntity) * kMaxWorldEntities);
 	static_assert(kOffWorldEntities + sizeof(WorldEntities) <= kOffCollisionRing);
+
+	// ---- the Skyrim player's projectiles @0x1B100 (Skyrim -> MC, seqlock) ----------------------
+	// SkyCraft+ : Skyrim magic, arrows and shouts on Minecraft mobs. Nearly every Skyrim spell and
+	// shout is a projectile (bolts, flames, beams, cones). Each frame Skyrim lists the player's,
+	// each with its whole path so far (so Minecraft can't miss a frame), and keeps each a moment
+	// after it's gone (an explosion where it ended); Minecraft hits each mob once per shot.
+	inline constexpr std::uint32_t kMaxSkyrimShots = 64;
+
+	enum SkyrimShotFlags : std::uint32_t
+	{
+		kShotPath = 1u << 0,       // a bolt, arrow or flame: hits what its path x0..x1 (radius wide) passes through
+		kShotBeam = 1u << 1,       // a beam (Sparks): x0..x1; hits the first thing on it
+		kShotCone = 1u << 2,       // a cone (Unrelenting Force, breath shouts): from x0 to x1, radius = half-angle (radians)
+		kShotExplosion = 1u << 3,  // an explosion at x1, radius in blocks
+		kShotStops = 1u << 4,      // stops at the first thing it hits (bolts, arrows)
+		kShotFire = 1u << 8,       // sets what it hits on fire
+		kShotFrost = 1u << 9,      // slows what it hits
+		kShotShock = 1u << 10,
+		kShotPush = 1u << 11,      // throws what it hits back (push = strength)
+	};
+
+	struct SkyrimShot
+	{
+		std::uint32_t id;
+		std::uint32_t flags;               // SkyrimShotFlags
+		float         x0, y0, z0, x1, y1, z1;  // MC coords
+		float         radius;
+		float         damage;              // Minecraft damage per hit
+		float         push;
+		std::uint32_t pad;
+	};
+	static_assert(sizeof(SkyrimShot) == 48);
+
+	struct SkyrimShots
+	{
+		std::uint32_t seq;
+		std::uint32_t count;
+		std::uint32_t pad[14];
+		SkyrimShot    shots[kMaxSkyrimShots];
+	};
+	static_assert(sizeof(SkyrimShots) == 0x40 + 48 * kMaxSkyrimShots);
+	static_assert(kOffEventRing + kEventRingDataOff + kEventRingEntries * sizeof(McEvent) <= kOffSkyrimShots);
+	static_assert(kOffSkyrimShots + sizeof(SkyrimShots) <= kOffWorldEntities);
 
 	// ---- render ring (MC -> Skyrim) -----------------------------------------------------------
 	// Byte ring like the collision ring. Minecraft ships its own block meshes (built by Minecraft's

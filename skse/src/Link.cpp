@@ -103,6 +103,7 @@ namespace skycraft
 		std::memset(base_ + proto::kOffActorTable, 0, sizeof(proto::ActorTable));
 		std::memset(base_ + proto::kOffEventRing, 0, proto::kEventRingDataOff);
 		std::memset(base_ + proto::kOffWorldEntities, 0, sizeof(proto::WorldEntities));
+		std::memset(base_ + proto::kOffSkyrimShots, 0, sizeof(proto::SkyrimShots));
 		std::memset(base_ + proto::kOffRenderRing, 0, proto::kRenRingDataOff);
 		header->version = proto::kVersion;
 		header->skyrimPid = ::GetCurrentProcessId();
@@ -235,6 +236,24 @@ namespace skycraft
 		std::memcpy(data + pos + sizeof(proto::ColMsgHeader), a_payload, a_bytes);
 		Atomic(headRef).store(head + msgBytes, std::memory_order_release);
 		return true;
+	}
+
+	void Link::WriteSkyrimShots(const proto::SkyrimShot* a_shots, std::uint32_t a_count)
+	{
+		if (!base_) {
+			return;
+		}
+		auto*      table = At<proto::SkyrimShots>(proto::kOffSkyrimShots);
+		auto       seq = Atomic(table->seq);
+		const auto s = seq.load(std::memory_order_relaxed);
+		seq.store(s + 1, std::memory_order_relaxed);
+		std::atomic_thread_fence(std::memory_order_release);
+		const auto count = std::min(a_count, proto::kMaxSkyrimShots);
+		table->count = count;
+		if (count) {
+			std::memcpy(table->shots, a_shots, sizeof(proto::SkyrimShot) * count);
+		}
+		seq.store(s + 2, std::memory_order_release);
 	}
 
 	void Link::WriteActors(const proto::ActorRecord* a_records, std::uint32_t a_count)

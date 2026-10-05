@@ -140,6 +140,13 @@ namespace skycraft
 		void WatchPlayerHits(RE::PlayerCharacter* a_player, float a_delta);
 	}
 
+	namespace SkyrimShots
+	{
+		// SkyCraft+ : main thread, every frame: the Skyrim player's projectiles (spells, shouts,
+		// arrows) out to Minecraft, which hits its mobs with them. a_active: Minecraft is in its world.
+		void PerFrame(RE::PlayerCharacter* a_player, bool a_active, float a_delta);
+	}
+
 	namespace BlockLights
 	{
 		// Render messages (main thread): a section's light-emitting blocks; a world change.
