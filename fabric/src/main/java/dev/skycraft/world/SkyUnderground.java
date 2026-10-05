@@ -131,6 +131,11 @@ public final class SkyUnderground {
 		return enabled && SkyGround.under(x, y, z, DEEP);
 	}
 
+	/** The hidden world under this level, if it's the open world's and the underground is on. */
+	public static @Nullable ServerLevel hiddenUnder(ServerLevel level) {
+		return enabled && level.dimension() == Level.OVERWORLD ? level.getServer().getLevel(UNDERGROUND) : null;
+	}
+
 	/** Under Skyrim's land at all (no sun reaches there). Any thread. */
 	public static boolean underLand(double x, double y, double z) {
 		return enabled && SkyGround.under(x, y, z, 1.0);

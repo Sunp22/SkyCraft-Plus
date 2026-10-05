@@ -23,6 +23,7 @@
     "ProjectileUtilMixin",
     "ServerExplosionMixin",
     "ServerGamePacketListenerMixin",
+    "ServerLevelStructureMixin",
     "ServerPlayerMixin",
     "WalkNodeEvaluatorMixin",
     "SmithingMixin"
