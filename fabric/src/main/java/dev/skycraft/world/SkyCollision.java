@@ -176,6 +176,35 @@ public final class SkyCollision {
 		return below != null && (below & FILL_UPPER) != 0;
 	}
 
+	/**
+	 * SkyCraft+ : mob pathfinding. True if Skyrim geometry is in this cell's upper half (a wall, or
+	 * ground higher than a step): mobs can't stand in the cell, only on top of it.
+	 */
+	public static boolean blocksPath(BlockPos pos) {
+		Integer fill = FILL.isEmpty() ? null : FILL.get(pos.asLong());
+		return fill != null && (fill & FILL_UPPER) != 0;
+	}
+
+	/**
+	 * SkyCraft+ : mob pathfinding. The height (Minecraft y) of the Skyrim ground holding up this
+	 * cell (in its lower half, or the top of the cell below), or NaN if there is none.
+	 */
+	public static double floorUnder(BlockPos pos) {
+		if (FILL.isEmpty()) {
+			return Double.NaN;
+		}
+		Integer here = FILL.get(pos.asLong());
+		if (here != null && (here & FILL_LOWER) != 0 && (here & FILL_UPPER) == 0) {
+			return pos.getY() + groundTop(pos);
+		}
+		BlockPos below = pos.below();
+		Integer under = FILL.get(below.asLong());
+		if (under != null && (under & FILL_UPPER) != 0) {
+			return below.getY() + groundTop(below);
+		}
+		return Double.NaN;
+	}
+
 	public static int blockCount() {
 		return SHAPES.size();
 	}
