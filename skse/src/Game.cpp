@@ -770,6 +770,14 @@ namespace skycraft
 				logger::info("puppet {}", puppet ? "on (Minecraft drives the player)" : "off");
 			}
 			st.puppeting = puppet;
+
+			// SkyCraft+ : underground. Deep under Skyrim's land, Skyrim thinks the player fell out of
+			// the world and sends them back to their "last known good position" on the surface.
+			// While Minecraft is playing, wherever the player is counts as good.
+			if (st.mcInWorld && !loading && !a_player->IsDead() && (puppet || takeover)) {
+				a_player->GetPlayerRuntimeData().lastKnownGoodPosition = current;
+				a_player->GetPlayerFlags().returnToLastKnownGoodPosition = false;
+			}
 			bool rightHand = false, leftHand = false;
 			if (puppet && st.skyrimHandsOption) {
 				SkyrimHands(a_player, rightHand, leftHand);
