@@ -125,7 +125,10 @@ namespace skycraft
 		// SkyCraft+ : a healing effect (spell, potion, ...) is restoring the player's health.
 		bool HealingNow(RE::PlayerCharacter* a_player)
 		{
-			auto* effects = a_player->GetActiveEffectList();
+			// Through MagicTarget, so it's a real call into the game's vtable: on the player itself the
+			// compiler bound it to an address that's empty in this build (a crash on loading a save).
+			auto* target = a_player->AsMagicTarget();
+			auto* effects = target ? target->GetActiveEffectList() : nullptr;
 			if (!effects) {
 				return false;
 			}
