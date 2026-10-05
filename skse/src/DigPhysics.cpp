@@ -470,6 +470,16 @@ namespace skycraft::Dig
 			{
 				Perf::Scope timer(Perf::kHookLand);
 				const bool found = func(a_tes, a_pos, a_height);
+				// SkyCraft+ : the underground. Never for the player while Minecraft is in its world:
+				// Minecraft's blocks hold them up, deep under Skyrim's land (down to bedrock), and the
+				// rescue lifted them to the surface partway down a mine.
+				auto&      st = State();
+				auto*      player = RE::PlayerCharacter::GetSingleton();
+				if (player && found && a_height > a_pos.z && (st.puppeting || st.skyrimDrives || st.minecraftOwnsPlayer) &&
+					player->GetPosition().GetSquaredDistance(a_pos) < 100.0f) {
+					a_height = a_pos.z;
+					return found;
+				}
 				if (Any() && a_height > a_pos.z) {
 					const auto actor = SkyToMc(a_pos);
 					const auto land = SkyToMc(RE::NiPoint3(a_pos.x, a_pos.y, a_height));
