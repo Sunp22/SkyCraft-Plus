@@ -1652,28 +1652,40 @@ namespace skycraft
 		// all of the frame's animation: Minecraft draws that hand. Put back when it isn't needed.
 		void BeforeRenderWorld()
 		{
-			static RE::NiPointer<RE::NiAVObject> collapsed;
-			auto&                                st = State();
-			auto*                                player = RE::PlayerCharacter::GetSingleton();
-			RE::NiAVObject*                      bone = nullptr;
-			if (player && st.puppeting && st.rightHandSkyrim != st.leftHandSkyrim) {
+			static std::vector<RE::NiPointer<RE::NiAVObject>> collapsed;
+			auto&                                             st = State();
+			auto*                                             player = RE::PlayerCharacter::GetSingleton();
+			std::vector<RE::NiAVObject*>                      bones;
+			if (player && st.puppeting && (st.rightHandSkyrim || st.leftHandSkyrim)) {
 				if (auto* root = player->Get3D(true)) {
-					bone = root->GetObjectByName(st.rightHandSkyrim ? "NPC L UpperArm [LUar]" : "NPC R UpperArm [RUar]");
+					auto* left = root->GetObjectByName("NPC L UpperArm [LUar]");
+					auto* right = root->GetObjectByName("NPC R UpperArm [RUar]");
+					// SkyCraft+ : third person (Minecraft's F5): Skyrim's camera stays a first-person
+					// one, so its arms floated in front of it. Both go; Minecraft draws the body.
+					const bool thirdPerson = mc.cameraMode != 0;
+					if ((thirdPerson || !st.leftHandSkyrim) && left) {
+						bones.push_back(left);
+					}
+					if ((thirdPerson || !st.rightHandSkyrim) && right) {
+						bones.push_back(right);
+					}
 				}
 			}
 			RE::NiUpdateData update{};
-			if (collapsed && collapsed.get() != bone) {
-				collapsed->local.scale = 1.0f;
-				collapsed->Update(update);
-				collapsed.reset();
+			for (auto& bone : collapsed) {
+				if (bone && std::ranges::find(bones, bone.get()) == bones.end()) {
+					bone->local.scale = 1.0f;
+					bone->Update(update);
+				}
 			}
-			if (bone) {
-				if (!collapsed) {
-					logger::info("hands: Skyrim's first-person {} arm hidden (Minecraft's hand)", st.rightHandSkyrim ? "left" : "right");
+			std::erase_if(collapsed, [&](const RE::NiPointer<RE::NiAVObject>& a_bone) { return std::ranges::find(bones, a_bone.get()) == bones.end(); });
+			for (auto* bone : bones) {
+				if (std::ranges::none_of(collapsed, [&](const RE::NiPointer<RE::NiAVObject>& a_bone) { return a_bone.get() == bone; })) {
+					logger::info("hands: a Skyrim first-person arm hidden ({})", mc.cameraMode != 0 ? "third person" : "Minecraft's hand");
+					collapsed.emplace_back(bone);
 				}
 				bone->local.scale = 0.001f;
 				bone->Update(update);
-				collapsed.reset(bone);
 			}
 		}
 
