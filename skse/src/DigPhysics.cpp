@@ -494,6 +494,12 @@ namespace skycraft::Dig
 		};
 	}
 
+	bool PlayerOnBlock()
+	{
+		auto* player = RE::PlayerCharacter::GetSingleton();
+		return player && blockGroundController.load() == player->GetCharController() && GetTickCount64() - blockGroundTick.load() < 250;
+	}
+
 	void SetPuppet(const RE::hkpCollidable* a_proxy, float a_feetHavokZ)
 	{
 		puppetFeet.store(a_feetHavokZ, std::memory_order_relaxed);

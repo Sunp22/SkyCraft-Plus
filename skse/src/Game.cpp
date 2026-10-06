@@ -953,6 +953,30 @@ namespace skycraft
 			st.skyrimDrives = skyrimDrives;
 			if (skyrimDrives && !menu) {
 				SeedLookFromCamera(st, false);  // Minecraft's player looks where Skyrim's camera does
+				// SkyCraft+ : Skyrim mode on Minecraft blocks. Havok is told the player stands on one
+				// (DigPhysics), but the animation can stay in its jump/fall from a moment Skyrim thought
+				// otherwise (seen in third person): standing on a block, it lands.
+				// (Only once it's lasted: a real jump starts on a block too.)
+				static float stuckInJump = 0.0f;
+				bool         jumping = false;
+				float        rising = 0.0f;
+				if (auto* controller = a_player->GetCharController()) {
+					RE::hkVector4 velocity;
+					controller->GetLinearVelocityImpl(velocity);
+					alignas(16) float v[4];
+					_mm_store_ps(v, velocity.quad);
+					rising = v[2];
+				}
+				const bool stuck = Dig::PlayerOnBlock() && rising <= 0.1f && a_player->GetGraphVariableBool("bInJumpState", jumping) && jumping;
+				stuckInJump = stuck ? stuckInJump + a_delta : 0.0f;
+				if (stuckInJump > 0.4f) {
+					stuckInJump = 0.0f;
+					a_player->NotifyAnimationGraph("JumpLand");
+					static int logged = 0;
+					if (logged++ < 5) {
+						logger::info("dig: standing on a Minecraft block in a jump or fall animation: landed");
+					}
+				}
 			}
 			if (puppet) {
 				EnsureControlsEnabled();
