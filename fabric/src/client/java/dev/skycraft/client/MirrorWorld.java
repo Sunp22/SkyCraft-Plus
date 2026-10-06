@@ -88,6 +88,12 @@ public final class MirrorWorld {
 		leaveWorld(minecraft);
 	}
 
+	/** SkyCraft+ : world switcher. Saves and leaves this world; openWhenReady opens the one now in use. */
+	public static void reopen(Minecraft minecraft, String note) {
+		pendingNote = note;
+		leaveWorld(minecraft);
+	}
+
 	private static void leaveWorld(Minecraft minecraft) {
 		attempted = false;
 		minecraft.disconnectFromWorld(net.minecraft.client.multiplayer.ClientLevel.DEFAULT_QUIT_MESSAGE);
@@ -143,21 +149,21 @@ public final class MirrorWorld {
 				new net.minecraft.client.multiplayer.ServerData("SkyCraft", join, net.minecraft.client.multiplayer.ServerData.Type.OTHER), false, null);
 			return;
 		}
-		if (minecraft.getLevelSource().levelExists(SkyCraft.WORLD_NAME)) {
+		if (minecraft.getLevelSource().levelExists(WorldSwitcher.current())) {
 			SkyCraft.LOG.info("SkyCraft: opening mirror world");
-			minecraft.createWorldOpenFlows().openWorld(SkyCraft.WORLD_NAME, () -> minecraft.gui.setScreen(title));
+			minecraft.createWorldOpenFlows().openWorld(WorldSwitcher.current(), () -> minecraft.gui.setScreen(title));
 			return;
 		}
 		SkyCraft.LOG.info("SkyCraft: creating mirror world");
 		LevelSettings settings = new LevelSettings(
-			SkyCraft.WORLD_NAME,
+			WorldSwitcher.current(), // SkyCraft+ : world switcher
 			GameType.SURVIVAL,
 			new LevelSettings.DifficultySettings(Difficulty.NORMAL, false, false),
 			true,
 			WorldDataConfiguration.DEFAULT
 		);
 		minecraft.createWorldOpenFlows().createFreshLevel(
-			SkyCraft.WORLD_NAME,
+			WorldSwitcher.current(), // SkyCraft+ : world switcher
 			settings,
 			new WorldOptions(0L, true, false), // SkyCraft+ : structures, for the underground, the Nether and the End
 			registries -> registries.lookupOrThrow(Registries.WORLD_PRESET).getOrThrow(PRESET).value().createWorldDimensions(),

@@ -82,6 +82,8 @@ public final class SkyUnderground {
 			loadSettings();
 			OPENING.clear();
 			WAITING.clear();
+			FOR_CHUNK.clear(); // SkyCraft+ : world switcher (another world may open in the same session)
+			lastShift = UNSET;
 		});
 		ServerTickEvents.END_SERVER_TICK.register(SkyUnderground::tick);
 	}

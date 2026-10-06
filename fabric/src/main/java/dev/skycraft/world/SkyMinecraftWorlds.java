@@ -45,6 +45,7 @@ public final class SkyMinecraftWorlds {
 	}
 
 	public static void init() {
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTED.register(server -> LAST.clear());
 		ServerTickEvents.END_SERVER_TICK.register(server -> {
 			for (ServerPlayer player : server.getPlayerList().getPlayers()) {
 				if (player.level().dimension() == Level.OVERWORLD) {
