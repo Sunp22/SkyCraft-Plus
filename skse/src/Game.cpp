@@ -806,9 +806,14 @@ namespace skycraft
 				// SkyCraft+ : underground. Down a mine, under Skyrim's land, Skyrim lifts the player back
 				// up to it (no loading screen, same world, mostly straight up). Minecraft is driving and
 				// the mine is real: the lift is ignored and Minecraft's position put back.
-				const bool lifted = st.puppeting && !teleportPending && dz > 200.0f && std::sqrt(dx * dx + dy * dy) < 30.0f * proto::kUnitsPerBlock;
+				// Under Skyrim's land, however far: it goes back to where the player last stood on Skyrim's
+				// ground, which a staircase down leaves well behind.
+				const bool lifted = st.puppeting && !teleportPending && dz > 200.0f && (st.playerUnderLand || std::sqrt(dx * dx + dy * dy) < 30.0f * proto::kUnitsPerBlock);
 				if (lifted) {
-					logger::info("Skyrim lifted the player out of a mine ({:.0f}, {:.0f}, {:.0f} units); ignored", dx, dy, dz);
+					static std::uint32_t lifts = 0;
+					if (++lifts <= 3 || lifts % 600 == 0) {  // it can try every frame
+						logger::info("Skyrim lifted the player out of a mine ({:.0f}, {:.0f}, {:.0f} units); ignored ({} times)", dx, dy, dz, lifts);
+					}
 					a_player->SetPosition(lastSetPos, true);
 				} else {
 					logger::info("Skyrim moved the player ({:.0f} units: {:.0f}, {:.0f}, {:.0f}); resyncing Minecraft", current.GetDistance(lastSetPos), dx, dy, dz);
@@ -928,7 +933,7 @@ namespace skycraft
 			// the world and sends them back to their "last known good position" on the surface.
 			// While Minecraft is playing, wherever the player is counts as good.
 			if (st.mcInWorld && !loading && !a_player->IsDead() && (puppet || takeover)) {
-				a_player->GetPlayerRuntimeData().lastKnownGoodPosition = current;
+				a_player->GetPlayerRuntimeData().lastKnownGoodPosition = puppet ? McToSky(mc.x, mc.y, mc.z) : current;  // (current may be Skyrim's lift, undone above)
 				a_player->GetPlayerFlags().returnToLastKnownGoodPosition = false;
 			}
 			bool rightHand = false, leftHand = false;
