@@ -42,6 +42,17 @@ namespace skycraft::Dig
 			float                         up{ 0.0f };  // dug cells reach this far above their top for it
 		};
 		std::unordered_map<RE::BSTriShape*, Cut>  cuts;  // by original
+		// SkyCraft+ : the underground. A mesh's real box (Minecraft space, from its vertices), with
+		// the bound it was taken under. Its bounding sphere reaches as far below as it is wide (a land
+		// block ~40 blocks down), so every cave cell dug under the land changed its dug blocks and
+		// re-cut it (60-85 ms each, several times a second: stutter over a cave).
+		struct Tight
+		{
+			RE::NiBound bound;
+			float       lo[3];
+			float       hi[3];
+		};
+		std::unordered_map<RE::BSTriShape*, Tight> tight;
 		std::unordered_set<RE::BSTriShape*>        clones;
 		std::vector<RE::BSGraphics::TriShape*>     owned;  // our renderer data, freed once Skyrim lets go
 		struct Grave
@@ -369,6 +380,16 @@ namespace skycraft::Dig
 				mc[i * 3 + 1] = float(p.y);
 				mc[i * 3 + 2] = float(p.z);
 			}
+			if (vertexCount > 0) {
+				Tight box{ a_geom->worldBound, { mc[0], mc[1], mc[2] }, { mc[0], mc[1], mc[2] } };
+				for (std::uint32_t i = 1; i < vertexCount; ++i) {
+					for (int k = 0; k < 3; ++k) {
+						box.lo[k] = std::min(box.lo[k], mc[i * 3 + k]);
+						box.hi[k] = std::max(box.hi[k], mc[i * 3 + k]);
+					}
+				}
+				tight[a_geom] = box;
+			}
 
 			std::vector<std::uint8_t>  outVerts(vertices, vertices + std::size_t(vertexCount) * stride);
 			std::vector<std::uint16_t> outIndices;
@@ -563,6 +584,18 @@ namespace skycraft::Dig
 			}
 			float lo[3], hi[3];
 			BoundToMc(a_geom->worldBound, lo, hi);
+			// SkyCraft+ : the underground. Its real box once known (see tight).
+			if (const auto t = tight.find(a_geom); t != tight.end()) {
+				const auto& b = a_geom->worldBound;
+				if (t->second.bound.center == b.center && t->second.bound.radius == b.radius) {
+					for (int k = 0; k < 3; ++k) {
+						lo[k] = t->second.lo[k] - 0.5f;
+						hi[k] = t->second.hi[k] + 0.5f;
+					}
+				} else {
+					tight.erase(t);
+				}
+			}
 			lo[1] -= a_up;  // reaches down to dug blocks this far below it
 			std::vector<Clip::Cube> cubes;
 			for (int sy = int(std::floor(lo[1])) >> 4; sy <= int(std::floor(hi[1])) >> 4; ++sy) {
@@ -871,6 +904,7 @@ namespace skycraft::Dig
 				if (cut.original && cut.original->parent && cut.clone) {
 					cut.original->GetFlags().reset(RE::NiAVObject::Flag::kHidden);
 				}
+				tight.erase(it->first);
 				Bury(std::move(cut.clone));
 				it = cuts.erase(it);
 			} else {
