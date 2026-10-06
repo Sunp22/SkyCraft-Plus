@@ -643,6 +643,13 @@ namespace skycraft
 			auto*        waiting = st.minecraftWorldsOption ? RE::TESForm::LookupByID<RE::TESObjectCELL>(st.waitingCellId) : nullptr;
 			const bool   parked = waiting && a_cell == waiting;
 			const auto   world = mc.dimension;
+			// Minecraft says it's back in the open world a moment before its new position arrives (the
+			// first ones are still the Nether's or the End's): wait until it has stood still a second.
+			static double settleX = 0.0, settleY = 0.0, settleZ = 0.0;
+			static float  settled = -1.0f;
+			if (!parked || world != proto::kDimTamriel) {
+				settled = -1.0f;
+			}
 			retry -= a_delta;
 			if (!waiting || a_loading || !a_mcInWorld || a_player->IsDead() || retry > 0.0f) {
 				return parked;
@@ -667,6 +674,17 @@ namespace skycraft
 				return parked;
 			}
 			if (parked && world == proto::kDimTamriel) {
+				const double sdx = mc.x - settleX, sdy = mc.y - settleY, sdz = mc.z - settleZ;
+				if (settled < 0.0f || sdx * sdx + sdy * sdy + sdz * sdz > 0.25) {
+					settleX = mc.x, settleY = mc.y, settleZ = mc.z;
+					settled = 0.0f;
+					return parked;
+				}
+				settled += a_delta;
+				if (settled < 1.0f) {
+					return parked;
+				}
+				settled = -1.0f;
 				// Out of a portal into the open world: Skyrim's player goes where Minecraft's came out.
 				// Moved like a reference to an editor location: the position in Tamriel, anchored on
 				// one of its persistent references (any will do).
@@ -806,9 +824,9 @@ namespace skycraft
 			}
 			// SkyCraft+ : the underground. More than two blocks under Skyrim's land (a mine): nothing of
 			// Skyrim's may be on screen, and blocks must be drawn in the frame anyway (WorldRender).
+			// (Minecraft tells: Skyrim's own land lookup gives up far below the map.)
 			{
-				float landZ = 0.0f;
-				const bool under = !loading && !st.parked && Dig::LandHeightAt(current, landZ) && landZ > current.z + 2.0f * proto::kUnitsPerBlock;
+				const bool under = !loading && !st.parked && haveMc && st.mcInWorld && (mc.flags & proto::kMcUnderLand) != 0;
 				if (under != st.playerUnderLand) {
 					logger::info("underground: {} Skyrim's land", under ? "under" : "out from under");
 				}

@@ -48,8 +48,6 @@ namespace skycraft::Dig
 	// drives the player (null otherwise), and its feet (Havok z). Its body only stands on what's
 	// under its feet: anything else (the ground over a hole it's in) would shove it out.
 	void SetPuppet(const RE::hkpCollidable* a_proxy, float a_feetHavokZ);
-	// SkyCraft+ : the underground. Skyrim's land height at a point; false where none is loaded.
-	bool LandHeightAt(const RE::NiPoint3& a_pos, float& a_height);
 	// Main thread, every frame: cuts dug blocks out of the meshes Skyrim draws (DigMesh.cpp).
 	// a_changed: blocks were dug this frame.
 	void UpdateMeshes(RE::PlayerCharacter* a_player, float a_delta, bool a_changed);

@@ -8,7 +8,7 @@ public final class Proto {
 	}
 
 	public static final int MAGIC = 0x43594B53;
-	public static final int VERSION = 26;
+	public static final int VERSION = 27;
 	// A second client on the same PC (multiplayer testing) talks to its own stand-in Skyrim:
 	// -Dskycraft.link=Local\SkyCraft_guest (see tools/fake_guest.py).
 	public static final String MAPPING_NAME = System.getProperty("skycraft.link", "Local\\SkyCraft_v1");
@@ -217,6 +217,7 @@ public final class Proto {
 	public static final int MC_SWIMMING = 1 << 6;
 	public static final int MC_FLYING = 1 << 7;
 	public static final int MC_USE_TARGET = 1 << 8;
+	public static final int MC_UNDER_LAND = 1 << 9; // SkyCraft+ : v27
 
 	// SkyCraft+ : McState dimension (v26). 3 and up: Minecraft's own worlds, Skyrim parks its player.
 	public static final int DIM_TAMRIEL = 0;

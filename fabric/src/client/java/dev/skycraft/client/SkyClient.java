@@ -532,6 +532,11 @@ public final class SkyClient {
 		} else if (player != null && SkyHands.usableTargetInView(minecraft)) {
 			flags |= Proto.MC_USE_TARGET;
 		}
+		// SkyCraft+ : the underground. Under Skyrim's land, by the land heights it has sent.
+		if (player != null && minecraft.level != null && minecraft.level.dimension() == net.minecraft.world.level.Level.OVERWORLD
+			&& dev.skycraft.world.SkyGround.under(player.getX(), player.getEyeY(), player.getZ(), 2.0)) {
+			flags |= Proto.MC_UNDER_LAND;
+		}
 		mc.flags = flags;
 		mc.sensitivity = minecraft.options.sensitivity().get().floatValue();
 		mc.teleportAck = holdPos == null ? teleportAck : teleportAck - 1; // not "arrived" until we are released
