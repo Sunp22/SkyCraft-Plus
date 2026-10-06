@@ -122,6 +122,11 @@ public final class SkyUnderground {
 	/** How far under Skyrim's land a point is surely ground, whatever Skyrim has (or hasn't) sent around it. */
 	private static final double DEEP = 8.0;
 
+	/** The underground is on (config/skycraft.properties deepUnderground). */
+	public static boolean enabled() {
+		return enabled;
+	}
+
 	/**
 	 * Well under Skyrim's land: solid ground. Looking up for the nearest surface (SkyDig.Probe)
 	 * there finds the sunk-in undersides of rocks and took them for an overhang with open air

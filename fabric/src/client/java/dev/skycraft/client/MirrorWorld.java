@@ -159,7 +159,7 @@ public final class MirrorWorld {
 		minecraft.createWorldOpenFlows().createFreshLevel(
 			SkyCraft.WORLD_NAME,
 			settings,
-			new WorldOptions(0L, false, false),
+			new WorldOptions(0L, true, false), // SkyCraft+ : structures, for the underground, the Nether and the End
 			registries -> registries.lookupOrThrow(Registries.WORLD_PRESET).getOrThrow(PRESET).value().createWorldDimensions(),
 			title
 		);
