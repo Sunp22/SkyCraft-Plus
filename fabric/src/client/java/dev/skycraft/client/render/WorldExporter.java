@@ -284,6 +284,11 @@ public final class WorldExporter {
 		shapeBoxes.clear();
 		int shapeCount = 0;
 		MESH.cardinal = level.cardinalLighting();
+		boolean underground = level.dimension() == net.minecraft.world.level.Level.OVERWORLD && dev.skycraft.world.SkyUnderground.enabled();
+		for (int c = 0; c < 256; c++) {
+			double land = underground ? dev.skycraft.world.SkyGround.lowestAround(sx * 16 + (c & 15) + 0.5, sz * 16 + (c >> 4) + 0.5) : Double.NaN;
+			MESH.skyCut[c] = Double.isNaN(land) ? Float.NEGATIVE_INFINITY : (float) (land - 3.0 - sy * 16);
+		}
 		if (!empty) {
 			BlockPos origin = SectionPos.of(sx, sy, sz).origin();
 			BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
@@ -643,6 +648,11 @@ public final class WorldExporter {
 			this.buf.put((byte) (argb >> 16)).put((byte) (argb >> 8)).put((byte) argb).put((byte) (argb >>> 24));
 			int block = (light >> 4) & 0xF;
 			int sky = (light >> 20) & 0xF;
+			// SkyCraft+ : the underground (see skyCut).
+			int col = Mth.clamp((int) x, 0, 15) + 16 * Mth.clamp((int) z, 0, 15);
+			if (y < this.skyCut[col]) {
+				sky = 0;
+			}
 			this.buf.putInt(block | (sky << 8));
 			this.buf.putInt(flags);
 			this.vertices++;
@@ -702,6 +712,13 @@ public final class WorldExporter {
 		// Skyrim ground's height in the fluid's cell (0..1) and the cell's section-relative y: a
 		// Minecraft fluid level counts from the cell's floor, so on Skyrim ground partway up the cell
 		// the fluid is squeezed into the space above it (thin edges stay visible on the ground).
+		/**
+		 * SkyCraft+ : the underground. Per column of the section being meshed, the height (section
+		 * relative) below which Minecraft's sky light is left out: three blocks under Skyrim's land.
+		 * Breaking a block down a mine opened it onto cells that are still air until the server
+		 * reveals them, and sky light poured in for a moment (a flash); and no sky reaches there.
+		 */
+		final float[] skyCut = new float[256];
 		float fluidGround;
 		int fluidBaseY;
 

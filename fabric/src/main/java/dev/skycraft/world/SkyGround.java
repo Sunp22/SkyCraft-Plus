@@ -57,6 +57,22 @@ public final class SkyGround {
 		return true;
 	}
 
+	/** The lowest of Skyrim's land heights around (x, z), NaN unless all sixteen are known (as under()). */
+	public static double lowestAround(double x, double z) {
+		int cx = (int) Math.floor(x / GRID), cz = (int) Math.floor(z / GRID);
+		double lowest = Double.POSITIVE_INFINITY;
+		for (int dx = -1; dx <= 2; dx++) {
+			for (int dz = -1; dz <= 2; dz++) {
+				Float h = HEIGHT.get(key(cx + dx, cz + dz));
+				if (h == null) {
+					return Double.NaN;
+				}
+				lowest = Math.min(lowest, h);
+			}
+		}
+		return lowest;
+	}
+
 	/** Skyrim's land around (x, z), averaged over SMOOTH_RADIUS blocks; NaN where none is known. */
 	public static double smoothed(int x, int z) {
 		int r = SMOOTH_RADIUS / GRID;
