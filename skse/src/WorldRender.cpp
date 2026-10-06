@@ -2953,6 +2953,16 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 					}
 					pctx->ClearDepthStencilView(pdsv, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, depthReversed ? 0.0f : 1.0f, 0);
 				}
+			} else if (st.playerUnderLand) {
+				// SkyCraft+ : the underground. Far under the map (below about -8192 units) Skyrim's depth
+				// holds something near the camera, which hid every block behind it: down a mine nothing
+				// of Skyrim's is in front of the blocks, so its depth starts far.
+				auto& prd = renderer->GetRuntimeData();
+				auto* pctx = reinterpret_cast<ID3D11DeviceContext*>(prd.context);
+				auto* pdsv = reinterpret_cast<ID3D11DepthStencilView*>(renderer->GetDepthStencilData().depthStencils[RE::RENDER_TARGETS_DEPTHSTENCIL::kMAIN].views[0]);
+				if (pctx && pdsv) {
+					pctx->ClearDepthStencilView(pdsv, D3D11_CLEAR_DEPTH, depthReversed ? 0.0f : 1.0f, 0);
+				}
 			}
 			Link::Get().ReadWorldEntities(entities);
 			if (sections.empty() && entities.count == 0 && !entities.hasSelection && avatar.batches.empty() && scene.batches.empty()) {

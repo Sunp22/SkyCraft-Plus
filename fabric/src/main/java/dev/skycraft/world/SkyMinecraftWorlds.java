@@ -85,6 +85,21 @@ public final class SkyMinecraftWorlds {
 		return new TeleportTransition(overworld, spot, Vec3.ZERO, player.getYRot(), 0.0F, vanilla.postTeleportTransition());
 	}
 
+	/** The Nether portal the player left the open world by, if it's still there (NetherPortalBlockMixin). */
+	public static @Nullable BlockPos portalLeftBy(ServerPlayer player, ServerLevel overworld) {
+		BlockPos at = player.getAttached(LEFT_AT);
+		if (at == null) {
+			return null;
+		}
+		for (BlockPos q : BlockPos.betweenClosed(at.offset(-2, -1, -2), at.offset(2, 3, 2))) {
+			if (overworld.getBlockState(q).is(Blocks.NETHER_PORTAL)) {
+				SkyCraft.LOG.info("SkyCraft: back from the Nether by the portal at {}", q.toShortString());
+				return q.immutable();
+			}
+		}
+		return null;
+	}
+
 	/** On top of the nearest End portal frame; else beside the Nether portal; else where they left. */
 	private static Vec3 safeSpot(ServerLevel level, BlockPos at) {
 		BlockPos frame = null;

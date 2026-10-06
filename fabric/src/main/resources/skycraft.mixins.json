@@ -15,6 +15,7 @@
     "ItemMixin",
     "MinecraftServerFlightMixin",
     "MobSunBurnMixin",
+    "NetherPortalBlockMixin",
     "PathNavigationMixin",
     "PathTypeCacheMixin",
     "PlayerEdgeMixin",
