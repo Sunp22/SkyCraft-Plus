@@ -36,13 +36,18 @@ namespace skycraft::MinecraftEnemies
 
 		float Uniform(float a_lo, float a_hi) { return std::uniform_real_distribution<float>(a_lo, a_hi)(rng); }
 
-		/** Every actor in the waiting cell but the player: ours, from now or from a save. */
+		/**
+		 * The enemies in the waiting cell, alive or dead: ours, from now or from a save. Never a
+		 * follower, a summon or anyone else friendly that came along with the player.
+		 */
 		void ClearCell(RE::PlayerCharacter* a_player)
 		{
 			std::vector<RE::TESObjectREFR*> gone;
 			if (auto* cell = a_player->GetParentCell()) {
 				cell->ForEachReference([&](RE::TESObjectREFR* a_ref) {
-					if (a_ref && a_ref != a_player && a_ref->As<RE::Actor>()) {
+					auto* actor = a_ref ? a_ref->As<RE::Actor>() : nullptr;
+					if (actor && actor != a_player && !actor->IsPlayerTeammate() && !actor->IsCommandedActor() &&
+						(actor->IsDead() || actor->IsHostileToActor(a_player))) {
 						gone.push_back(a_ref);
 					}
 					return RE::BSContainer::ForEachResult::kContinue;

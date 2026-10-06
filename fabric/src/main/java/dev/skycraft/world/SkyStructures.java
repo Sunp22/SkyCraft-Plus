@@ -277,11 +277,6 @@ public final class SkyStructures {
 			int reach = (Math.max(max.x() - min.x(), max.z() - min.z()) + 1) / 2 + 1;
 			level.getChunkSource().addTicketWithRadius(net.minecraft.server.level.TicketType.PORTAL,
 				new ChunkPos((min.x() + max.x()) / 2, (min.z() + max.z()) / 2), Math.min(reach, 8));
-			for (int cx = min.x() - 1; cx <= max.x() + 1; cx++) {
-				for (int cz = min.z() - 1; cz <= max.z() + 1; cz++) {
-					level.getChunk(cx, cz);  // the mirror world's chunks are empty: cheap to have loaded
-				}
-			}
 			List<ChunkPos> chunks = new ArrayList<>();
 			for (int cx = min.x(); cx <= max.x(); cx++) {
 				for (int cz = min.z(); cz <= max.z(); cz++) {
@@ -298,6 +293,19 @@ public final class SkyStructures {
 		}
 	}
 
+	private static long waitingSince;
+
+	private static boolean loadedAround(ServerLevel level, ChunkPos c) {
+		for (int dx = -1; dx <= 1; dx++) {
+			for (int dz = -1; dz <= 1; dz++) {
+				if (level.getChunkSource().getChunkNow(c.x() + dx, c.z() + dz) == null) {
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+
 	/** Places the pending structure's next chunks, as many as PLACE_NANOS allows; done: it's recorded. */
 	private static void continueBuilding(ServerLevel level, SkyrimMap m) {
 		Pending job = pending;
@@ -305,7 +313,24 @@ public final class SkyStructures {
 		placing = m;
 		try {
 			while (pendingNext < job.chunks().size() && System.nanoTime() < deadline) {
-				ChunkPos c = job.chunks().get(pendingNext++);
+				ChunkPos c = job.chunks().get(pendingNext);
+				// Its chunk and those round it loaded (in the background, by the ticket set when it
+				// was laid out): loading them all at once stalled the game.
+				if (!loadedAround(level, c)) {
+					if (waitingSince == 0L) {
+						waitingSince = System.nanoTime();
+					}
+					if (System.nanoTime() - waitingSince < 10_000_000_000L) {
+						return;
+					}
+					for (int dx = -1; dx <= 1; dx++) {
+						for (int dz = -1; dz <= 1; dz++) {
+							level.getChunk(c.x() + dx, c.z() + dz);  // waited long enough: now
+						}
+					}
+				}
+				waitingSince = 0L;
+				pendingNext++;
 				job.start().placeInChunk(level, level.structureManager(), job.ground(), level.getRandom(),
 					new BoundingBox(c.getMinBlockX(), level.getMinY(), c.getMinBlockZ(), c.getMaxBlockX(), level.getMaxY() + 1, c.getMaxBlockZ()), c);
 			}
