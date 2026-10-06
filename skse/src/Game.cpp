@@ -625,6 +625,12 @@ namespace skycraft
 			}
 		}
 
+		// SkyCraft+ : the Nether and the End. Back in the open world, Skyrim's player is held where it came
+		// out until Minecraft drives it again: the ground there isn't loaded yet, and it would fall
+		// through (and die of Skyrim's fall damage) meanwhile.
+		RE::NiPoint3 returnPin;
+		float        returnPinTime = 0.0f;
+
 		// SkyCraft+ : the Nether and the End. Skyrim has nothing for a world of Minecraft's own, so its
 		// player waits in an empty cell (SkyCraft.ini iWaitingCell) meanwhile, following Minecraft's
 		// there, and only Minecraft is drawn. When Minecraft's player comes out of a portal into the
@@ -713,6 +719,8 @@ namespace skycraft
 				static REL::Relocation<MoveToFn> moveTo{ RELOCATION_ID(56227, 56626) };
 				const RE::ObjectRefHandle anchorHandle = anchor->CreateRefHandle();
 				moveTo(a_player, anchorHandle, anchor->GetParentCell(), tamriel, pos, RE::NiPoint3(0.0f, 0.0f, McYawToHeading(mc.yaw)));
+				returnPin = pos;
+				returnPinTime = 30.0f;
 				retry = 5.0f;
 				return parked;
 			}
@@ -796,9 +804,19 @@ namespace skycraft
 				haveLastSet = false;
 				settleTimer = kSettleSeconds;
 			} else if (haveLastSet && current.GetDistance(lastSetPos) > kSkyrimTeleportThreshold) {
-				logger::info("Skyrim moved the player ({:.0f} units); resyncing Minecraft", current.GetDistance(lastSetPos));
-				teleportPending = true;
-				haveLastSet = false;
+				const float dx = current.x - lastSetPos.x, dy = current.y - lastSetPos.y, dz = current.z - lastSetPos.z;
+				// SkyCraft+ : underground. Down a mine, under Skyrim's land, Skyrim lifts the player back
+				// up to it (no loading screen, same world, mostly straight up). Minecraft is driving and
+				// the mine is real: the lift is ignored and Minecraft's position put back.
+				const bool lifted = st.puppeting && !teleportPending && dz > 200.0f && std::sqrt(dx * dx + dy * dy) < 30.0f * proto::kUnitsPerBlock;
+				if (lifted) {
+					logger::info("Skyrim lifted the player out of a mine ({:.0f}, {:.0f}, {:.0f} units); ignored", dx, dy, dz);
+					a_player->SetPosition(lastSetPos, true);
+				} else {
+					logger::info("Skyrim moved the player ({:.0f} units: {:.0f}, {:.0f}, {:.0f}); resyncing Minecraft", current.GetDistance(lastSetPos), dx, dy, dz);
+					teleportPending = true;
+					haveLastSet = false;
+				}
 			}
 			// SkyCraft+ : the Nether and the End. While parked, Minecraft leads: it gets no teleports.
 			st.mcWorld = haveMc ? mc.dimension : 0u;
@@ -876,6 +894,19 @@ namespace skycraft
 				logger::info("puppet {}", puppet ? "on (Minecraft drives the player)" : "off");
 			}
 			st.puppeting = puppet;
+
+			// SkyCraft+ : the Nether and the End. Just back: held where it came out (see returnPin).
+			if (returnPinTime > 0.0f) {
+				returnPinTime = puppet ? 0.0f : returnPinTime - a_delta;
+				if (!puppet && !loading && !st.parked) {
+					a_player->SetPosition(returnPin, true);
+					if (auto* controller = a_player->GetCharController()) {
+						controller->SetLinearVelocityImpl(RE::hkVector4(0.0f, 0.0f, 0.0f, 0.0f));
+						controller->fallStartHeight = returnPin.z;
+						controller->fallTime = 0.0f;
+					}
+				}
+			}
 
 			// SkyCraft+ : underground. Deep under Skyrim's land, Skyrim thinks the player fell out of
 			// the world and sends them back to their "last known good position" on the surface.

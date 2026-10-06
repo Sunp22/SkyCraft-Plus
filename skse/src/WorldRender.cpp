@@ -1886,6 +1886,9 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 					maskUsable ? "used (no double shadows; blocks in Skyrim's shade)" : "not used");
 			}
 			shadowMaskUsable = maskUsable;
+			if (State().parked) {
+				return;  // SkyCraft+ : the empty cell's depth is only what we cleared it to; keep what Skyrim's was
+			}
 			auto sorted = v;
 			std::ranges::sort(sorted);
 			const float median = sorted[8];
@@ -2926,8 +2929,28 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 				Game::NoteFrameStep('D');
 				Game::NoteRenderedCamera(camera->world.translate, camera->world.rotate);
 			}
-			if (!device || !atlasSrv || !inFrameEnabled || !camera || !renderer || !(st.puppeting || st.skyrimDrives) || st.skyrimMenuOpen || !depthKnown || !depthUsable) {
+			if (!device || !atlasSrv || !inFrameEnabled || !camera || !renderer || !(st.puppeting || st.skyrimDrives) || st.skyrimMenuOpen || (!st.parked && (!depthKnown || !depthUsable))) {
 				return;
+			}
+			// SkyCraft+ : the Nether and the End. Skyrim's player waits in an empty cell, so nothing of
+			// Skyrim's covers the screen and its picture keeps old frames (smeared by its temporal
+			// anti-aliasing). Start from the dimension's fog colour, far depth and no motion instead.
+			if (st.parked) {
+				auto& prd = renderer->GetRuntimeData();
+				auto* pctx = reinterpret_cast<ID3D11DeviceContext*>(prd.context);
+				auto* prtv = reinterpret_cast<ID3D11RenderTargetView*>(prd.renderTargets[RE::RENDER_TARGETS::kMAIN].RTV);
+				auto* pmotion = reinterpret_cast<ID3D11RenderTargetView*>(prd.renderTargets[RE::RENDER_TARGETS::kMOTION_VECTOR].RTV);
+				auto* pdsv = reinterpret_cast<ID3D11DepthStencilView*>(renderer->GetDepthStencilData().depthStencils[RE::RENDER_TARGETS_DEPTHSTENCIL::kMAIN].views[0]);
+				if (pctx && prtv && pdsv) {
+					const bool  end = st.mcWorld == proto::kDimEnd;
+					const float fog[4] = { end ? 0.04f : 0.2f, 0.03f, end ? 0.06f : 0.03f, 1.0f };
+					const float zero[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+					pctx->ClearRenderTargetView(prtv, fog);
+					if (pmotion) {
+						pctx->ClearRenderTargetView(pmotion, zero);
+					}
+					pctx->ClearDepthStencilView(pdsv, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, depthReversed ? 0.0f : 1.0f, 0);
+				}
 			}
 			Link::Get().ReadWorldEntities(entities);
 			if (sections.empty() && entities.count == 0 && !entities.hasSelection && avatar.batches.empty() && scene.batches.empty()) {
