@@ -42,6 +42,14 @@ namespace skycraft
 		std::atomic<std::uint32_t> waitingCellId{ 0x6F3EB };
 		std::atomic<std::uint32_t> mcWorld{ 0 };
 		std::atomic<bool>          parked{ false };
+		// SkyCraft+ : Skyrim enemies in Minecraft's own worlds ([Worlds] in SkyCraft.ini). Base forms (leveled
+		// lists or actors) for the Nether and for the End's outer islands; at most enemyCap at once, one
+		// tried about every enemySeconds.
+		bool                       skyrimEnemiesOption{ true };
+		std::vector<RE::FormID>    netherEnemies;
+		std::vector<RE::FormID>    endEnemies;
+		int                        enemyCap{ 3 };
+		float                      enemySeconds{ 30.0f };
 		// SkyCraft+ : the underground. Skyrim's land is more than two blocks above the player (a mine).
 		std::atomic<bool>          playerUnderLand{ false };
 
@@ -205,6 +213,14 @@ namespace skycraft
 		std::uint32_t Generation();
 		// Main thread, every frame: NPCs overlapping solid Minecraft blocks are pushed back out.
 		void PushActorsOut(RE::PlayerCharacter* a_player, float a_delta);
+	}
+
+	// SkyCraft+ : Skyrim enemies in Minecraft's own worlds (the Nether, the End's outer islands).
+	namespace MinecraftEnemies
+	{
+		// Main thread, every frame: spawns, steers and clears Skyrim enemies around the parked player
+		// (feet in Minecraft coordinates).
+		void PerFrame(RE::PlayerCharacter* a_player, float a_delta, bool a_parked, std::uint32_t a_world, double a_x, double a_y, double a_z);
 	}
 
 	namespace WorldRender

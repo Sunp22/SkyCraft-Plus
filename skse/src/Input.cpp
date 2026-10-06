@@ -131,6 +131,31 @@ namespace skycraft
 			logger::info("Minecraft's own worlds (Nether, End): {} (waiting cell {:08X})", State().minecraftWorldsOption ? "on" : "off",
 				State().waitingCellId.load());
 
+			// SkyCraft+ : Skyrim enemies in the Nether and the End's outer islands.
+			auto formList = [&](const char* a_key, const char* a_default) {
+				std::vector<RE::FormID> ids;
+				const std::string list = ini.GetValue("Worlds", a_key, a_default);
+				std::size_t       start = 0;
+				while (start <= list.size()) {
+					const auto  end = std::min(list.find(',', start), list.size());
+					std::string item = list.substr(start, end - start);
+					start = end + 1;
+					item.erase(0, item.find_first_not_of(" \t"));
+					item.erase(item.find_last_not_of(" \t") + 1);
+					if (!item.empty()) {
+						ids.push_back(static_cast<RE::FormID>(std::strtoul(item.c_str(), nullptr, 0)));
+					}
+				}
+				return ids;
+			};
+			State().skyrimEnemiesOption = ini.GetBoolValue("Worlds", "bSkyrimEnemies", true);
+			State().netherEnemies = formList("sNetherEnemies", "0x1E79B, 0x25D1A, 0x25D1B, 0x23AA6");
+			State().endEnemies = formList("sEndEnemies", "0x23AA7, 0x23ABD, 0x10FCE5");
+			State().enemyCap = static_cast<int>(ini.GetLongValue("Worlds", "iEnemyCap", 3));
+			State().enemySeconds = static_cast<float>(ini.GetDoubleValue("Worlds", "fEnemySeconds", 30.0));
+			logger::info("Skyrim enemies in the Nether and the End: {} ({} and {} kinds, up to {}, about every {:.0f} s)",
+				State().skyrimEnemiesOption ? "on" : "off", State().netherEnemies.size(), State().endEnemies.size(), State().enemyCap, State().enemySeconds);
+
 			const std::string toggle = ini.GetValue("Controls", "sModeToggleKey", "");
 			if (!toggle.empty()) {
 				const auto code = DikFromName(toggle);
