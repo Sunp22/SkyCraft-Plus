@@ -3,7 +3,6 @@ package dev.skycraft.world;
 
 import dev.skycraft.SkyCraft;
 import dev.skycraft.link.Proto;
-import it.unimi.dsi.fastutil.longs.LongArrayFIFOQueue;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import java.io.IOException;
 import java.io.Reader;
@@ -51,8 +50,9 @@ import org.jspecify.annotations.Nullable;
  * digging reaches into Skyrim's ground, the block at the matching spot of that world is brought up
  * into the mirror world: the two line up so Skyrim's sea level is Minecraft's (63) and bedrock is at
  * Minecraft's -64 below it. Where that world has a cave (air, water or lava), the cell opens and the
- * cave is revealed outwards, a few hundred cells a tick, only inside Skyrim's ground (cells Skyrim's
- * shape says are inside it; regions it hasn't sent yet wait). Above vanilla's own terrain but under a
+ * cave is revealed outwards, nearest the player first and as much as 4 ms a tick allows, only
+ * inside Skyrim's ground (cells Skyrim's shape says are inside it, or deep under its land; regions
+ * it hasn't sent yet wait). Above vanilla's own terrain but under a
  * Skyrim mountain is stone. Setting: deepUnderground in config/skycraft.properties (off: upstream's
  * dirt, stone and bedrock five blocks down).
  */
@@ -61,14 +61,20 @@ public final class SkyUnderground {
 	private static final int VANILLA_SEA = 63;
 	private static final int VANILLA_BOTTOM = -64;
 	private static final int SURFACE_SKIN = 5;     // vanilla's own surface layers (grass, dirt, sand, sea floor) count as stone
-	private static final int CELLS_PER_TICK = 128;
+	private static final long REVEAL_NANOS = 4_000_000L; // per tick: a cave opens as fast as this allows
+	private static final int AHEAD_CHUNKS = 4;          // the hidden world generated this far around the host
 	private static final int MAX_WAITING = 20000;
 
 	private static boolean enabled = true;
 	private static int caveMonsterCap = 10;
 
-	/** Cells whose neighbours are to be revealed (a cave opening up), for one Skyrim world. */
-	private static final LongArrayFIFOQueue OPENING = new LongArrayFIFOQueue();
+	/**
+	 * Cells whose neighbours are to be revealed (a cave opening up), for one Skyrim world: nearest
+	 * the host first, so the cave in front of them opens before its far corners.
+	 */
+	private static double focusX, focusY, focusZ;
+	private static final it.unimi.dsi.fastutil.longs.LongComparator NEAREST = (a, b) -> Double.compare(distanceToFocus(a), distanceToFocus(b));
+	private static it.unimi.dsi.fastutil.longs.LongHeapPriorityQueue OPENING = new it.unimi.dsi.fastutil.longs.LongHeapPriorityQueue(NEAREST);
 	/** Cells next to an opening cave whose part of Skyrim's shape hasn't arrived yet. */
 	private static final LongOpenHashSet WAITING = new LongOpenHashSet();
 	private static int openingWorld;
@@ -330,10 +336,50 @@ public final class SkyUnderground {
 			// themselves once the player has moved on.
 			for (var player : server.getPlayerList().getPlayers()) {
 				if (player.level() == level && dev.skycraft.net.SkyNet.isHost(player)) {
-					hidden.getChunkSource().addTicketWithRadius(TicketType.PORTAL, new ChunkPos(player.getBlockX() >> 4, player.getBlockZ() >> 4), 2);
+					hidden.getChunkSource().addTicketWithRadius(TicketType.PORTAL, new ChunkPos(player.getBlockX() >> 4, player.getBlockZ() >> 4), AHEAD_CHUNKS);
 				}
 			}
 		}
+		for (var player : server.getPlayerList().getPlayers()) {
+			if (player.level() == level && dev.skycraft.net.SkyNet.isHost(player)) {
+				refocus(player.getX(), player.getEyeY(), player.getZ());
+			}
+		}
+		SkyDig.beginBatch();
+		try {
+			reveal(level, hidden, server);
+		} finally {
+			SkyDig.endBatch();
+		}
+	}
+
+	private static double distanceToFocus(long key) {
+		double dx = BlockPos.getX(key) + 0.5 - focusX, dy = BlockPos.getY(key) + 0.5 - focusY, dz = BlockPos.getZ(key) + 0.5 - focusZ;
+		return dx * dx + dy * dy + dz * dz;
+	}
+
+	/** The host moved on: the queue is ordered by distance to them again. */
+	private static void refocus(double x, double y, double z) {
+		double dx = x - focusX, dy = y - focusY, dz = z - focusZ;
+		if (dx * dx + dy * dy + dz * dz < 16.0) {
+			return;
+		}
+		long[] queued = new long[OPENING.size()];
+		for (int i = 0; i < queued.length; i++) {
+			queued[i] = OPENING.dequeueLong();
+		}
+		focusX = x;
+		focusY = y;
+		focusZ = z;
+		OPENING = new it.unimi.dsi.fastutil.longs.LongHeapPriorityQueue(queued.length + 16, NEAREST);
+		for (long key : queued) {
+			OPENING.enqueue(key);
+		}
+	}
+
+	/** One tick's revealing, within REVEAL_NANOS (the dug cells it marks go to the client once per chunk). */
+	private static void reveal(ServerLevel level, ServerLevel hidden, MinecraftServer server) {
+		long deadline = System.nanoTime() + REVEAL_NANOS;
 		if (!FOR_CHUNK.isEmpty()) {
 			// Cells dug where the hidden world wasn't ready: dig them now that it is.
 			for (var it = FOR_CHUNK.entrySet().iterator(); it.hasNext();) {
@@ -358,15 +404,13 @@ public final class SkyUnderground {
 				}
 			}
 		}
-		int budget = CELLS_PER_TICK;
-		while (!OPENING.isEmpty() && budget > 0) {
+		while (!OPENING.isEmpty() && System.nanoTime() < deadline) {
 			BlockPos from = BlockPos.of(OPENING.dequeueLong());
 			for (Direction d : Direction.values()) {
 				BlockPos n = from.relative(d);
 				if (!level.isLoaded(n) || SkyDig.isDug(level, openingWorld, n)) {
 					continue;
 				}
-				budget--;
 				boolean deep = deep(n.getX() + 0.5, n.getY() + 0.5, n.getZ() + 0.5);
 				if (!deep && !SkyCollision.isKnown(n.getX(), n.getY(), n.getZ())) {
 					if (WAITING.size() < MAX_WAITING) {

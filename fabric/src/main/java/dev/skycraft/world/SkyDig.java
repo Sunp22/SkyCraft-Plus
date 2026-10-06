@@ -164,7 +164,74 @@ public final class SkyDig {
 	}
 
 	public static boolean isDug(Level level, int world, BlockPos pos) {
-		return column(level.getChunkAt(pos)).isDug(world, pos.getX(), pos.getY(), pos.getZ());
+		LevelChunk chunk = level.getChunkAt(pos);
+		if (batching && !level.isClientSide()) { // (the server thread's batch; the client runs alongside)
+			List<DugSection> pending = BATCH.get(chunk);
+			if (pending != null) {
+				return isDug(pending, world, pos.getX(), pos.getY(), pos.getZ());
+			}
+		}
+		return column(chunk).isDug(world, pos.getX(), pos.getY(), pos.getZ());
+	}
+
+	// ---- SkyCraft+ : the underground. Many cells dug in one go (a cave opening up) ---------------
+
+	/**
+	 * Each dug cell replaced its chunk's whole column of dug cells, which is synced to the client:
+	 * a packet a cell. Within a batch they're collected per chunk (server thread) and each chunk's
+	 * column is set once at the end.
+	 */
+	private static final java.util.Map<LevelChunk, List<DugSection>> BATCH = new java.util.IdentityHashMap<>();
+	private static boolean batching;
+
+	public static void beginBatch() {
+		batching = true;
+	}
+
+	public static void endBatch() {
+		batching = false;
+		for (var entry : BATCH.entrySet()) {
+			entry.getKey().setAttached(DUG, new DugColumn(List.copyOf(entry.getValue())));
+		}
+		BATCH.clear();
+	}
+
+	private static boolean isDug(List<DugSection> sections, int world, int x, int y, int z) {
+		int sy = y >> 4;
+		int bit = (x & 15) + 16 * (z & 15) + 256 * (y & 15);
+		for (DugSection s : sections) {
+			if (s.world() == world && s.sectionY() == sy && s.bits().length == 64) {
+				return ((s.bits()[bit >> 6] >>> (bit & 63)) & 1L) != 0;
+			}
+		}
+		return false;
+	}
+
+	/** Marks a cell in the batch's working copy of its chunk's column (its bit arrays are its own). */
+	private static boolean markDugInBatch(LevelChunk chunk, int world, BlockPos pos) {
+		List<DugSection> sections = BATCH.computeIfAbsent(chunk, c -> {
+			List<DugSection> copy = new ArrayList<>();
+			for (DugSection s : column(c).sections()) {
+				copy.add(new DugSection(s.world(), s.sectionY(), s.bits().clone()));
+			}
+			return copy;
+		});
+		int sy = pos.getY() >> 4;
+		int bit = (pos.getX() & 15) + 16 * (pos.getZ() & 15) + 256 * (pos.getY() & 15);
+		for (DugSection s : sections) {
+			if (s.world() == world && s.sectionY() == sy && s.bits().length == 64) {
+				long mask = 1L << (bit & 63);
+				if ((s.bits()[bit >> 6] & mask) != 0) {
+					return false;
+				}
+				s.bits()[bit >> 6] |= mask;
+				return true;
+			}
+		}
+		long[] bits = new long[64];
+		bits[bit >> 6] |= 1L << (bit & 63);
+		sections.add(new DugSection(world, sy, bits));
+		return true;
 	}
 
 	// ---- server --------------------------------------------------------------------------------
@@ -228,6 +295,9 @@ public final class SkyDig {
 	/** Marks a cell dug out of Skyrim's geometry (in that Skyrim world). Returns false if it was already. */
 	public static boolean markDug(ServerLevel level, int world, BlockPos pos) {
 		LevelChunk chunk = level.getChunkAt(pos);
+		if (batching) {
+			return markDugInBatch(chunk, world, pos);
+		}
 		DugColumn column = column(chunk);
 		if (column.isDug(world, pos.getX(), pos.getY(), pos.getZ())) {
 			return false;
