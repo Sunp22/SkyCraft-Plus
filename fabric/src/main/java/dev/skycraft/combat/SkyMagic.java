@@ -93,6 +93,7 @@ public final class SkyMagic {
 		int flags = shot.flags();
 		double reach = (flags & Proto.SHOT_CONE) != 0 ? 0.0 : shot.radius();
 		AABB area = new AABB(a, b).inflate((flags & (Proto.SHOT_CONE | Proto.SHOT_EXPLOSION)) != 0 ? Math.max(shot.radius(), a.distanceTo(b)) + 1.0 : reach + 1.0);
+		hitCrystals(level, player, shot, a, b, area, reach, hit, now, repeats);
 		List<LivingEntity> candidates = level.getEntitiesOfClass(LivingEntity.class, area,
 			e -> e.isAlive() && !(e instanceof SkyrimActorEntity) && !(e instanceof Player) && !recentlyHit(hit, e.getId(), now, repeats));
 		if (candidates.isEmpty()) {
@@ -149,6 +150,35 @@ public final class SkyMagic {
 		for (LivingEntity e : targets) {
 			hit.put(e.getId(), now);
 			affect(level, player, e, shot, a);
+		}
+	}
+
+	/**
+	 * SkyCraft+ : the End. Its crystals aren't living, but Skyrim's fire, frost, shock and shouts
+	 * break them as Minecraft's arrows and explosions do: whatever the shot passes through or reaches.
+	 */
+	private static void hitCrystals(ServerLevel level, ServerPlayer player, SkyLink.Shot shot, Vec3 a, Vec3 b, AABB area, double reach, Map<Integer, Integer> hit,
+		int now, boolean repeats) {
+		int flags = shot.flags();
+		for (var crystal : level.getEntitiesOfClass(net.minecraft.world.entity.boss.enderdragon.EndCrystal.class, area,
+			e -> e.isAlive() && !recentlyHit(hit, e.getId(), now, repeats))) {
+			Vec3 centre = crystal.getBoundingBox().getCenter();
+			boolean reached;
+			if ((flags & Proto.SHOT_EXPLOSION) != 0) {
+				reached = centre.distanceTo(b) <= shot.radius() + 1.0;
+			} else if ((flags & Proto.SHOT_CONE) != 0) {
+				Vec3 axis = b.subtract(a), to = centre.subtract(a);
+				double length = axis.length(), distance = to.length();
+				reached = length > 0.1 && distance > 0.01 && distance <= length + 1.0
+					&& Math.acos(Math.max(-1.0, Math.min(1.0, to.dot(axis) / (distance * length)))) <= shot.radius();
+			} else {
+				AABB box = crystal.getBoundingBox().inflate(reach);
+				reached = box.contains(a) || box.clip(a, b).isPresent();
+			}
+			if (reached) {
+				hit.put(crystal.getId(), now);
+				crystal.hurtServer(level, player.damageSources().indirectMagic(player, player), Math.max(1.0F, shot.damage()));
+			}
 		}
 	}
 

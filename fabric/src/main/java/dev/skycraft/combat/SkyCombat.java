@@ -87,6 +87,13 @@ public final class SkyCombat {
 				targets.add(e);
 			}
 		}
+		// SkyCraft+ : the End. Its crystals aren't living, but a sword breaks them as in Minecraft.
+		for (var crystal : level.getEntitiesOfClass(net.minecraft.world.entity.boss.enderdragon.EndCrystal.class, player.getBoundingBox().inflate(reach + 1.0), net.minecraft.world.entity.Entity::isAlive)) {
+			var to = crystal.getBoundingBox().getCenter().subtract(eye);
+			if (to.length() - 1.0 <= reach && to.normalize().dot(look) >= arcCos && player.hasLineOfSight(crystal)) {
+				crystal.hurtServer(level, player.damageSources().playerAttack(player), Math.max(1.0F, damage));
+			}
+		}
 		if (targets.isEmpty()) {
 			return;
 		}

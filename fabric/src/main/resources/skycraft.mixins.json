@@ -27,6 +27,7 @@
     "ServerLevelSpawningMixin",
     "ServerLevelStructureMixin",
     "ServerPlayerMixin",
+    "ServerPlayerRespawnMixin",
     "WalkNodeEvaluatorMixin",
     "WorldOptionsMixin",
     "SmithingMixin"

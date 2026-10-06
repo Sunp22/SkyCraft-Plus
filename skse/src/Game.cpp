@@ -640,21 +640,9 @@ namespace skycraft
 			auto&        st = State();
 			static float retry = 0.0f;  // seconds before a move is tried again
 			static bool  toldStuck = false;
-			// Where Skyrim's player was in the open world when it went to wait, for coming back from a death
-			// or the End's exit portal (Minecraft puts the player at its spawn, which means nothing here).
-			static RE::NiPoint3   entryPos;
-			static bool           haveEntry = false;
-			static bool           diedAway = false;
-			static std::uint32_t  awayWorld = 0;
 			auto*        waiting = st.minecraftWorldsOption ? RE::TESForm::LookupByID<RE::TESObjectCELL>(st.waitingCellId) : nullptr;
 			const bool   parked = waiting && a_cell == waiting;
 			const auto   world = mc.dimension;
-			if (parked && world >= proto::kDimNether) {
-				awayWorld = world;
-				if (mc.flags & proto::kMcDead) {
-					diedAway = true;
-				}
-			}
 			retry -= a_delta;
 			if (!waiting || a_loading || !a_mcInWorld || a_player->IsDead() || retry > 0.0f) {
 				return parked;
@@ -673,10 +661,6 @@ namespace skycraft
 					lighting->fogColorFar = lighting->fogColorNear;
 					lighting->ambient = end ? RE::Color(48, 44, 60, 0) : RE::Color(64, 32, 26, 0);
 				}
-				auto* tamrielNow = RE::TESForm::LookupByID<RE::TESWorldSpace>(0x3C);
-				haveEntry = tamrielNow && a_player->GetWorldspace() == tamrielNow;
-				entryPos = a_player->GetPosition();
-				diedAway = false;
 				a_player->CenterOnCell(waiting);
 				retry = 5.0f;
 				toldStuck = false;
@@ -706,13 +690,9 @@ namespace skycraft
 					retry = 5.0f;
 					return parked;
 				}
-				const bool toEntry = haveEntry && (diedAway || awayWorld == proto::kDimEnd);
-				const auto pos = toEntry ? entryPos : McToSky(mc.x, mc.y, mc.z);
-				if (toEntry) {
-					logger::info("{}: back to where the player left the open world", diedAway ? "died away from Skyrim" : "out of the End");
-				}
-				diedAway = false;
-				awayWorld = 0;
+				// (After the End's exit portal or a death, Minecraft brings its player back to the portal
+				// it left by: SkyMinecraftWorlds.)
+				const auto pos = McToSky(mc.x, mc.y, mc.z);
 				logger::info("Minecraft's player is back in the open world: Skyrim's goes to ({:.0f}, {:.0f}, {:.0f})", pos.x, pos.y, pos.z);
 				// TESObjectREFR::MoveTo_Impl (SE 56227, AE 56626), private in CommonLib.
 				using MoveToFn = void (*)(RE::TESObjectREFR*, const RE::ObjectRefHandle&, RE::TESObjectCELL*, RE::TESWorldSpace*, const RE::NiPoint3&, const RE::NiPoint3&);
