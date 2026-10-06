@@ -14,6 +14,7 @@
     "GoalUtilsMixin",
     "ItemMixin",
     "LevelHeightMixin",
+    "LevelSetBlockMixin",
     "MinecraftServerFlightMixin",
     "MobSunBurnMixin",
     "NetherPortalBlockMixin",
