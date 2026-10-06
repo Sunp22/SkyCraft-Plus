@@ -1886,8 +1886,10 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 					maskUsable ? "used (no double shadows; blocks in Skyrim's shade)" : "not used");
 			}
 			shadowMaskUsable = maskUsable;
-			if (State().parked) {
-				return;  // SkyCraft+ : the empty cell's depth is only what we cleared it to; keep what Skyrim's was
+			if (State().parked || State().playerUnderLand) {
+				// SkyCraft+ : the empty cell's depth is only what we cleared it to, and down a mine there's
+				// little or nothing of Skyrim's on screen: keep what Skyrim's depth was.
+				return;
 			}
 			auto sorted = v;
 			std::ranges::sort(sorted);
@@ -3311,6 +3313,19 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 				t.rtv = rtv;
 				t.dsv = ownDsv;
 				t.sceneDepth = depthSrv;
+				// SkyCraft+ : the underground, the Nether and the End. Far under the map Skyrim may skip
+				// drawing its world: its picture and depth are then old frames (smeared, and hiding our
+				// blocks). Down there nothing of Skyrim's is wanted anyway: start from black, no depth.
+				if (st.playerUnderLand || st.parked) {
+					const float dark[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+					a_context->ClearRenderTargetView(rtv, dark);
+					t.sceneDepth = nullptr;
+					static bool told = false;
+					if (!told) {
+						told = true;
+						logger::info("underground: Skyrim didn't draw its world this frame; blocks drawn on a cleared frame");
+					}
+				}
 				t.width = bbDesc.Width;
 				t.height = bbDesc.Height;
 				RenderPasses(a_context, t, camera, maskSrv);

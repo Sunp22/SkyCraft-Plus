@@ -475,9 +475,6 @@ namespace skycraft::Dig
 				// rescue lifted them to the surface partway down a mine.
 				auto&      st = State();
 				auto*      player = RE::PlayerCharacter::GetSingleton();
-				if (player && player->GetPosition().GetSquaredDistance(a_pos) < 100.0f) {
-					st.playerUnderLand = found && a_height > a_pos.z + 2.0f * proto::kUnitsPerBlock;  // for drawing (WorldRender)
-				}
 				if (player && found && a_height > a_pos.z && (st.puppeting || st.skyrimDrives || st.minecraftOwnsPlayer) &&
 					player->GetPosition().GetSquaredDistance(a_pos) < 100.0f) {
 					a_height = a_pos.z;
@@ -495,6 +492,18 @@ namespace skycraft::Dig
 			}
 			static inline REL::Relocation<decltype(thunk)> func;
 		};
+	}
+
+	// SkyCraft+ : the underground. Skyrim's land height at a point (where its land is loaded).
+	bool LandHeightAt(const RE::NiPoint3& a_pos, float& a_height)
+	{
+		auto* tes = RE::TES::GetSingleton();
+		if (!tes) {
+			return false;
+		}
+		using GetLandHeightFn = bool (*)(RE::TES*, const RE::NiPoint3&, float&);
+		static REL::Relocation<GetLandHeightFn> getLandHeight{ REL::ID(13344) };  // AE (see LandRescueHook)
+		return REL::Module::IsAE() && getLandHeight(tes, a_pos, a_height);
 	}
 
 	void SetPuppet(const RE::hkpCollidable* a_proxy, float a_feetHavokZ)

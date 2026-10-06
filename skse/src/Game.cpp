@@ -804,6 +804,16 @@ namespace skycraft
 			if (st.parked) {
 				teleportPending = false;
 			}
+			// SkyCraft+ : the underground. More than two blocks under Skyrim's land (a mine): nothing of
+			// Skyrim's may be on screen, and blocks must be drawn in the frame anyway (WorldRender).
+			{
+				float landZ = 0.0f;
+				const bool under = !loading && !st.parked && Dig::LandHeightAt(current, landZ) && landZ > current.z + 2.0f * proto::kUnitsPerBlock;
+				if (under != st.playerUnderLand) {
+					logger::info("underground: {} Skyrim's land", under ? "under" : "out from under");
+				}
+				st.playerUnderLand = under;
+			}
 			if (teleportPending && !loading) {
 				++teleportSeq;
 				teleportPending = false;
@@ -876,15 +886,23 @@ namespace skycraft
 			st.puppeting = puppet;
 
 			// SkyCraft+ : the Nether and the End. Just back: held where it came out (see returnPin).
+			// Until Minecraft drives it again out here (while still in the waiting cell, Minecraft drives
+			// the parked player: that doesn't count), and through the load on arrival too.
 			if (returnPinTime > 0.0f) {
-				returnPinTime = puppet ? 0.0f : returnPinTime - a_delta;
-				if (!puppet && !loading && !st.parked) {
+				const bool arrived = cell && !st.parked;
+				returnPinTime = (puppet && arrived && !loading) ? 0.0f : returnPinTime - a_delta;
+				if (arrived && !(puppet && !loading)) {
 					a_player->SetPosition(returnPin, true);
 					if (auto* controller = a_player->GetCharController()) {
 						controller->SetLinearVelocityImpl(RE::hkVector4(0.0f, 0.0f, 0.0f, 0.0f));
 						controller->fallStartHeight = returnPin.z;
 						controller->fallTime = 0.0f;
 					}
+					lastSetPos = returnPin;  // not "Skyrim moved the player"
+					haveLastSet = true;
+				}
+				if (returnPinTime <= 0.0f) {
+					logger::info("back in the open world: Skyrim's player let go ({})", puppet ? "Minecraft drives it" : "timed out");
 				}
 			}
 
