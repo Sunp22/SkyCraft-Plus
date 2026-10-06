@@ -20,7 +20,7 @@ public abstract class ServerChunkCacheSpawningMixin {
 	@Final
 	private ServerLevel level;
 
-	@WrapOperation(method = "tickChunks",
+	@WrapOperation(method = "tickChunks(Lnet/minecraft/util/profiling/ProfilerFiller;)V",
 		at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/gamerules/GameRules;get(Lnet/minecraft/world/level/gamerules/GameRule;)Ljava/lang/Object;"))
 	private Object skycraft$vanillaInMinecraftsWorlds(GameRules rules, GameRule<?> rule, Operation<Object> original) {
 		if (rule == GameRules.SPAWN_MOBS && SkyDig.minecraftsOwnWorld(this.level)) {
