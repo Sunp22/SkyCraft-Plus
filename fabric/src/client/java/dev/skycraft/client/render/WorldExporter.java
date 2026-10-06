@@ -42,6 +42,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.server.level.BlockDestructionProgress;
 import net.minecraft.world.level.CardinalLighting;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
@@ -336,6 +337,11 @@ public final class WorldExporter {
 							var model = Minecraft.getInstance().getModelManager().getBlockStateModelSet().get(state);
 							blockRenderer.tesselateBlock(MESH, x, y, z, level, pos.immutable(), state, model, state.getSeed(pos));
 						}
+						// SkyCraft+ : the End. End portals and gateways are drawn by a shader of Minecraft's
+						// own that never reaches Skyrim: a glowing obsidian surface stands in for them.
+						if (state.is(Blocks.END_PORTAL) || state.is(Blocks.END_GATEWAY)) {
+							portalFaces(state.is(Blocks.END_GATEWAY), x, y, z);
+						}
 					}
 				}
 			}
@@ -482,6 +488,30 @@ public final class WorldExporter {
 	}
 
 	/** Side, top and bottom atlas rects of a full-cube block's model, cached per block state. */
+	/**
+	 * SkyCraft+ : the End. An End portal's surface (12/16 up, seen from both sides) or a gateway's
+	 * whole cube, in obsidian's dark speckled texture at full brightness. Section-relative cell.
+	 */
+	private static void portalFaces(boolean gateway, int x, int y, int z) {
+		float[] rects = cubeFaces(Minecraft.getInstance(), Blocks.OBSIDIAN.defaultBlockState());
+		if (rects == null) {
+			return;
+		}
+		int light = net.minecraft.util.LightCoordsUtil.pack(15, 15);
+		float u0 = rects[4], v0 = rects[5], u1 = rects[6], v1 = rects[7];
+		float[] uv = { u0, v0, u1, v0, u1, v1, u0, v1 };
+		float top = gateway ? 1.0F : 0.75F, bottom = gateway ? 0.0F : 0.75F;
+		// Up and down (the portal's surface is seen from above, a gateway from anywhere).
+		MESH.wall(new float[] { x, y + top, z, x + 1, y + top, z, x + 1, y + top, z + 1, x, y + top, z + 1 }, uv, light, Direction.UP);
+		MESH.wall(new float[] { x, y + bottom, z, x, y + bottom, z + 1, x + 1, y + bottom, z + 1, x + 1, y + bottom, z }, uv, light, Direction.DOWN);
+		if (gateway) {
+			MESH.wall(new float[] { x, y, z, x, y + 1, z, x + 1, y + 1, z, x + 1, y, z }, uv, light, Direction.NORTH);
+			MESH.wall(new float[] { x, y, z + 1, x + 1, y, z + 1, x + 1, y + 1, z + 1, x, y + 1, z + 1 }, uv, light, Direction.SOUTH);
+			MESH.wall(new float[] { x, y, z, x, y, z + 1, x, y + 1, z + 1, x, y + 1, z }, uv, light, Direction.WEST);
+			MESH.wall(new float[] { x + 1, y, z, x + 1, y + 1, z, x + 1, y + 1, z + 1, x + 1, y, z + 1 }, uv, light, Direction.EAST);
+		}
+	}
+
 	private static float[] cubeFaces(Minecraft minecraft, BlockState state) {
 		return CUBE_FACES.computeIfAbsent(state, s -> {
 			var model = minecraft.getModelManager().getBlockStateModelSet().get(s);
