@@ -116,12 +116,25 @@ public final class SkyCombat {
 	public static volatile boolean rightHandSkyrim, leftHandSkyrim;
 
 	public static boolean skyrimHolds(net.minecraft.world.entity.player.Player player, net.minecraft.world.InteractionHand hand) {
-		if (!(rightHandSkyrim || leftHandSkyrim) || !(player instanceof net.minecraft.server.level.ServerPlayer sp) || !dev.skycraft.net.SkyNet.isHost(sp)) {
+		if (!(player instanceof net.minecraft.server.level.ServerPlayer sp)) {
+			return false;
+		}
+		// SkyCraft+ : multiplayer. A guest's own Skyrim hands, as their client told the server.
+		boolean right, left;
+		if (dev.skycraft.net.SkyNet.isHost(sp)) {
+			right = rightHandSkyrim;
+			left = leftHandSkyrim;
+		} else {
+			int hands = dev.skycraft.net.SkyNet.guestHands(sp);
+			right = (hands & 1) != 0;
+			left = (hands & 2) != 0;
+		}
+		if (!(right || left)) {
 			return false;
 		}
 		var main = player.getMainArm();
 		var arm = hand == net.minecraft.world.InteractionHand.MAIN_HAND ? main : main.getOpposite();
-		return arm == net.minecraft.world.entity.HumanoidArm.RIGHT ? rightHandSkyrim : leftHandSkyrim;
+		return arm == net.minecraft.world.entity.HumanoidArm.RIGHT ? right : left;
 	}
 
 	private static final Map<Integer, SkyrimActorEntity> PROXIES = new HashMap<>();

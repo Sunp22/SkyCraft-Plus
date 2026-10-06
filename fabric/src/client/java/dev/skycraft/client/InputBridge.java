@@ -70,34 +70,9 @@ public final class InputBridge {
 				}
 			}
 			case Proto.IN_USE -> SkyClient.useBlockInView(minecraft);
-			case Proto.IN_HEAL -> {
-				// SkyCraft+ : a Skyrim healing spell or potion heals Minecraft's hearts (one health pool).
-				var server = minecraft.getSingleplayerServer();
-				var player = minecraft.player;
-				if (server != null && player != null) {
-					var uuid = player.getUUID();
-					float share = a / 10000.0F;
-					server.execute(() -> {
-						var sp = server.getPlayerList().getPlayer(uuid);
-						if (sp != null && sp.isAlive()) {
-							sp.heal(share * sp.getMaxHealth());
-						}
-					});
-				}
-			}
-			case Proto.IN_SKYRIM_HIT -> {
-				var server = minecraft.getSingleplayerServer();
-				var player = minecraft.player;
-				if (server != null && player != null) {
-					var uuid = player.getUUID();
-					server.execute(() -> {
-						var sp = server.getPlayerList().getPlayer(uuid);
-						if (sp != null) {
-							dev.skycraft.combat.SkyCombat.skyrimMelee(sp, code, a / 100.0F, b / 100.0F);
-						}
-					});
-				}
-			}
+			// SkyCraft+ : a Skyrim healing spell or potion heals Minecraft's hearts (one health pool).
+			case Proto.IN_HEAL -> SkyClient.act(minecraft, dev.skycraft.net.SkyNet.Act.simple(dev.skycraft.net.SkyNet.Act.HEAL, 0, a / 10000.0F, 0.0F));
+			case Proto.IN_SKYRIM_HIT -> SkyClient.act(minecraft, dev.skycraft.net.SkyNet.Act.simple(dev.skycraft.net.SkyNet.Act.SKYRIM_HIT, code, a / 100.0F, b / 100.0F));
 			default -> {
 			}
 		}

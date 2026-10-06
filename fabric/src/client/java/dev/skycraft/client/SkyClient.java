@@ -10,7 +10,6 @@ import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.InteractionResult;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -41,6 +40,7 @@ public final class SkyClient {
 	private static boolean teleportPending;
 	private static LocalPlayer lastPlayer;
 	private static Vec3 holdPos;
+	private static int sentHands = -1; // SkyCraft+ : multiplayer (the guest's Skyrim hands, as last sent)
 	private static boolean underLand; // SkyCraft+ : the underground (kept while no land is known around)
 	private static Vec3 unlinkedHold;
 	private static long holdSince;
@@ -158,6 +158,12 @@ public final class SkyClient {
 		SkyCombat.skyrimBlocking = sky.skyrimBlocking();
 		SkyCombat.rightHandSkyrim = sky.rightHandSkyrim();
 		SkyCombat.leftHandSkyrim = sky.leftHandSkyrim();
+		// SkyCraft+ : multiplayer. A guest tells the host's server which hands its Skyrim holds.
+		int hands = (sky.rightHandSkyrim() ? 1 : 0) | (sky.leftHandSkyrim() ? 2 : 0);
+		if (hands != sentHands && minecraft.getSingleplayerServer() == null) {
+			sentHands = hands;
+			act(minecraft, dev.skycraft.net.SkyNet.Act.simple(dev.skycraft.net.SkyNet.Act.HANDS, hands, 0.0F, 0.0F));
+		}
 		boolean drives = sky.skyrimDrives() && sky.inGame() && !sky.loading();
 		if (drives != skyrimDriving) {
 			skyrimDriving = drives;
@@ -248,44 +254,48 @@ public final class SkyClient {
 	 * normal use.
 	 */
 	public static void useBlockInView(Minecraft minecraft) {
-		LocalPlayer player = minecraft.player;
-		var server = minecraft.getSingleplayerServer();
-		if (player == null || server == null || minecraft.gui.screen() != null) {
+		if (minecraft.player == null || minecraft.gui.screen() != null) {
 			return;
 		}
 		if (!(minecraft.hitResult instanceof BlockHitResult hit) || hit.getType() != HitResult.Type.BLOCK) {
 			SkyCraft.LOG.info("SkyCraft: Skyrim mode use: no Minecraft block in view");
 			return;
 		}
+		var at = hit.getLocation();
+		act(minecraft, new dev.skycraft.net.SkyNet.Act(dev.skycraft.net.SkyNet.Act.USE_BLOCK, 0, 0.0F, 0.0F, hit.getBlockPos(), hit.getDirection().get3DDataValue(),
+			(float) at.x, (float) at.y, (float) at.z));
+	}
+
+	/**
+	 * SkyCraft+ : multiplayer. Something this player's Skyrim did, carried out by Minecraft's server:
+	 * our own (as host), or the host's (as a guest).
+	 */
+	public static void act(Minecraft minecraft, dev.skycraft.net.SkyNet.Act act) {
+		LocalPlayer player = minecraft.player;
+		if (player == null) {
+			return;
+		}
+		var server = minecraft.getSingleplayerServer();
+		if (server == null) {
+			if (net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.canSend(dev.skycraft.net.SkyNet.Act.TYPE)) {
+				net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(act);
+			}
+			return;
+		}
 		var uuid = player.getUUID();
 		server.execute(() -> {
 			ServerPlayer sp = server.getPlayerList().getPlayer(uuid);
-			if (sp == null) {
-				return;
+			if (sp != null) {
+				dev.skycraft.net.SkyNet.apply(sp, act);
 			}
-			var state = sp.level().getBlockState(hit.getBlockPos());
-			InteractionResult result = state.useWithoutItem(sp.level(), sp, hit);
-			SkyCraft.LOG.info("SkyCraft: Skyrim mode use: {} at {}: {}", state.getBlock().getName().getString(), hit.getBlockPos().toShortString(), result);
 		});
 	}
 
 	/** One health pool: back in Minecraft's hands, the player keeps Skyrim's share of their health. */
 	private static void takeSkyrimHealth(Minecraft minecraft, float fraction) {
-		var server = minecraft.getSingleplayerServer();
-		LocalPlayer player = minecraft.player;
-		if (server == null || player == null || !(fraction > 0.0F)) {
-			return;
+		if (fraction > 0.0F) {
+			act(minecraft, dev.skycraft.net.SkyNet.Act.simple(dev.skycraft.net.SkyNet.Act.SET_HEALTH, 0, Math.min(fraction, 1.0F), 0.0F));
 		}
-		var uuid = player.getUUID();
-		float share = Math.min(fraction, 1.0F);
-		server.execute(() -> {
-			ServerPlayer sp = server.getPlayerList().getPlayer(uuid);
-			if (sp != null && !sp.isDeadOrDying()) {
-				float before = sp.getHealth();
-				sp.setHealth(Math.max(1.0F, share * sp.getMaxHealth()));
-				SkyCraft.LOG.info("SkyCraft: health {} -> {} (Skyrim's {}%)", before, sp.getHealth(), Math.round(share * 100.0F));
-			}
-		});
 	}
 
 	/**

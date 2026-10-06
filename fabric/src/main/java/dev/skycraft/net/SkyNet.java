@@ -83,7 +83,84 @@ public final class SkyNet {
 		}
 	}
 
+	/**
+	 * SkyCraft+ : multiplayer. Something a player's Skyrim did that Minecraft's server carries out:
+	 * use a block by hand (Skyrim mode's E), heal (a Skyrim spell or potion), take over Skyrim's share
+	 * of health, a Skyrim melee hit, which hands Skyrim holds. The host's client runs it on its own
+	 * server; a guest's sends it to the host's.
+	 */
+	public record Act(int kind, int code, float a, float b, BlockPos pos, int face, float hx, float hy, float hz) implements CustomPacketPayload {
+		public static final int USE_BLOCK = 0, HEAL = 1, SKYRIM_HIT = 2, SET_HEALTH = 3, HANDS = 4;
+		public static final Type<Act> TYPE = new Type<>(Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "act"));
+		public static final StreamCodec<RegistryFriendlyByteBuf, Act> CODEC = StreamCodec.of((buf, act) -> {
+			buf.writeVarInt(act.kind);
+			buf.writeVarInt(act.code);
+			buf.writeFloat(act.a);
+			buf.writeFloat(act.b);
+			buf.writeBlockPos(act.pos);
+			buf.writeVarInt(act.face);
+			buf.writeFloat(act.hx);
+			buf.writeFloat(act.hy);
+			buf.writeFloat(act.hz);
+		}, buf -> new Act(buf.readVarInt(), buf.readVarInt(), buf.readFloat(), buf.readFloat(), buf.readBlockPos(), buf.readVarInt(), buf.readFloat(), buf.readFloat(),
+			buf.readFloat()));
+
+		public static Act simple(int kind, int code, float a, float b) {
+			return new Act(kind, code, a, b, BlockPos.ZERO, 0, 0.0F, 0.0F, 0.0F);
+		}
+
+		@Override
+		public Type<? extends CustomPacketPayload> type() {
+			return TYPE;
+		}
+	}
+
+	/** SkyCraft+ : multiplayer. Which hands each guest's Skyrim holds (bit 1: right, 2: left). */
+	private static final java.util.Map<java.util.UUID, Integer> GUEST_HANDS = new java.util.concurrent.ConcurrentHashMap<>();
+
+	public static int guestHands(ServerPlayer player) {
+		return GUEST_HANDS.getOrDefault(player.getUUID(), 0);
+	}
+
+	/** Carries out a player's Skyrim action on the server thread (amounts kept sane: a guest's client sent them). */
+	public static void apply(ServerPlayer player, Act act) {
+		switch (act.kind) {
+			case Act.USE_BLOCK -> {
+				var hit = new net.minecraft.world.phys.BlockHitResult(new net.minecraft.world.phys.Vec3(act.hx, act.hy, act.hz),
+					net.minecraft.core.Direction.from3DDataValue(act.face), act.pos, false);
+				if (player.getEyePosition().distanceToSqr(hit.getLocation()) > 8.0 * 8.0) {
+					return;
+				}
+				var state = player.level().getBlockState(act.pos);
+				var result = state.useWithoutItem(player.level(), player, hit);
+				SkyCraft.LOG.info("SkyCraft: Skyrim mode use: {} at {}: {}", state.getBlock().getName().getString(), act.pos.toShortString(), result);
+			}
+			case Act.HEAL -> {
+				if (player.isAlive()) {
+					player.heal(Math.max(0.0F, Math.min(act.a, 1.0F)) * player.getMaxHealth());
+				}
+			}
+			case Act.SET_HEALTH -> {
+				if (!player.isDeadOrDying()) {
+					float before = player.getHealth();
+					player.setHealth(Math.max(1.0F, Math.max(0.0F, Math.min(act.a, 1.0F)) * player.getMaxHealth()));
+					SkyCraft.LOG.info("SkyCraft: health {} -> {} (Skyrim's {}%)", before, player.getHealth(), Math.round(act.a * 100.0F));
+				}
+			}
+			case Act.SKYRIM_HIT -> SkyCombat.skyrimMelee(player, act.code, Math.max(0.0F, Math.min(act.a, 1000.0F)), Math.max(0.0F, Math.min(act.b, 8.0F)));
+			case Act.HANDS -> GUEST_HANDS.put(player.getUUID(), act.code & 3);
+			default -> {
+			}
+		}
+	}
+
 	public static void init() {
+		PayloadTypeRegistry.serverboundPlay().register(Act.TYPE, Act.CODEC);
+		ServerPlayNetworking.registerGlobalReceiver(Act.TYPE, (payload, context) -> {
+			ServerPlayer player = context.player();
+			context.server().execute(() -> apply(player, payload));
+		});
+		net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> GUEST_HANDS.remove(handler.player.getUUID()));
 		PayloadTypeRegistry.serverboundPlay().register(Hurt.TYPE, Hurt.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(DigOpen.TYPE, DigOpen.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(DigReveal.TYPE, DigReveal.CODEC);
