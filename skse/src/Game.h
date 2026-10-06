@@ -48,8 +48,8 @@ namespace skycraft
 		bool                       skyrimEnemiesOption{ true };
 		std::vector<RE::FormID>    netherEnemies;
 		std::vector<RE::FormID>    endEnemies;
-		int                        enemyCap{ 3 };
-		float                      enemySeconds{ 30.0f };
+		int                        enemyCap{ 4 };
+		float                      enemySeconds{ 20.0f };
 		// SkyCraft+ : the underground. Skyrim's land is more than two blocks above the player (a mine).
 		std::atomic<bool>          playerUnderLand{ false };
 
@@ -221,6 +221,9 @@ namespace skycraft
 		// Main thread, every frame: spawns, steers and clears Skyrim enemies around the parked player
 		// (feet in Minecraft coordinates).
 		void PerFrame(RE::PlayerCharacter* a_player, float a_delta, bool a_parked, std::uint32_t a_world, double a_x, double a_y, double a_z);
+		// Main thread, every frame while Minecraft is in its world: other people's projectiles stop at
+		// Minecraft's solid blocks.
+		void StopShotsAtBlocks(RE::PlayerCharacter* a_player);
 	}
 
 	namespace WorldRender

@@ -102,7 +102,8 @@ namespace skycraft::MinecraftEnemies
 			ref->data.angle.z = std::atan2(face.x, face.y);
 			spawned.push_back({ ref->CreateRefHandle(), at, 0.0f });
 			const auto mc = SkyToMc(at);
-			logger::info("Skyrim enemies: {} ({:08X}) at {:.0f} {:.0f} {:.0f}", ref->GetDisplayFullName(), id, mc.x, mc.y, mc.z);
+			auto* placed = ref->GetBaseObject();
+			logger::info("Skyrim enemies: {} ({:08X}) at {:.0f} {:.0f} {:.0f}", placed ? placed->GetName() : "?", id, mc.x, mc.y, mc.z);
 		}
 
 		/**
@@ -196,6 +197,65 @@ namespace skycraft::MinecraftEnemies
 			if (alive < st.enemyCap) {
 				Spawn(a_player, a_world == proto::kDimNether ? st.netherEnemies : st.endEnemies, a_x, a_y, a_z);
 			}
+		}
+	}
+}
+
+// Skyrim's projectiles only hit Skyrim's world: other people's arrows, bolts and fireballs flew
+// through Minecraft's blocks (enemies in the Nether shot through its walls and floors). One that
+// passes through a solid block between two frames stops there.
+namespace skycraft::MinecraftEnemies
+{
+	namespace
+	{
+		std::unordered_map<RE::FormID, RE::NiPoint3> lastShotPos;
+	}
+
+	void StopShotsAtBlocks(RE::PlayerCharacter* a_player)
+	{
+		auto* manager = RE::Projectile::Manager::GetSingleton();
+		if (!manager) {
+			return;
+		}
+		std::vector<RE::NiPointer<RE::Projectile>> blocked;
+		std::unordered_map<RE::FormID, RE::NiPoint3> seen;
+		{
+			RE::BSSpinLockGuard guard(manager->projectileLock);
+			for (auto* list : { &manager->unlimited, &manager->limited }) {
+				for (auto& handle : *list) {
+					auto projectile = handle.get();
+					if (!projectile || projectile->GetProjectileRuntimeData().shooter.get().get() == a_player) {
+						continue;
+					}
+					const auto id = projectile->GetFormID();
+					const auto pos = projectile->GetPosition();
+					seen[id] = pos;
+					const auto prev = lastShotPos.find(id);
+					if (prev == lastShotPos.end()) {
+						continue;
+					}
+					const auto   a = SkyToMc(prev->second), b = SkyToMc(pos);
+					const double dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
+					const double length = std::sqrt(dx * dx + dy * dy + dz * dz);
+					const int    steps = std::clamp(int(length * 4.0), 1, 400);
+					for (int i = 1; i <= steps; ++i) {
+						const double t = double(i) / steps;
+						if (NpcBlocks::SolidAt(int(std::floor(a.x + dx * t)), int(std::floor(a.y + dy * t)), int(std::floor(a.z + dz * t)))) {
+							blocked.push_back(projectile);
+							break;
+						}
+					}
+				}
+			}
+		}
+		lastShotPos = std::move(seen);
+		for (auto& projectile : blocked) {
+			static int logged = 0;
+			if (logged++ < 10) {
+				logger::info("shots: {:X} stopped by a Minecraft block", projectile->GetFormID());
+			}
+			lastShotPos.erase(projectile->GetFormID());
+			projectile->Kill();
 		}
 	}
 }

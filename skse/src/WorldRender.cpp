@@ -2934,26 +2934,7 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 			if (!device || !atlasSrv || !inFrameEnabled || !camera || !renderer || !(st.puppeting || st.skyrimDrives) || st.skyrimMenuOpen || (!st.parked && !st.playerUnderLand && (!depthKnown || !depthUsable))) {
 				return;
 			}
-			// SkyCraft+ : the Nether and the End. Skyrim's player waits in an empty cell, so nothing of
-			// Skyrim's covers the screen and its picture keeps old frames (smeared by its temporal
-			// anti-aliasing). Start from the dimension's fog colour, far depth and no motion instead.
-			if (st.parked) {
-				auto& prd = renderer->GetRuntimeData();
-				auto* pctx = reinterpret_cast<ID3D11DeviceContext*>(prd.context);
-				auto* prtv = reinterpret_cast<ID3D11RenderTargetView*>(prd.renderTargets[RE::RENDER_TARGETS::kMAIN].RTV);
-				auto* pmotion = reinterpret_cast<ID3D11RenderTargetView*>(prd.renderTargets[RE::RENDER_TARGETS::kMOTION_VECTOR].RTV);
-				auto* pdsv = reinterpret_cast<ID3D11DepthStencilView*>(renderer->GetDepthStencilData().depthStencils[RE::RENDER_TARGETS_DEPTHSTENCIL::kMAIN].views[0]);
-				if (pctx && prtv && pdsv) {
-					const bool  end = st.mcWorld == proto::kDimEnd;
-					const float fog[4] = { end ? 0.04f : 0.2f, 0.03f, end ? 0.06f : 0.03f, 1.0f };
-					const float zero[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-					pctx->ClearRenderTargetView(prtv, fog);
-					if (pmotion) {
-						pctx->ClearRenderTargetView(pmotion, zero);
-					}
-					pctx->ClearDepthStencilView(pdsv, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, depthReversed ? 0.0f : 1.0f, 0);
-				}
-			} else if (st.playerUnderLand) {
+			if (!st.parked && st.playerUnderLand) {
 				// SkyCraft+ : the underground. Far under the map (below about -8192 units) Skyrim's depth
 				// holds something near the camera, which hid every block behind it: down a mine nothing
 				// of Skyrim's is in front of the blocks, so its depth starts far.
@@ -3080,11 +3061,41 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 			inFrameDrawn = true;
 		}
 
+		// SkyCraft+ : the Nether and the End. Skyrim's player waits in an empty cell, so nothing of
+		// Skyrim's covers the screen and its picture keeps old frames (smeared by its temporal
+		// anti-aliasing). Before Skyrim draws its world (its enemies brought in there among it), it
+		// starts from the dimension's fog colour, far depth and no motion instead.
+		void ClearParked()
+		{
+			auto& st = State();
+			auto* renderer = RE::BSGraphics::Renderer::GetSingleton();
+			if (!st.parked || !renderer || !depthKnown) {
+				return;
+			}
+			auto& prd = renderer->GetRuntimeData();
+			auto* pctx = reinterpret_cast<ID3D11DeviceContext*>(prd.context);
+			auto* prtv = reinterpret_cast<ID3D11RenderTargetView*>(prd.renderTargets[RE::RENDER_TARGETS::kMAIN].RTV);
+			auto* pmotion = reinterpret_cast<ID3D11RenderTargetView*>(prd.renderTargets[RE::RENDER_TARGETS::kMOTION_VECTOR].RTV);
+			auto* pdsv = reinterpret_cast<ID3D11DepthStencilView*>(renderer->GetDepthStencilData().depthStencils[RE::RENDER_TARGETS_DEPTHSTENCIL::kMAIN].views[0]);
+			if (!pctx || !prtv || !pdsv) {
+				return;
+			}
+			const bool  end = st.mcWorld == proto::kDimEnd;
+			const float fog[4] = { end ? 0.04f : 0.2f, 0.03f, end ? 0.06f : 0.03f, 1.0f };
+			const float zero[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+			pctx->ClearRenderTargetView(prtv, fog);
+			if (pmotion) {
+				pctx->ClearRenderTargetView(pmotion, zero);
+			}
+			pctx->ClearDepthStencilView(pdsv, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, depthReversed ? 0.0f : 1.0f, 0);
+		}
+
 		struct RenderWorldHook
 		{
 			static void thunk(bool a_unk)
 			{
 				Game::BeforeRenderWorld();
+				ClearParked();
 				func(a_unk);
 				Perf::Scope timer(Perf::kInFrame);
 				DrawInFrame();
@@ -3326,7 +3337,7 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 				// SkyCraft+ : the underground, the Nether and the End. Far under the map Skyrim may skip
 				// drawing its world: its picture and depth are then old frames (smeared, and hiding our
 				// blocks). Down there nothing of Skyrim's is wanted anyway: start from black, no depth.
-				if (st.playerUnderLand || st.parked) {
+				if (st.playerUnderLand && !st.parked) {  // (parked: ClearParked cleared it before Skyrim drew)
 					const float dark[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
 					a_context->ClearRenderTargetView(rtv, dark);
 					t.sceneDepth = nullptr;

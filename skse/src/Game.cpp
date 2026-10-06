@@ -969,6 +969,9 @@ namespace skycraft
 			Combat::WatchPlayerHits(a_player, a_delta);
 			SkyrimShots::PerFrame(a_player, (puppet || skyrimDrives) && haveMc && st.mcInWorld, a_delta);
 			MinecraftEnemies::PerFrame(a_player, a_delta, st.parked, st.mcWorld, mc.x, mc.y, mc.z);  // SkyCraft+
+			if (haveMc && st.mcInWorld) {
+				MinecraftEnemies::StopShotsAtBlocks(a_player);  // SkyCraft+
+			}
 			WorldRender::UpdateRagdoll(a_player, haveMc && st.mcInWorld);
 			if (puppet || skyrimDrives) {
 				NpcBlocks::PushActorsOut(a_player, a_delta);
