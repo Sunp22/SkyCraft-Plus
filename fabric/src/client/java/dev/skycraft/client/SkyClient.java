@@ -41,6 +41,7 @@ public final class SkyClient {
 	private static boolean teleportPending;
 	private static LocalPlayer lastPlayer;
 	private static Vec3 holdPos;
+	private static boolean underLand; // SkyCraft+ : the underground (kept while no land is known around)
 	private static Vec3 unlinkedHold;
 	private static long holdSince;
 	private static long qpcFreq;
@@ -533,9 +534,17 @@ public final class SkyClient {
 		} else if (player != null && SkyHands.usableTargetInView(minecraft)) {
 			flags |= Proto.MC_USE_TARGET;
 		}
-		// SkyCraft+ : the underground. Under Skyrim's land, by the land heights it has sent.
-		if (player != null && minecraft.level != null && minecraft.level.dimension() == net.minecraft.world.level.Level.OVERWORLD
-			&& dev.skycraft.world.SkyGround.under(player.getX(), player.getEyeY(), player.getZ(), 2.0)) {
+		// SkyCraft+ : the underground. Under Skyrim's land, by the land heights it has sent (where it
+		// hasn't sent any around here yet, as before).
+		if (player != null && minecraft.level != null && minecraft.level.dimension() == net.minecraft.world.level.Level.OVERWORLD) {
+			Boolean under = dev.skycraft.world.SkyGround.underLoosely(player.getX(), player.getEyeY(), player.getZ(), 2.0);
+			if (under != null) {
+				underLand = under;
+			}
+		} else {
+			underLand = false;
+		}
+		if (underLand) {
 			flags |= Proto.MC_UNDER_LAND;
 		}
 		mc.flags = flags;

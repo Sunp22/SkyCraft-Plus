@@ -57,6 +57,30 @@ public final class SkyGround {
 		return true;
 	}
 
+	/**
+	 * Under Skyrim's land by at least {@code margin}, by whichever land heights around are known:
+	 * the nearest ring of the grid that has any (out to about 24 blocks). Null when none are known
+	 * there (Skyrim sends its land near its player only: moving fast through a big cave outruns it).
+	 */
+	public static @org.jspecify.annotations.Nullable Boolean underLoosely(double x, double y, double z, double margin) {
+		int cx = (int) Math.floor(x / GRID), cz = (int) Math.floor(z / GRID);
+		for (int r = 1; r <= 6; r++) {
+			double lowest = Double.POSITIVE_INFINITY;
+			for (int dx = -r; dx <= r; dx++) {
+				for (int dz = -r; dz <= r; dz++) {
+					Float h = HEIGHT.get(key(cx + dx, cz + dz));
+					if (h != null) {
+						lowest = Math.min(lowest, h);
+					}
+				}
+			}
+			if (Double.isFinite(lowest)) {
+				return y <= lowest - margin;
+			}
+		}
+		return null;
+	}
+
 	/** The lowest of Skyrim's land heights around (x, z), NaN unless all sixteen are known (as under()). */
 	public static double lowestAround(double x, double z) {
 		int cx = (int) Math.floor(x / GRID), cz = (int) Math.floor(z / GRID);

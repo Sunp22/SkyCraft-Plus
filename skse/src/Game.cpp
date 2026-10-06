@@ -630,6 +630,9 @@ namespace skycraft
 		// through (and die of Skyrim's fall damage) meanwhile.
 		RE::NiPoint3 returnPin;
 		float        returnPinTime = 0.0f;
+		// SkyCraft+ : the underground. Seconds left of counting as under Skyrim's land after Minecraft last
+		// said so (it can lose track for a moment, moving fast through a big cave).
+		float underLandRecently = 0.0f;
 
 		// SkyCraft+ : the Nether and the End. Skyrim has nothing for a world of Minecraft's own, so its
 		// player waits in an empty cell (SkyCraft.ini iWaitingCell) meanwhile, following Minecraft's
@@ -808,7 +811,7 @@ namespace skycraft
 				// the mine is real: the lift is ignored and Minecraft's position put back.
 				// Under Skyrim's land, however far: it goes back to where the player last stood on Skyrim's
 				// ground, which a staircase down leaves well behind.
-				const bool lifted = st.puppeting && !teleportPending && dz > 200.0f && (st.playerUnderLand || std::sqrt(dx * dx + dy * dy) < 30.0f * proto::kUnitsPerBlock);
+				const bool lifted = st.puppeting && !teleportPending && dz > 200.0f && (underLandRecently > 0.0f || std::sqrt(dx * dx + dy * dy) < 30.0f * proto::kUnitsPerBlock);
 				if (lifted) {
 					static std::uint32_t lifts = 0;
 					if (++lifts <= 3 || lifts % 600 == 0) {  // it can try every frame
@@ -836,6 +839,7 @@ namespace skycraft
 					logger::info("underground: {} Skyrim's land", under ? "under" : "out from under");
 				}
 				st.playerUnderLand = under;
+				underLandRecently = under ? 3.0f : std::max(0.0f, underLandRecently - a_delta);
 			}
 			if (teleportPending && !loading) {
 				++teleportSeq;
