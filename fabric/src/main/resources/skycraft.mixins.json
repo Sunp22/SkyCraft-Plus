@@ -23,6 +23,8 @@
     "ProjectileUtilMixin",
     "ServerExplosionMixin",
     "ServerGamePacketListenerMixin",
+    "ServerChunkCacheSpawningMixin",
+    "ServerLevelSpawningMixin",
     "ServerLevelStructureMixin",
     "ServerPlayerMixin",
     "WalkNodeEvaluatorMixin",

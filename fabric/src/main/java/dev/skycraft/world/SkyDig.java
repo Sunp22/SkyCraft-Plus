@@ -153,6 +153,16 @@ public final class SkyDig {
 		return column != null ? column : DugColumn.EMPTY;
 	}
 
+	/**
+	 * SkyCraft+ : the Nether and the End. A world of Minecraft's own (or the underground's hidden
+	 * one), where there's nothing of Skyrim's to dig: Skyrim's player waits in an empty cell, and
+	 * "nothing known around" there reads as solid rock (explosions filled the End with stone).
+	 */
+	public static boolean minecraftsOwnWorld(Level level) {
+		var dimension = level.dimension();
+		return dimension == Level.NETHER || dimension == Level.END || dimension == SkyUnderground.UNDERGROUND;
+	}
+
 	public static boolean isDug(Level level, int world, BlockPos pos) {
 		return column(level.getChunkAt(pos)).isDug(world, pos.getX(), pos.getY(), pos.getZ());
 	}
@@ -171,7 +181,7 @@ public final class SkyDig {
 	 */
 	public static void open(ServerPlayer player, int world, BlockPos pos, int material) {
 		ServerLevel level = player.level();
-		if (!destruction || !inReach(player, pos, REACH) || !level.isLoaded(pos) || player.isSpectator()) {
+		if (!destruction || minecraftsOwnWorld(player.level()) || !inReach(player, pos, REACH) || !level.isLoaded(pos) || player.isSpectator()) {
 			return;
 		}
 		LevelChunk chunk = level.getChunkAt(pos);
@@ -195,7 +205,7 @@ public final class SkyDig {
 
 	/** Cells around a mined one that are wholly inside Skyrim's geometry: blocks now. */
 	public static void reveal(ServerPlayer player, int world, List<BlockPos> cells, int[] materials) {
-		if (!destruction) {
+		if (!destruction || minecraftsOwnWorld(player.level())) {
 			return;
 		}
 		ServerLevel level = player.level();
