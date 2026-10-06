@@ -135,7 +135,7 @@ public final class SkyUnderground {
 	 * under it, leaving holes out of the world in the walls of deep mines. Any thread.
 	 */
 	public static boolean deep(double x, double y, double z) {
-		return enabled && SkyGround.under(x, y, z, DEEP);
+		return enabled && Boolean.TRUE.equals(SkyGround.underLoosely(x, y, z, DEEP)); // (all sixteen heights known was asked before: gaps where some weren't)
 	}
 
 	/** The hidden world under this level, if it's the open world's and the underground is on. */
@@ -145,7 +145,7 @@ public final class SkyUnderground {
 
 	/** Under Skyrim's land at all (no sun reaches there). Any thread. */
 	public static boolean underLand(double x, double y, double z) {
-		return enabled && SkyGround.under(x, y, z, 1.0);
+		return enabled && Boolean.TRUE.equals(SkyGround.underLoosely(x, y, z, 1.0));
 	}
 
 	/**
