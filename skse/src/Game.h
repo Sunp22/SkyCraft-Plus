@@ -42,6 +42,8 @@ namespace skycraft
 		std::atomic<std::uint32_t> waitingCellId{ 0x6F3EB };
 		std::atomic<std::uint32_t> mcWorld{ 0 };
 		std::atomic<bool>          parked{ false };
+		// SkyCraft+ : the underground. Skyrim's land is more than two blocks above the player (a mine).
+		std::atomic<bool>          playerUnderLand{ false };
 
 		// Look direction in MC degrees; integrated from raw mouse input (main thread).
 		float yaw{ 0.0f };

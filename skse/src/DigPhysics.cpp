@@ -475,6 +475,9 @@ namespace skycraft::Dig
 				// rescue lifted them to the surface partway down a mine.
 				auto&      st = State();
 				auto*      player = RE::PlayerCharacter::GetSingleton();
+				if (player && player->GetPosition().GetSquaredDistance(a_pos) < 100.0f) {
+					st.playerUnderLand = found && a_height > a_pos.z + 2.0f * proto::kUnitsPerBlock;  // for drawing (WorldRender)
+				}
 				if (player && found && a_height > a_pos.z && (st.puppeting || st.skyrimDrives || st.minecraftOwnsPlayer) &&
 					player->GetPosition().GetSquaredDistance(a_pos) < 100.0f) {
 					a_height = a_pos.z;

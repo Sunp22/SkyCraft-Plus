@@ -2929,7 +2929,7 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 				Game::NoteFrameStep('D');
 				Game::NoteRenderedCamera(camera->world.translate, camera->world.rotate);
 			}
-			if (!device || !atlasSrv || !inFrameEnabled || !camera || !renderer || !(st.puppeting || st.skyrimDrives) || st.skyrimMenuOpen || (!st.parked && (!depthKnown || !depthUsable))) {
+			if (!device || !atlasSrv || !inFrameEnabled || !camera || !renderer || !(st.puppeting || st.skyrimDrives) || st.skyrimMenuOpen || (!st.parked && !st.playerUnderLand && (!depthKnown || !depthUsable))) {
 				return;
 			}
 			// SkyCraft+ : the Nether and the End. Skyrim's player waits in an empty cell, so nothing of
