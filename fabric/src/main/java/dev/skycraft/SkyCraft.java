@@ -28,6 +28,7 @@ public final class SkyCraft implements ModInitializer {
 		dev.skycraft.combat.SkyMagic.init();
 		dev.skycraft.world.SkyUnderground.init();
 		dev.skycraft.world.SkyMinecraftWorlds.init();
+		dev.skycraft.world.SkyStructures.init();
 		ServerLifecycleEvents.SERVER_STARTED.register(SkyCraft::configureServer);
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
 			giveStarterKit(handler.getPlayer());
