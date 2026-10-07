@@ -30,6 +30,10 @@ namespace skycraft
 		}();
 		float          holdMismatch = 0.0f;  // seconds Minecraft has been waiting away from Skyrim's player
 		bool           teleportPending = true;
+		// SkyCraft+ : the Nether and the End. After a save loads or Minecraft connects, the save's
+		// place wins: Minecraft's player is brought back from a world of its own (kSkyBringBack).
+		bool           homeCheck = true;
+		float          bringingBack = 0.0f;  // seconds left to wait for Minecraft to come back
 		std::uint32_t  worldId = 0;
 		std::uint32_t  epoch = 0;
 		RE::NiPoint3   lastSetPos{};
@@ -657,6 +661,24 @@ namespace skycraft
 			if (!waiting || a_loading || !a_mcInWorld || a_player->IsDead() || retry > 0.0f) {
 				return parked;
 			}
+			// A save in the open world loaded (or Minecraft connected) with Minecraft's player still in the
+			// Nether or the End: the save wins. Parking Skyrim's player then pulled it out of the place
+			// just loaded (and smeared the picture): Minecraft's comes back to it instead.
+			if (std::exchange(homeCheck, false) && !parked && world >= proto::kDimNether) {
+				logger::info("Minecraft's player is in {} but this save is in Skyrim's world: bringing it back", world == proto::kDimNether ? "the Nether" : "the End");
+				bringingBack = 20.0f;
+				teleportPending = true;
+			}
+			if (bringingBack > 0.0f) {
+				if (world < proto::kDimNether) {
+					logger::info("Minecraft's player is back in the open world");
+					bringingBack = 0.0f;
+				} else if ((bringingBack -= a_delta) > 0.0f) {
+					return parked;
+				} else {
+					logger::warn("Minecraft's player didn't come back; Skyrim's follows it instead");
+				}
+			}
 			if (!parked && world >= proto::kDimNether) {
 				logger::info("Minecraft's player went into {}: Skyrim's waits in cell {:08X}", world == proto::kDimNether ? "the Nether" : world == proto::kDimEnd ? "the End" : "a world of Minecraft's own",
 					waiting->GetFormID());
@@ -767,6 +789,7 @@ namespace skycraft
 				++epoch;
 				Collision::Get().Reset(epoch);
 				teleportPending = true;
+				homeCheck = true;
 			}
 			mcWasAlive = mcAlive;
 			st.mcInWorld = haveMc && (mc.flags & proto::kMcInWorld);
@@ -1338,7 +1361,7 @@ namespace skycraft
 			sky.flags = (cell ? proto::kSkyInGame : 0u) | (menu ? proto::kSkyMenuOpen : 0u) | (loading ? proto::kSkyLoading : 0u) |
 			            (skyrimDrives ? proto::kSkyDrivesPlayer : 0u) | (rightHand ? proto::kSkyRightHandSkyrim : 0u) |
 			            (leftHand ? proto::kSkyLeftHandSkyrim : 0u) | ((puppet || skyrimDrives) && a_player->IsBlocking() ? proto::kSkyBlocking : 0u) |
-			            (st.parked ? proto::kSkyParked : 0u);
+			            (st.parked ? proto::kSkyParked : 0u) | (bringingBack > 0.0f ? proto::kSkyBringBack : 0u);
 			static float         placeTimer = 0.0f;
 			static std::uint32_t placeFlags = 0;
 			static std::uint32_t placeWorld = 0;
@@ -1759,6 +1782,8 @@ namespace skycraft
 		void OnGameLoaded()
 		{
 			teleportPending = true;
+			homeCheck = true;
+			bringingBack = 0.0f;
 			haveLastSet = false;
 			State().lookInitialized = false;
 		}

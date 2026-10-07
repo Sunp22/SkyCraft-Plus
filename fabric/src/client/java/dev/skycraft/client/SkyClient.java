@@ -141,7 +141,7 @@ public final class SkyClient {
 			lastTeleportSeq = sky.teleportSeq;
 			teleportPending = true;
 		}
-		if (teleportPending && sky.inGame() && !sky.loading() && (inMinecraftWorld(minecraft) || sky.parked())) {
+		if (teleportPending && sky.inGame() && !sky.loading() && ((inMinecraftWorld(minecraft) && !sky.bringBack()) || sky.parked())) {
 			// SkyCraft+ : the Nether and the End. Skyrim has nowhere there to put us: it follows
 			// (it parks its player in an empty cell), so its teleports are acknowledged, not taken.
 			teleportAck = sky.teleportSeq;

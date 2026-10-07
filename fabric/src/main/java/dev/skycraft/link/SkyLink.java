@@ -246,6 +246,11 @@ public final class SkyLink {
 		public boolean parked() {
 			return (this.flags & SKY_PARKED) != 0;
 		}
+
+		/** SkyCraft+ : a Skyrim save in the open world was loaded: out of the Nether or the End to Skyrim's player. */
+		public boolean bringBack() {
+			return (this.flags & SKY_BRING_BACK) != 0;
+		}
 	}
 
 	/** Seqlock read of SkyState into {@code out}. Returns false if the link is down. */
