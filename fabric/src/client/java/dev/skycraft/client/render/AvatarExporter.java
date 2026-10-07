@@ -840,9 +840,26 @@ final class AvatarExporter implements SubmitNodeCollector {
 	public void submitShadow(PoseStack poseStack, float radius, List<EntityRenderState.ShadowPiece> pieces) {
 	}
 
+	/** SkyCraft+ : name tags (named mobs, other players), placed as Minecraft places them, in white. */
 	@Override
 	public void submitNameTag(PoseStack poseStack, @Nullable Vec3 nameTagAttachment, int offset, Component name, boolean seeThrough, int lightCoords,
 		CameraRenderState camera) {
+		int[] widths = asciiWidths();
+		if (nameTagAttachment == null || widths == null) {
+			return;
+		}
+		FormattedCharSequence text = name.getVisualOrderText();
+		int[] width = { 0 };
+		text.accept((index, style, codepoint) -> {
+			width[0] += codepoint == ' ' ? 4 : (codepoint < 256 && widths[codepoint] > 0 ? widths[codepoint] : widths['?']) + 1;
+			return true;
+		});
+		poseStack.pushPose();
+		poseStack.translate(nameTagAttachment.x, nameTagAttachment.y + 0.5, nameTagAttachment.z);
+		poseStack.rotate(camera.orientation);
+		poseStack.scale(0.025F, -0.025F, 0.025F);
+		this.submitText(poseStack, -width[0] / 2.0F, offset, text, false, Font.DisplayMode.NORMAL, net.minecraft.util.LightCoordsUtil.pack(15, 15), 0xFFFFFFFF, 0, 0);
+		poseStack.popPose();
 	}
 
 	/**
