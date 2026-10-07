@@ -29,6 +29,10 @@ namespace skycraft::MinecraftEnemies
 			RE::NiPoint3        last;
 			float               still = 0.0f;  // seconds it hasn't moved by itself
 			float               age = 0.0f;    // seconds since it was brought in (for one look at how it shows)
+			float               callOut = 0.0f;  // seconds until it's set on the player again, if it isn't fighting
+			double              floor = 0.0;     // Minecraft y it last stood at, alive
+			float               deadFor = 0.0f;
+			bool                laidDown = false;  // its body held where it fell
 		};
 		std::vector<Spawned> spawned;
 		float                timer = 8.0f;
@@ -257,7 +261,28 @@ namespace skycraft::MinecraftEnemies
 			}
 			if (!actor->IsDead()) {
 				++alive;
+				it->floor = SkyToMc(actor->GetPosition()).y;
+				// Nothing here lets Skyrim's AI notice the player (an empty cell, no navmesh): one that
+				// isn't fighting stood where it came in. Set on the player, it comes (Steer).
+				if (!actor->IsInCombat() && (it->callOut -= a_delta) <= 0.0f) {
+					it->callOut = 2.0f;
+					if (actor->GetPosition().GetDistance(me) < kForgetBlocks * float(proto::kUnitsPerBlock)) {
+						actor->StartCombat(a_player);
+					}
+				}
 				Steer(a_player, *it, actor, a_delta);
+			} else if (!it->laidDown) {
+				// A body is a ragdoll, which Minecraft's blocks don't hold up (they hold up the living:
+				// DigPhysics): once it sinks below where it stood (or settles a while), it's held there.
+				it->deadFor += a_delta;
+				const auto body = SkyToMc(actor->GetPosition());
+				if (body.y < it->floor - 0.15 || it->deadFor > 3.0f) {
+					it->laidDown = true;
+					actor->SetMotionType(RE::hkpMotion::MotionType::kKeyframed);
+					if (body.y < it->floor) {
+						actor->SetPosition(McToSky(body.x, it->floor, body.z), true);
+					}
+				}
 			}
 			++it;
 		}
