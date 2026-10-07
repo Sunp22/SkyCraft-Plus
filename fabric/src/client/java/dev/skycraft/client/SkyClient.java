@@ -28,6 +28,8 @@ public final class SkyClient {
 	private static boolean startedHidden;
 
 	private static final SkyLink.SkyState sky = new SkyLink.SkyState();
+	private static final java.util.List<SkyLink.Shot> GUEST_SHOTS = new java.util.ArrayList<>();
+	private static long shotsSentAt;
 	private static final SkyLink.McState mc = new SkyLink.McState();
 	private static volatile boolean linked;
 	private static boolean tookOver;
@@ -163,6 +165,14 @@ public final class SkyClient {
 		if (hands != sentHands && minecraft.getSingleplayerServer() == null) {
 			sentHands = hands;
 			act(minecraft, dev.skycraft.net.SkyNet.Act.simple(dev.skycraft.net.SkyNet.Act.HANDS, hands, 0.0F, 0.0F));
+		}
+		// SkyCraft+ : multiplayer. A guest's Skyrim spells, shouts and arrows go to the host's server,
+		// which hits Minecraft's mobs with them (the host's are read there directly).
+		if (minecraft.getSingleplayerServer() == null && System.nanoTime() - shotsSentAt > 50_000_000L
+			&& net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.canSend(dev.skycraft.net.SkyNet.Shots.TYPE)
+			&& SkyLink.readSkyrimShots(GUEST_SHOTS) && !GUEST_SHOTS.isEmpty()) {
+			shotsSentAt = System.nanoTime();
+			net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(new dev.skycraft.net.SkyNet.Shots(java.util.List.copyOf(GUEST_SHOTS)));
 		}
 		boolean drives = sky.skyrimDrives() && sky.inGame() && !sky.loading();
 		if (drives != skyrimDriving) {

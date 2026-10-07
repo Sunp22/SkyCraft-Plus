@@ -31,7 +31,10 @@ import net.minecraft.world.phys.Vec3;
 public final class SkyMagic {
 	private static final List<SkyLink.Shot> SHOTS = new ArrayList<>();
 	/** Shot id -> the mobs it has hit and when (server tick; a stopping shot that hit something holds STOPPED). */
-	private static final Map<Integer, Map<Integer, Integer>> HIT = new HashMap<>();
+	private static final Map<Long, Map<Integer, Integer>> HIT = new HashMap<>();  // (by whose shot: player entity id << 32 | shot id)
+	/** SkyCraft+ : multiplayer. Guests' shots, sent by their clients (SkyNet.Shots), and the tick they came. */
+	private static final Map<java.util.UUID, List<SkyLink.Shot>> GUEST_SHOTS = new HashMap<>();
+	private static final Map<java.util.UUID, Integer> GUEST_SHOTS_AT = new HashMap<>();
 	private static final int REPEAT_TICKS = 10; // sprays and beams: each mob again every half second
 	private static final int STOPPED = Integer.MIN_VALUE;
 	private static int logged;
@@ -44,13 +47,47 @@ public final class SkyMagic {
 		ServerTickEvents.END_SERVER_TICK.register(SkyMagic::tick);
 	}
 
+	/** A guest's Skyrim shots now (their client reads its own Skyrim's, as the host's server does here). */
+	public static void guestShots(ServerPlayer player, List<SkyLink.Shot> shots) {
+		GUEST_SHOTS.put(player.getUUID(), List.copyOf(shots.subList(0, Math.min(shots.size(), 64))));
+		GUEST_SHOTS_AT.put(player.getUUID(), player.level().getServer().getTickCount());
+	}
+
+	private static long key(ServerPlayer player, SkyLink.Shot shot) {
+		return ((long) player.getId() << 32) | (shot.id() & 0xFFFFFFFFL);
+	}
+
 	private static void tick(MinecraftServer server) {
+		Set<Long> live = new HashSet<>();
+		// Guests first: theirs come over the network (gone if none came for half a second).
+		int now = server.getTickCount();
+		for (ServerPlayer guest : server.getPlayerList().getPlayers()) {
+			Integer at = GUEST_SHOTS_AT.get(guest.getUUID());
+			if (at == null || now - at > 10 || dev.skycraft.net.SkyNet.isHost(guest)) {
+				continue;
+			}
+			for (SkyLink.Shot shot : GUEST_SHOTS.getOrDefault(guest.getUUID(), List.of())) {
+				live.add(key(guest, shot));
+				apply(guest, shot);
+			}
+		}
+		GUEST_SHOTS_AT.keySet().removeIf(id -> server.getPlayerList().getPlayer(id) == null);
+		GUEST_SHOTS.keySet().retainAll(GUEST_SHOTS_AT.keySet());
 		if (!SkyLink.active() || !SkyLink.readSkyrimShots(SHOTS)) {
+			HIT.keySet().retainAll(live);
 			return;
 		}
-		Set<Integer> live = new HashSet<>();
+		ServerPlayer hostPlayer = null;
+		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+			if (dev.skycraft.net.SkyNet.isHost(player)) {
+				hostPlayer = player;
+				break;
+			}
+		}
 		for (SkyLink.Shot shot : SHOTS) {
-			live.add(shot.id());
+			if (hostPlayer != null) {
+				live.add(key(hostPlayer, shot));
+			}
 		}
 		HIT.keySet().retainAll(live);
 		if (SHOTS.isEmpty()) {
@@ -81,7 +118,7 @@ public final class SkyMagic {
 	}
 
 	private static void apply(ServerPlayer player, SkyLink.Shot shot) {
-		Map<Integer, Integer> hit = HIT.computeIfAbsent(shot.id(), k -> new HashMap<>());
+		Map<Integer, Integer> hit = HIT.computeIfAbsent(key(player, shot), k -> new HashMap<>());
 		int now = player.level().getServer().getTickCount();
 		boolean repeats = (shot.flags() & Proto.SHOT_REPEATS) != 0;
 		if (hit.containsKey(STOPPED)) {

@@ -154,7 +154,51 @@ public final class SkyNet {
 		}
 	}
 
+	/** SkyCraft+ : client (a guest) -> server: the guest's Skyrim spells, shouts and arrows now (SkyMagic). */
+	public record Shots(java.util.List<dev.skycraft.link.SkyLink.Shot> shots) implements CustomPacketPayload {
+		public static final Type<Shots> TYPE = new Type<>(Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "shots"));
+		public static final StreamCodec<RegistryFriendlyByteBuf, Shots> CODEC = StreamCodec.of((buf, payload) -> {
+			int count = Math.min(payload.shots().size(), 64);
+			buf.writeVarInt(count);
+			for (int i = 0; i < count; i++) {
+				var s = payload.shots().get(i);
+				buf.writeInt(s.id());
+				buf.writeInt(s.flags());
+				buf.writeFloat(s.x0());
+				buf.writeFloat(s.y0());
+				buf.writeFloat(s.z0());
+				buf.writeFloat(s.x1());
+				buf.writeFloat(s.y1());
+				buf.writeFloat(s.z1());
+				buf.writeFloat(s.radius());
+				buf.writeFloat(s.damage());
+				buf.writeFloat(s.push());
+			}
+		}, buf -> {
+			int count = Math.min(buf.readVarInt(), 64);
+			var list = new java.util.ArrayList<dev.skycraft.link.SkyLink.Shot>(count);
+			for (int i = 0; i < count; i++) {
+				list.add(new dev.skycraft.link.SkyLink.Shot(buf.readInt(), buf.readInt(), buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readFloat(),
+					buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readFloat()));
+			}
+			return new Shots(list);
+		});
+
+		@Override
+		public Type<? extends CustomPacketPayload> type() {
+			return TYPE;
+		}
+	}
+
 	public static void init() {
+		PayloadTypeRegistry.serverboundPlay().register(Shots.TYPE, Shots.CODEC);
+		ServerPlayNetworking.registerGlobalReceiver(Shots.TYPE, (payload, context) -> {
+			ServerPlayer player = context.player();
+			// Within reason, whatever the guest's client claims (friends only, but still).
+			var shots = payload.shots().stream().map(s -> new dev.skycraft.link.SkyLink.Shot(s.id(), s.flags(), s.x0(), s.y0(), s.z0(), s.x1(), s.y1(), s.z1(),
+				Math.min(Math.max(s.radius(), 0.0F), 32.0F), Math.min(Math.max(s.damage(), 0.0F), 200.0F), Math.min(Math.max(s.push(), 0.0F), 10.0F))).toList();
+			context.server().execute(() -> dev.skycraft.combat.SkyMagic.guestShots(player, shots));
+		});
 		PayloadTypeRegistry.serverboundPlay().register(Act.TYPE, Act.CODEC);
 		ServerPlayNetworking.registerGlobalReceiver(Act.TYPE, (payload, context) -> {
 			ServerPlayer player = context.player();
