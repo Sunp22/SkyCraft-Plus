@@ -341,6 +341,11 @@ public final class SkyStructures {
 	private static @Nullable List<int[]> padColumns;
 	private static int padNext;
 
+	/** The structure being placed wrote this cell (its rooms' air too). */
+	public static boolean wrote(BlockPos pos) {
+		return WRITTEN.contains(pos.asLong());
+	}
+
 	public static void noteWritten(Level level, BlockPos pos) {
 		if (!level.isClientSide()) {
 			WRITTEN.add(pos.asLong());

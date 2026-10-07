@@ -32,7 +32,9 @@ public abstract class LevelHeightMixin {
 	@Inject(method = "getBlockState", at = @At("RETURN"), cancellable = true)
 	private void skycraft$skyrimGroundIsSolid(BlockPos pos, CallbackInfoReturnable<BlockState> cir) {
 		SkyrimMap map = SkyStructures.placing;
-		if (map != null && cir.getReturnValue().isAir() && !((Level) (Object) this).isClientSide()) {
+		// (Not the structure's own rooms: a chest is turned away from its one solid neighbour, and in
+		// a temple's chest room every side looked solid, so all four faced the same way.)
+		if (map != null && cir.getReturnValue().isAir() && !((Level) (Object) this).isClientSide() && !SkyStructures.wrote(pos)) {
 			double ground = map.groundAt(pos.getX() + 0.5, pos.getZ() + 0.5);
 			if (!Double.isNaN(ground) && pos.getY() < Math.round(ground)) {
 				cir.setReturnValue(Blocks.STONE.defaultBlockState());
