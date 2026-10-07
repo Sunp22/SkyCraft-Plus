@@ -50,6 +50,8 @@ namespace skycraft
 		std::vector<RE::FormID>    endEnemies;
 		int                        enemyCap{ 6 };
 		float                      enemySeconds{ 12.0f };
+		// SkyCraft+ : Minecraft's structures marked on Skyrim's map and compass ([Worlds] bStructureMarkers).
+		bool                       structureMarkersOption{ true };
 		// SkyCraft+ : the underground. Skyrim's land is more than two blocks above the player (a mine).
 		std::atomic<bool>          playerUnderLand{ false };
 
@@ -213,6 +215,14 @@ namespace skycraft
 		std::uint32_t Generation();
 		// Main thread, every frame: NPCs overlapping solid Minecraft blocks are pushed back out.
 		void PushActorsOut(RE::PlayerCharacter* a_player, float a_delta);
+	}
+
+	// SkyCraft+ : Minecraft's structures on Skyrim's map and compass.
+	namespace MapMarkers
+	{
+		// Main thread, every frame: marks the structures Minecraft listed (structures.txt) once per loaded game.
+		void PerFrame(RE::PlayerCharacter* a_player, float a_delta);
+		void OnGameLoaded();
 	}
 
 	// SkyCraft+ : Skyrim enemies in Minecraft's own worlds (the Nether, the End's outer islands).

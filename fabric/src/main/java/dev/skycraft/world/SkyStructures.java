@@ -133,6 +133,7 @@ public final class SkyStructures {
 				for (SkyrimMap.Site s : read.sites()) {
 					SkyCraft.LOG.info("SkyCraft:   {} ({}) at {} {} {}", s.name(), s.structure(), Math.round(s.x()), Math.round(s.groundY()), Math.round(s.z()));
 				}
+				writeForSkyrim(read);
 			} catch (IOException | RuntimeException e) {
 				SkyCraft.LOG.warn("SkyCraft: couldn't read Skyrim's land from {}", esm, e);
 			} finally {
@@ -142,6 +143,29 @@ public final class SkyStructures {
 		thread.setDaemon(true);
 		thread.setPriority(Thread.MIN_PRIORITY);
 		thread.start();
+	}
+
+	/**
+	 * The spots for Skyrim's map and compass (the SKSE plugin marks them): %LOCALAPPDATA%\SkyCraft\
+	 * structures.txt, a line each: name|structure|x|y|z (Minecraft blocks).
+	 */
+	private static void writeForSkyrim(SkyrimMap read) {
+		String local = System.getenv("LOCALAPPDATA");
+		if (local == null) {
+			return;
+		}
+		List<String> lines = new ArrayList<>();
+		for (SkyrimMap.Site s : read.sites()) {
+			lines.add(s.name() + "|" + s.structure() + "|" + Math.round(s.x()) + "|" + Math.round(s.groundY()) + "|" + Math.round(s.z()));
+		}
+		Path out = Path.of(local, "SkyCraft", "structures.txt");
+		try {
+			Path temp = out.resolveSibling("structures.txt.tmp");
+			Files.write(temp, lines);
+			Files.move(temp, out, java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+		} catch (IOException | RuntimeException e) {
+			SkyCraft.LOG.warn("SkyCraft: couldn't write {} for Skyrim's map: {}", out, e.toString());
+		}
 	}
 
 	/** Skyrim.esm, from the Data folder the SKSE plugin noted (%LOCALAPPDATA%\SkyCraft\skyrim-data.txt). */
