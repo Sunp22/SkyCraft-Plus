@@ -3063,8 +3063,8 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 
 		// SkyCraft+ : the Nether and the End. Skyrim's player waits in an empty cell, so nothing of
 		// Skyrim's covers the screen and its picture keeps old frames (smeared by its temporal
-		// anti-aliasing). Before Skyrim draws its world (its enemies brought in there among it), it
-		// starts from the dimension's fog colour, far depth and no motion instead.
+		// anti-aliasing). Once a frame is shown, the next starts from the dimension's fog colour, far
+		// depth and no motion instead (cleared any later, it hid the enemies Skyrim draws there).
 		void ClearParked()
 		{
 			auto& st = State();
@@ -3095,7 +3095,6 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 			static void thunk(bool a_unk)
 			{
 				Game::BeforeRenderWorld();
-				ClearParked();
 				func(a_unk);
 				Perf::Scope timer(Perf::kInFrame);
 				DrawInFrame();
@@ -3386,6 +3385,11 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 			if (hookCall(lateSite, REL::ID(106438).address(), "FinishAccumulatingPostResolveDepth's call")) {
 				LatePassProbeHook::func = SKSE::GetTrampoline().write_call<5>(lateSite, LatePassProbeHook::thunk);
 			}
+		}
+
+		void AfterPresent()
+		{
+			ClearParked();
 		}
 
 		void CaptureIfRequested(ID3D11DeviceContext* a_context, IDXGISwapChain* a_swapChain)

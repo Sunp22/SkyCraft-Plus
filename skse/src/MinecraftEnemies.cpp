@@ -17,7 +17,7 @@ namespace skycraft::MinecraftEnemies
 	{
 		constexpr float kMinBlocks = 12.0f;       // spawned out of arm's reach...
 		constexpr float kMaxBlocks = 26.0f;       // ...but where the player will meet them
-		constexpr float kForgetBlocks = 96.0f;    // left this far behind: gone
+		constexpr float kForgetBlocks = 48.0f;    // left this far behind: gone
 		constexpr float kEndCityBlocks = 900.0f;  // the End's outer islands start about here from its centre
 		constexpr float kStepBlocks = 4.0f;       // blocks a second when stepped towards the player
 		constexpr float kReachBlocks = 2.2f;      // close enough to swing
@@ -36,6 +36,45 @@ namespace skycraft::MinecraftEnemies
 		std::mt19937         rng{ std::random_device{}() };
 
 		float Uniform(float a_lo, float a_hi) { return std::uniform_real_distribution<float>(a_lo, a_hi)(rng); }
+
+		/**
+		 * The actor a leveled list gives at the player's level (lists in lists followed). Placing the
+		 * list itself left a broken half-actor, nameless and never shown, that crashed Skyrim later.
+		 */
+		RE::TESNPC* Resolve(RE::TESForm* a_form, std::uint16_t a_level, int a_depth = 0)
+		{
+			if (!a_form || a_depth > 8) {
+				return nullptr;
+			}
+			if (auto* npc = a_form->As<RE::TESNPC>()) {
+				return npc;
+			}
+			auto* list = a_form->As<RE::TESLevCharacter>();
+			if (!list || list->entries.empty()) {
+				return nullptr;
+			}
+			// Those at or under the player's level (the highest of them only, unless the list says all);
+			// none: the lowest.
+			std::uint16_t best = 0, lowest = 0xFFFF;
+			for (const auto& e : list->entries) {
+				lowest = std::min(lowest, e.level);
+				if (e.level <= a_level) {
+					best = std::max(best, e.level);
+				}
+			}
+			const bool all = (list->llFlags & RE::TESLeveledList::kCalculateFromAllLevelsLTOrEqPCLevel) != 0;
+			std::vector<RE::TESForm*> picks;
+			for (const auto& e : list->entries) {
+				const bool fits = best == 0 && lowest > a_level ? e.level == lowest : (all ? e.level <= a_level : e.level == best);
+				if (fits && e.form) {
+					picks.push_back(e.form);
+				}
+			}
+			if (picks.empty()) {
+				return nullptr;
+			}
+			return Resolve(picks[std::uniform_int_distribution<std::size_t>(0, picks.size() - 1)(rng)], a_level, a_depth + 1);
+		}
 
 		/**
 		 * The enemies in the waiting cell, alive or dead: ours, from now or from a save. Never a
@@ -90,9 +129,9 @@ namespace skycraft::MinecraftEnemies
 				return;
 			}
 			const auto id = a_kinds[std::uniform_int_distribution<std::size_t>(0, a_kinds.size() - 1)(rng)];
-			auto*      base = RE::TESForm::LookupByID<RE::TESBoundObject>(id);
+			auto*      base = Resolve(RE::TESForm::LookupByID(id), a_player->GetLevel());
 			if (!base) {
-				logger::warn("Skyrim enemies: no form {:08X}", id);
+				logger::warn("Skyrim enemies: no actor from form {:08X}", id);
 				return;
 			}
 			RE::NiPoint3 at;

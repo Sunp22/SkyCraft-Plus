@@ -385,7 +385,12 @@ float4 PSMain(VSOut i) : SV_Target {
 				}
 			} catch (...) {
 			}
-			return originalPresent(a_swapChain, a_sync, a_flags);
+			const auto result = originalPresent(a_swapChain, a_sync, a_flags);
+			try {
+				WorldRender::AfterPresent();
+			} catch (...) {
+			}
+			return result;
 		}
 	}
 

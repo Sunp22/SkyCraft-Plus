@@ -241,6 +241,7 @@ namespace skycraft
 		void Draw(ID3D11Device* a_device, ID3D11DeviceContext* a_context, IDXGISwapChain* a_swapChain);
 		// Debug: saves the frame as a PNG when <SKSE log dir>/skycraft_capture.request exists.
 		void CaptureIfRequested(ID3D11DeviceContext* a_context, IDXGISwapChain* a_swapChain);
+		void AfterPresent();  // a frame shown: ready the next (the Nether and the End)
 	}
 
 	namespace Overlay
