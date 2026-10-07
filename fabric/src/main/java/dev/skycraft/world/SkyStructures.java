@@ -373,7 +373,7 @@ public final class SkyStructures {
 
 	/** Ground blocks for this structure's land: top, under it, and deeper. */
 	private static BlockState[] groundFor(String structure, double groundY) {
-		if (structure.contains("desert")) {
+		if (structure.contains("desert_pyramid") || structure.contains("village_desert")) {  // (not a "desert" ruined portal out on the tundra)
 			return new BlockState[] { Blocks.SAND.defaultBlockState(), Blocks.SANDSTONE.defaultBlockState(), Blocks.STONE.defaultBlockState() };
 		}
 		if (structure.contains("snowy") || structure.contains("igloo") || groundY > 120) {
@@ -418,7 +418,7 @@ public final class SkyStructures {
 					lo = top - 3;
 					hi = top + 1;
 				} else {
-					lo = top - 1;
+					lo = top - 2;  // two deep: sand on top has something under it (it fell, and broke)
 					hi = top + 1;
 				}
 				for (int y = lo; y <= hi; y++) {
@@ -536,7 +536,7 @@ public final class SkyStructures {
 		if (structure.contains("snowy") || structure.contains("igloo")) {
 			return Biomes.SNOWY_PLAINS;
 		}
-		if (structure.contains("desert")) {
+		if (structure.contains("desert_pyramid") || structure.contains("village_desert")) {  // (not a "desert" ruined portal out on the tundra)
 			return Biomes.DESERT;
 		}
 		if (structure.contains("savanna")) {
