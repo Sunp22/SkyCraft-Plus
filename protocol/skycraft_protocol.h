@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 28;
+	inline constexpr std::uint32_t kVersion = 29;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -124,7 +124,29 @@ namespace skycraft::proto
 		float         healthFrac;  // Skyrim player health / max (0..1)
 		std::uint32_t placeFlags;  // PlaceFlags: where the player is and the weather (spawning)
 		float         seaLevel;    // Tamriel's sea level (MC y): the Minecraft underground lines up with it
-		std::uint32_t pad4C;
+		// SkyCraft+ : what a Skyrim-held hand holds (v29): [0] right, [1] left, a HandKind each. Minecraft's
+		// body in third person holds a Minecraft stand-in for it.
+		std::uint8_t  handKinds[2];
+		std::uint16_t pad4E;
+	};
+
+	// SkyState::handKinds.
+	enum HandKind : std::uint8_t
+	{
+		kHandNone = 0,
+		kHandSword = 1,
+		kHandDagger = 2,
+		kHandWarAxe = 3,
+		kHandMace = 4,
+		kHandGreatsword = 5,
+		kHandBattleaxe = 6,
+		kHandWarhammer = 7,
+		kHandBow = 8,
+		kHandCrossbow = 9,
+		kHandStaff = 10,
+		kHandSpell = 11,
+		kHandShield = 12,
+		kHandTorch = 13,
 	};
 	static_assert(sizeof(SkyState) == 0x50);
 

@@ -468,6 +468,48 @@ namespace skycraft
 			}
 		}
 
+		// SkyCraft+ : what a Skyrim-held hand holds, for the Minecraft body's stand-in in third person.
+		std::uint8_t HandKind(RE::PlayerCharacter* a_player, bool a_left)
+		{
+			auto* held = a_player->GetEquippedObject(a_left);
+			if (!held || held->GetFormID() == 0x1F4) {  // Unarmed
+				return a_left && a_player->GetWornArmor(RE::BGSBipedObjectForm::BipedObjectSlot::kShield) ? proto::kHandShield : proto::kHandNone;
+			}
+			if (held->Is(RE::FormType::Spell) || held->Is(RE::FormType::Scroll)) {
+				return proto::kHandSpell;
+			}
+			if (held->Is(RE::FormType::Light)) {
+				return proto::kHandTorch;
+			}
+			auto* weapon = held->As<RE::TESObjectWEAP>();
+			if (!weapon) {
+				return proto::kHandNone;
+			}
+			using T = RE::WEAPON_TYPE;
+			switch (weapon->GetWeaponType()) {
+			case T::kOneHandSword:
+				return proto::kHandSword;
+			case T::kOneHandDagger:
+				return proto::kHandDagger;
+			case T::kOneHandAxe:
+				return proto::kHandWarAxe;
+			case T::kOneHandMace:
+				return proto::kHandMace;
+			case T::kTwoHandSword:
+				return proto::kHandGreatsword;
+			case T::kTwoHandAxe:
+				return weapon->HasKeywordString("WeapTypeWarhammer") ? proto::kHandWarhammer : proto::kHandBattleaxe;
+			case T::kBow:
+				return proto::kHandBow;
+			case T::kCrossbow:
+				return proto::kHandCrossbow;
+			case T::kStaff:
+				return proto::kHandStaff;
+			default:
+				return proto::kHandNone;
+			}
+		}
+
 		// SkyCraft+ : living world. Where the player is and the weather, for Minecraft's spawning:
 		// interiors; settlements (the location or one it's in is a city, town, settlement, home,
 		// inn, castle...: no monsters); dungeons (caves, crypts, ruins: monsters at any hour); rain
@@ -1384,6 +1426,11 @@ namespace skycraft
 				return tamriel ? tamriel->GetDefaultWaterHeight() / float(proto::kUnitsPerBlock) : 0.0f;
 			}();
 			sky.seaLevel = seaLevel;
+			sky.handKinds[0] = rightHand ? HandKind(a_player, false) : proto::kHandNone;
+			sky.handKinds[1] = leftHand ? HandKind(a_player, true) : proto::kHandNone;
+			if (sky.handKinds[0] >= proto::kHandGreatsword && sky.handKinds[0] <= proto::kHandCrossbow) {
+				sky.handKinds[1] = proto::kHandNone;  // two hands, one weapon
+			}
 			if (const float maxHealth = a_player->GetActorValueMax(RE::ActorValue::kHealth); maxHealth > 0.0f) {
 				sky.healthFrac = std::clamp(a_player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kHealth) / maxHealth, 0.0f, 1.0f);
 			}

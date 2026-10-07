@@ -205,6 +205,7 @@ public final class SkyLink {
 		public float healthFrac;
 		public int placeFlags;
 		public float seaLevel;
+		public int rightHandKind, leftHandKind; // SkyCraft+ : Proto.HAND_*
 
 		public boolean inGame() {
 			return (this.flags & SKY_IN_GAME) != 0;
@@ -323,6 +324,8 @@ public final class SkyLink {
 			out.healthFrac = s.get(JAVA_FLOAT, b + SS_HEALTH_FRAC);
 			out.placeFlags = s.get(JAVA_INT, b + SS_PLACE_FLAGS);
 			out.seaLevel = s.get(JAVA_FLOAT, b + SS_SEA_LEVEL);
+			out.rightHandKind = s.get(JAVA_BYTE, b + SS_HAND_KINDS) & 0xFF;
+			out.leftHandKind = s.get(JAVA_BYTE, b + SS_HAND_KINDS + 1) & 0xFF;
 			VarHandle.loadLoadFence();
 			int seq2 = (int) INT.getAcquire(s, b + SS_SEQ);
 			if (seq1 == seq2) {

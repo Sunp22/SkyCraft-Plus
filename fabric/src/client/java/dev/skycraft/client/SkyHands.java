@@ -50,6 +50,34 @@ public final class SkyHands {
 		return false;
 	}
 
+	/**
+	 * In third person, what Minecraft's body holds in an arm Skyrim holds: a Minecraft stand-in for the
+	 * Skyrim weapon, shield or torch there (Skyrim's own is on its hidden body). Empty: nothing to show
+	 * (a spell, or Minecraft's own arm).
+	 */
+	public static net.minecraft.world.item.ItemStack standIn(HumanoidArm arm) {
+		if (!skyrimOwns(arm)) {
+			return net.minecraft.world.item.ItemStack.EMPTY;
+		}
+		var sky = SkyClient.sky();
+		int kind = arm == HumanoidArm.RIGHT ? sky.rightHandKind : sky.leftHandKind;
+		net.minecraft.world.item.Item item = switch (kind) {
+			case dev.skycraft.link.Proto.HAND_SWORD -> net.minecraft.world.item.Items.IRON_SWORD;
+			case dev.skycraft.link.Proto.HAND_DAGGER -> net.minecraft.world.item.Items.STONE_SWORD;
+			case dev.skycraft.link.Proto.HAND_WAR_AXE -> net.minecraft.world.item.Items.IRON_AXE;
+			case dev.skycraft.link.Proto.HAND_MACE, dev.skycraft.link.Proto.HAND_WARHAMMER -> net.minecraft.world.item.Items.MACE;
+			case dev.skycraft.link.Proto.HAND_GREATSWORD -> net.minecraft.world.item.Items.DIAMOND_SWORD;
+			case dev.skycraft.link.Proto.HAND_BATTLEAXE -> net.minecraft.world.item.Items.DIAMOND_AXE;
+			case dev.skycraft.link.Proto.HAND_BOW -> net.minecraft.world.item.Items.BOW;
+			case dev.skycraft.link.Proto.HAND_CROSSBOW -> net.minecraft.world.item.Items.CROSSBOW;
+			case dev.skycraft.link.Proto.HAND_STAFF -> net.minecraft.world.item.Items.BLAZE_ROD;
+			case dev.skycraft.link.Proto.HAND_SHIELD -> net.minecraft.world.item.Items.SHIELD;
+			case dev.skycraft.link.Proto.HAND_TORCH -> net.minecraft.world.item.Items.TORCH;
+			default -> null;
+		};
+		return item == null ? net.minecraft.world.item.ItemStack.EMPTY : new net.minecraft.world.item.ItemStack(item);
+	}
+
 	public static boolean skyrimOwns(InteractionHand hand) {
 		var player = Minecraft.getInstance().player;
 		if (player == null) {
