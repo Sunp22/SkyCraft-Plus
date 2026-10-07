@@ -138,7 +138,12 @@ namespace skycraft::Dig
 					}
 					const auto mc = SkyToMc(RE::NiPoint3(origin.x + Float(h[0]), origin.y + Float(h[1]), origin.z + rz));
 					const int  x = int(std::floor(mc.x)), z = int(std::floor(mc.z));
-					if (IsDug(x, int(std::floor(mc.y - 0.1)), z) || IsDug(x, int(std::floor(mc.y + 0.1)), z)) {
+					// SkyCraft+ : on dug ground, or close beside it: a tuft is about a block across, and
+					// one by Minecraft's ground (round a structure) grew over its blocks.
+					auto dugAt = [&](int a_x, int a_z) { return IsDug(a_x, int(std::floor(mc.y - 0.1)), a_z) || IsDug(a_x, int(std::floor(mc.y + 0.1)), a_z); };
+					const double fx = mc.x - x, fz = mc.z - z;
+					if (dugAt(x, z) || (fx < 0.7 && dugAt(x - 1, z)) || (fx > 0.3 && dugAt(x + 1, z)) || (fz < 0.7 && dugAt(x, z - 1)) ||
+						(fz > 0.3 && dugAt(x, z + 1))) {
 						h[2] = Half(kBuried);
 						++buried;
 					}
