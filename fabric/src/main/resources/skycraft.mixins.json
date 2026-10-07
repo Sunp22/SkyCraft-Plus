@@ -6,6 +6,7 @@
     "AbstractArrowMixin",
     "BlockCollisionsMixin",
     "BlockStateBaseMixin",
+    "ChunkGeneratorStructureMixin",
     "EntityFluidInteractionMixin",
     "EntityPickMixin",
     "EntitySwimMixin",
