@@ -17,7 +17,7 @@ namespace skycraft::MinecraftEnemies
 	{
 		constexpr float kMinBlocks = 12.0f;       // spawned out of arm's reach...
 		constexpr float kMaxBlocks = 26.0f;       // ...but where the player will meet them
-		constexpr float kForgetBlocks = 48.0f;    // left this far behind: gone
+		constexpr float kForgetBlocks = 48.0f;    // left this far behind: brought round again
 		constexpr float kEndCityBlocks = 900.0f;  // the End's outer islands start about here from its centre
 		constexpr float kStepBlocks = 4.0f;       // blocks a second when stepped towards the player
 		constexpr float kReachBlocks = 2.2f;      // close enough to swing
@@ -77,6 +77,19 @@ namespace skycraft::MinecraftEnemies
 		}
 
 		/**
+		 * Out of the way for good, without Disable: in the waiting cell (no navmesh) Disable rebuilds
+		 * an actor's movement controller half-made and Skyrim crashed (SkyrimSE+0x7964f2). Far under
+		 * the cell instead, and deleted when the cell is let go.
+		 */
+		void PutAway(RE::TESObjectREFR* a_ref)
+		{
+			auto pos = a_ref->GetPosition();
+			pos.z -= 60000.0f;
+			a_ref->SetPosition(pos);
+			a_ref->SetDelete(true);
+		}
+
+		/**
 		 * The enemies in the waiting cell, alive or dead: ours, from now or from a save. Never a
 		 * follower, a summon or anyone else friendly that came along with the player.
 		 */
@@ -94,8 +107,7 @@ namespace skycraft::MinecraftEnemies
 				});
 			}
 			for (auto* ref : gone) {
-				ref->Disable();
-				ref->SetDelete(true);
+				PutAway(ref);
 			}
 			if (!gone.empty()) {
 				logger::info("Skyrim enemies: {} cleared from the waiting cell", gone.size());
@@ -225,10 +237,16 @@ namespace skycraft::MinecraftEnemies
 				continue;
 			}
 			if (actor->GetPosition().GetDistance(me) > kForgetBlocks * float(proto::kUnitsPerBlock)) {
-				actor->Disable();
-				actor->SetDelete(true);
-				it = spawned.erase(it);
-				continue;
+				// Left behind: the living come round again near the player (like a new one); the dead
+				// stay where they fell.
+				RE::NiPoint3 at;
+				if (actor->IsDead() || !FindSpot(a_x, a_y, a_z, at)) {
+					it = spawned.erase(it);
+					continue;
+				}
+				actor->SetPosition(at, true);
+				it->last = actor->GetPosition();
+				it->still = 0.0f;
 			}
 			const float before = it->age;
 			it->age += a_delta;
