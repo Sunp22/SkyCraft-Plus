@@ -2635,7 +2635,7 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 			fc.depthParams[0] = frustum.fNear;
 			fc.depthParams[1] = frustum.fFar;
 			fc.depthParams[2] = depthReversed ? 1.0f : 0.0f;
-			fc.depthParams[3] = (a_t.sceneDepth && depthUsable && depthKnown) ? 1.0f : 0.0f;
+			fc.depthParams[3] = (a_t.sceneDepth && ((depthUsable && depthKnown) || (State().parked && a_t.skyrimDepth))) ? 1.0f : 0.0f;  // (parked: cleared before Skyrim drew its enemies)
 			fc.screen[0] = 1.0f / float(a_t.width);
 			fc.screen[1] = 1.0f / float(a_t.height);
 			fc.renderMode[0] = a_t.hdr ? 1.0f : 0.0f;

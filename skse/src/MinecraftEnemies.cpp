@@ -28,6 +28,7 @@ namespace skycraft::MinecraftEnemies
 			RE::ObjectRefHandle handle;
 			RE::NiPoint3        last;
 			float               still = 0.0f;  // seconds it hasn't moved by itself
+			float               age = 0.0f;    // seconds since it was brought in (for one look at how it shows)
 		};
 		std::vector<Spawned> spawned;
 		float                timer = 8.0f;
@@ -105,7 +106,7 @@ namespace skycraft::MinecraftEnemies
 			ref->SetPosition(at);
 			const auto face = McToSky(a_x, a_y, a_z) - at;
 			ref->data.angle.z = std::atan2(face.x, face.y);
-			spawned.push_back({ ref->CreateRefHandle(), at, 0.0f });
+			spawned.push_back({ ref->CreateRefHandle(), at, 0.0f, 0.0f });
 			const auto mc = SkyToMc(at);
 			auto* placed = ref->GetBaseObject();
 			logger::info("Skyrim enemies: {} ({:08X}) at {:.0f} {:.0f} {:.0f}", placed ? placed->GetName() : "?", id, mc.x, mc.y, mc.z);
@@ -189,6 +190,13 @@ namespace skycraft::MinecraftEnemies
 				actor->SetDelete(true);
 				it = spawned.erase(it);
 				continue;
+			}
+			const float before = it->age;
+			it->age += a_delta;
+			if (before < 3.0f && it->age >= 3.0f) {
+				auto* root = actor->Get3D();
+				logger::info("Skyrim enemies: {} after 3 s: 3D {}, {} visible, {:.0f} blocks away", actor->GetName(), root ? "loaded" : "not loaded",
+					root && !root->GetFlags().any(RE::NiAVObject::Flag::kHidden) ? "" : "not", actor->GetPosition().GetDistance(me) / float(proto::kUnitsPerBlock));
 			}
 			if (!actor->IsDead()) {
 				++alive;

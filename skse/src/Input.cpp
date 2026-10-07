@@ -149,10 +149,10 @@ namespace skycraft
 				return ids;
 			};
 			State().skyrimEnemiesOption = ini.GetBoolValue("Worlds", "bSkyrimEnemies", true);
-			State().netherEnemies = formList("sNetherEnemies", "0x1E79B, 0x25D1A, 0x25D1B, 0x23AA6");
-			State().endEnemies = formList("sEndEnemies", "0x23AA7, 0x23ABD, 0x10FCE5");
-			State().enemyCap = static_cast<int>(ini.GetLongValue("Worlds", "iEnemyCap", 4));
-			State().enemySeconds = static_cast<float>(ini.GetDoubleValue("Worlds", "fEnemySeconds", 20.0));
+			State().netherEnemies = formList("sNetherEnemies", "0x1E79B, 0x25D1A, 0x25D1B, 0x23AA6, 0x2D2D4, 0x23AB0, 0x33973");
+			State().endEnemies = formList("sEndEnemies", "0x23AA7, 0x23ABD, 0x10FCE5, 0x10EC90, 0x10EC8F, 0x23AA8, 0x23AB3");
+			State().enemyCap = static_cast<int>(ini.GetLongValue("Worlds", "iEnemyCap", 6));
+			State().enemySeconds = static_cast<float>(ini.GetDoubleValue("Worlds", "fEnemySeconds", 12.0));
 			logger::info("Skyrim enemies in the Nether and the End: {} ({} and {} kinds, up to {}, about every {:.0f} s)",
 				State().skyrimEnemiesOption ? "on" : "off", State().netherEnemies.size(), State().endEnemies.size(), State().enemyCap, State().enemySeconds);
 

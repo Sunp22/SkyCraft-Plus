@@ -670,6 +670,15 @@ namespace skycraft
 					lighting->fogColorNear = end ? RE::Color(10, 8, 14, 0) : RE::Color(51, 8, 8, 0);
 					lighting->fogColorFar = lighting->fogColorNear;
 					lighting->ambient = end ? RE::Color(48, 44, 60, 0) : RE::Color(64, 32, 26, 0);
+					// Skyrim's own things in it (the enemies brought in) seen as far as Minecraft's blocks:
+					// the cell's draw distance and fog were its own (short), so they went unseen.
+					lighting->clipDist = 400000.0f;
+					lighting->fogNear = end ? 30000.0f : 1400.0f;
+					lighting->fogFar = end ? 200000.0f : 9000.0f;
+					lighting->fogPower = 1.0f;
+					lighting->fogClamp = end ? 0.0f : 0.85f;
+					lighting->directional = end ? RE::Color(120, 110, 140, 0) : RE::Color(140, 80, 60, 0);
+					lighting->lightingTemplateInheritanceFlags.reset();
 				}
 				a_player->CenterOnCell(waiting);
 				retry = 5.0f;

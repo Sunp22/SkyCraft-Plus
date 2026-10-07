@@ -48,8 +48,8 @@ namespace skycraft
 		bool                       skyrimEnemiesOption{ true };
 		std::vector<RE::FormID>    netherEnemies;
 		std::vector<RE::FormID>    endEnemies;
-		int                        enemyCap{ 4 };
-		float                      enemySeconds{ 20.0f };
+		int                        enemyCap{ 6 };
+		float                      enemySeconds{ 12.0f };
 		// SkyCraft+ : the underground. Skyrim's land is more than two blocks above the player (a mine).
 		std::atomic<bool>          playerUnderLand{ false };
 
