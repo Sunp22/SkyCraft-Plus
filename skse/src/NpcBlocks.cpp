@@ -244,19 +244,43 @@ namespace skycraft
 				const auto   mc = SkyToMc(sky);
 				const double r = std::clamp(double(actor->GetBoundRadius()) / proto::kUnitsPerBlock, 0.2, double(kMaxRadiusBlocks)) + kTouchBlocks;
 				const double h = std::clamp(double(actor->GetHeight()) / proto::kUnitsPerBlock, 0.5, 4.0);
+				// SkyCraft+ : standing on Minecraft's blocks. Feet sunk into a block's top go back on top of
+				// it: Skyrim's AI walks NPCs at its own ground's height (a step under the ground round a
+				// structure), and that block was taken for a wall, pushing them sideways every frame (a
+				// mammoth stuck on it). Where Skyrim has no ground at all (the Nether, the End) one falling
+				// through is caught from further down.
+				double    feetY = mc.y;
+				bool      lifted = false;
+				{
+					const double catchBlocks = State().parked ? 2.0 : 0.6;
+					const int    mx = int(std::floor(mc.x)), mz = int(std::floor(mc.z));
+					double       top = mc.y;
+					for (int by = int(std::floor(mc.y)); by <= int(std::floor(mc.y + catchBlocks)); ++by) {
+						if (BlocksBody(mx, by, mz)) {
+							top = by + 1.0;
+						}
+					}
+					if (top - mc.y > 0.02 && !ColumnBlocked(mx, mz, int(top), int(std::floor(top + h - 0.1)))) {
+						feetY = top;
+						lifted = true;
+					}
+				}
 				// From just above the feet (standing on a block is fine) to the head.
-				const int y0 = int(std::floor(mc.y + 0.3)), y1 = int(std::floor(mc.y + h - 0.1));
+				const int y0 = int(std::floor(feetY + 0.3)), y1 = int(std::floor(feetY + h - 0.1));
 				double    cx = mc.x, cz = mc.z;
+				double    stepTop = -1.0e9;  // a block a step high walked into: up onto it
 				bool      moved = false;
 				for (int pass = 0; pass < 3; ++pass) {
 					double pushX = 0.0, pushZ = 0.0;
 					for (int bx = int(std::floor(cx - r)); bx <= int(std::floor(cx + r)); ++bx) {
 						for (int bz = int(std::floor(cz - r)); bz <= int(std::floor(cz + r)); ++bz) {
-							bool hit = false;
-							for (int by = y0; by <= y1 && !hit; ++by) {
-								hit = BlocksBody(bx, by, bz);
+							int lowest = INT_MAX;
+							for (int by = y0; by <= y1 && lowest == INT_MAX; ++by) {
+								if (BlocksBody(bx, by, bz)) {
+									lowest = by;
+								}
 							}
-							if (!hit) {
+							if (lowest == INT_MAX) {
 								continue;
 							}
 							// Circle (the actor) against the block's square, seen from above.
@@ -265,6 +289,18 @@ namespace skycraft
 							double       d = std::sqrt(dx * dx + dz * dz);
 							if (d >= r) {
 								continue;
+							}
+							// SkyCraft+ : walked into a block no more than a step high, with room above it:
+							// up onto it, as Minecraft's mobs do (Skyrim's can't jump), not round it.
+							if (lowest == y0 && d > 1e-6 && d < r - 0.03) {
+								int top = lowest + 1;
+								while (top <= y1 && BlocksBody(bx, top, bz)) {
+									++top;
+								}
+								if (top - feetY <= 1.05 && !ColumnBlocked(bx, bz, top, int(std::floor(top + h - 0.1)))) {
+									stepTop = std::max(stepTop, double(top));
+									continue;
+								}
 							}
 							if (d < 1e-6) {
 								// Centre inside the block: out through the nearest side.
@@ -320,7 +356,15 @@ namespace skycraft
 					}
 					auto pos = McToSky(cx, mc.y, cz);
 					pos.z = sky.z;
+					if (lifted || stepTop > feetY) {
+						pos.z = McToSky(cx, std::max(feetY, stepTop), cz).z;
+					}
 					actor->SetPosition(pos, true);
+				} else if (lifted || stepTop > feetY) {
+					actor->SetPosition(McToSky(mc.x, std::max(feetY, stepTop), mc.z), true);
+					if (detour.time <= 0.0f) {
+						detours.erase(actor->GetFormID());
+					}
 				} else if (detour.time <= 0.0f) {
 					detours.erase(actor->GetFormID());
 				}
