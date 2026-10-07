@@ -441,16 +441,16 @@ public final class SkyrimMap {
 			new Kind("Savanna village", "minecraft:village_savanna", 48, 3, flat(25, 2)),
 			new Kind("Desert village", "minecraft:village_desert", 48, 2, flat(25, 0)),
 			new Kind("Pillager outpost", "minecraft:pillager_outpost", 22, 10, flat(16, 1)),
-			new Kind("Desert temple", "minecraft:desert_pyramid", 14, 2, flat(6, 0)),
-			new Kind("Jungle temple", "minecraft:jungle_pyramid", 10, 2, (g, x, y) -> g.nearTrees >= 10 ? flat(8, 0).of(g, x, y) + Math.min(g.nearTrees, 40) * 0.05 : Double.NaN),
+			new Kind("Desert temple", "minecraft:desert_pyramid", 14, 2, flat(6, 0, 18)),  // its cellar goes 14 down
+			new Kind("Jungle temple", "minecraft:jungle_pyramid", 10, 2, (g, x, y) -> g.nearTrees >= 10 ? flat(8, 0, 10).of(g, x, y) + Math.min(g.nearTrees, 40) * 0.05 : Double.NaN),
 			new Kind("Witch hut", "minecraft:swamp_hut", 10, 2, (g, x, y) -> g.shore && g.obstacles == 0 && g.roads == 0 && g.trees == 0 && g.mean < sea + 2500 && g.max - g.min < 700 ? 5 : Double.NaN),
-			new Kind("Igloo", "minecraft:igloo", 8, 2, (g, x, y) -> g.mean > sea + 22000 ? flat(5, 0).of(g, x, y) + g.mean / 10000.0 : Double.NaN),
-			new Kind("Ruined portal", "minecraft:ruined_portal_desert", 8, 3, flat(8, 0)),  // partly buried
+			new Kind("Igloo", "minecraft:igloo", 8, 2, (g, x, y) -> g.mean > sea + 22000 ? flat(5, 0, 14).of(g, x, y) + g.mean / 10000.0 : Double.NaN),
+			new Kind("Ruined portal", "minecraft:ruined_portal_desert", 8, 3, flat(8, 0, 8)),  // partly buried
 			new Kind("Overgrown ruined portal", "minecraft:ruined_portal_jungle", 8, 3, flat(8, 0)),  // on the surface
-			new Kind("Trail ruins", "minecraft:trail_ruins", 15, 2, flat(10, 0)),
+			new Kind("Trail ruins", "minecraft:trail_ruins", 15, 2, flat(10, 0, 16)),  // buried
 			new Kind("Buried treasure", "minecraft:buried_treasure", 3, 3, (g, x, y) -> g.shore && g.obstacles == 0 && g.roads == 0 ? 1 : Double.NaN),
-			new Kind("Shipwreck", "minecraft:shipwreck", 12, 2, deep(8)),
-			new Kind("Beached shipwreck", "minecraft:shipwreck_beached", 12, 2, (g, x, y) -> g.shore && g.obstacles == 0 && g.roads == 0 ? 2 : Double.NaN),
+			new Kind("Shipwreck", "minecraft:shipwreck", 18, 2, deep(8)),  // its length, whichever way it lies
+			new Kind("Beached shipwreck", "minecraft:shipwreck_beached", 16, 2, (g, x, y) -> g.shore && g.obstacles == 0 && g.roads == 0 && g.max - g.min < 4 * UNITS ? 2 : Double.NaN),  // a flat shore: on a slope it sank out of sight
 			new Kind("Ocean ruins", "minecraft:ocean_ruin_cold", 10, 3, deep(10)));
 		// Candidate spots: every half cell inside the part of Tamriel one can walk to.
 		List<double[]> spots = new ArrayList<>();
@@ -501,9 +501,18 @@ public final class SkyrimMap {
 
 	/** Dry ground no more than {@code rangeBlocks} up and down, clear of Skyrim's buildings, with few enough trees. */
 	private static Score flat(double rangeBlocks, int maxTrees) {
+		return flat(rangeBlocks, maxTrees, 0);
+	}
+
+	/**
+	 * The same, with its ground at least {@code dryBlocks} above Skyrim's water there: a structure
+	 * going that far down (a temple's cellar) has no water showing in it once the land is dug out, and
+	 * its Minecraft ground stays clear of the water's surface.
+	 */
+	private static Score flat(double rangeBlocks, int maxTrees, double dryBlocks) {
 		return (g, x, y) -> {
 			double range = (g.max - g.min) / UNITS;
-			if (!g.dry || g.obstacles > 0 || g.roads > 0 || g.trees > maxTrees || range > rangeBlocks) {
+			if (!g.dry || -g.depth < dryBlocks * UNITS || g.obstacles > 0 || g.roads > 0 || g.trees > maxTrees || range > rangeBlocks) {
 				return Double.NaN;
 			}
 			return 10.0 - range / rangeBlocks * 5.0 - g.trees * 0.02;

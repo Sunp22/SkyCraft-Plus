@@ -404,6 +404,12 @@ public final class SkyStructures {
 					continue;
 				}
 				int top = (int) Math.round(g);  // ground cells are below this
+				// Round it, none where Skyrim's water comes up to the ground (a river's bank): its water
+				// showed over the blocks, or flickered on their tops.
+				double w = m.waterAt(x + 0.5, z + 0.5);
+				if (c[2] != UNDER && !Double.isNaN(w) && w > top - 0.25) {
+					continue;
+				}
 				int lo, hi;
 				if (c[2] == UNDER) {
 					lo = Math.min(top, c[3]) - 1;
@@ -432,7 +438,8 @@ public final class SkyStructures {
 						level.setBlock(pos, y == top - 1 ? ground[0] : y >= top - 4 ? ground[1] : ground[2], flags);
 					}
 				}
-				// And up to a structure standing above the land.
+				// And up to a structure standing above the land, where its bottom does (an allay's cage),
+				// not under what juts out higher up (a tower's roof).
 				if (c[2] == UNDER) {
 					int lowest = Integer.MAX_VALUE;
 					for (int y = c[3]; y <= c[4]; y++) {
@@ -442,7 +449,7 @@ public final class SkyStructures {
 							break;
 						}
 					}
-					for (int y = top; y < lowest && lowest != Integer.MAX_VALUE; y++) {
+					for (int y = top; y < lowest && lowest <= c[3] + 1; y++) {
 						pos.set(x, y, z);
 						if (!WRITTEN.contains(pos.asLong()) && level.getBlockState(pos).isAir()) {
 							level.setBlock(pos, ground[1], flags);
