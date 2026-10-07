@@ -39,6 +39,10 @@ public abstract class NetherPortalBlockMixin {
 		ServerLevel overworld = currentLevel.getServer().getLevel(Level.OVERWORLD);
 		BlockPos portal = overworld == null ? null : SkyMinecraftWorlds.portalLeftBy(player, overworld);
 		if (portal == null) {
+			TeleportTransition there = overworld == null ? null : SkyMinecraftWorlds.whereTheyLeft(player, overworld);
+			if (there != null) {
+				cir.setReturnValue(there);
+			}
 			return;
 		}
 		TeleportTransition back = this.getExitPortal(overworld, entity, portalEntryPos, portal, false, overworld.getWorldBorder());

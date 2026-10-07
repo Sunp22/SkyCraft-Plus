@@ -101,6 +101,21 @@ public final class SkyMinecraftWorlds {
 		return null;
 	}
 
+	/**
+	 * Back from the Nether when the portal they left by is gone: where it stood, not a new portal (the
+	 * mirror world has no Minecraft ground there, and one was made hanging in Skyrim's sky). Null
+	 * if they didn't leave the open world by a portal.
+	 */
+	public static @Nullable TeleportTransition whereTheyLeft(ServerPlayer player, ServerLevel overworld) {
+		BlockPos at = player.getAttached(LEFT_AT);
+		if (at == null) {
+			return null;
+		}
+		Vec3 spot = safeSpot(overworld, at);
+		SkyCraft.LOG.info("SkyCraft: back from the Nether to where its portal was, {} (it's gone)", at.toShortString());
+		return new TeleportTransition(overworld, spot, Vec3.ZERO, player.getYRot(), 0.0F, TeleportTransition.DO_NOTHING);
+	}
+
 	/** On top of the nearest End portal frame; else beside the Nether portal; else where they left. */
 	private static Vec3 safeSpot(ServerLevel level, BlockPos at) {
 		BlockPos frame = null;
