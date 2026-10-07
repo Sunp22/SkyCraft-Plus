@@ -50,6 +50,7 @@ public final class SkyrimMap {
 		boolean land;
 		final List<float[]> obstacles = new ArrayList<>();  // Skyrim buildings, walls, cliffs, doors (x, y)
 		final List<float[]> trees = new ArrayList<>();
+		final boolean[] road = new boolean[4];  // its quarters painted with a road texture
 	}
 
 	private SkyrimMap() {
@@ -106,6 +107,7 @@ public final class SkyrimMap {
 	private MappedByteBuffer buf;
 	private final Set<Integer> obstacleBases = new HashSet<>();
 	private final Set<Integer> treeBases = new HashSet<>();
+	private final Set<Integer> roadTextures = new HashSet<>();
 	private final Map<Integer, Cell> cellsByForm = new HashMap<>();
 
 	public static SkyrimMap read(Path esm) throws IOException {
@@ -155,7 +157,7 @@ public final class SkyrimMap {
 			if (t.equals("GRUP")) {
 				int label = buf.getInt(p + 8), groupType = buf.getInt(p + 12);
 				String top = type(p + 8);
-				boolean wanted = groupType != 0 || top.equals("STAT") || top.equals("TREE") || top.equals("DOOR") || top.equals("MSTT") || top.equals("WRLD");
+				boolean wanted = groupType != 0 || top.equals("STAT") || top.equals("TREE") || top.equals("DOOR") || top.equals("MSTT") || top.equals("WRLD") || top.equals("LTEX");
 				if (wanted && (groupType != 1 || label == TAMRIEL)) {
 					int children = groupType == 6 ? label : groupType == 8 || groupType == 9 || groupType == 10 ? cell : -1;
 					walk(p + 24, p + size, tamriel || (groupType == 1 && label == TAMRIEL), children);
@@ -172,6 +174,19 @@ public final class SkyrimMap {
 				}
 				case "DOOR" -> obstacleBases.add(form);
 				case "TREE" -> treeBases.add(form);
+				case "LTEX" -> {
+					// Skyrim's roads are painted on its land, not built: their land textures.
+					String[] name = { "" };
+					byte[] d = data(p, size, flags);
+					subrecords(d, (st, b, pos, len) -> {
+						if (st.equals("EDID") && len > 1) {
+							name[0] = new String(d, pos, len - 1, StandardCharsets.US_ASCII);
+						}
+					});
+					if (name[0].toLowerCase(java.util.Locale.ROOT).contains("road")) {
+						roadTextures.add(form);
+					}
+				}
 				case "WRLD" -> {
 					if (form == TAMRIEL) {
 						readWorld(data(p, size, flags));
@@ -272,6 +287,10 @@ public final class SkyrimMap {
 			return;
 		}
 		subrecords(d, (t, b, pos, len) -> {
+			if ((t.equals("BTXT") || t.equals("ATXT")) && len >= 5 && roadTextures.contains(b.getInt(pos))) {
+				int quarter = d[pos + 4] & 3;
+				c.road[quarter] = true;
+			}
 			if (t.equals("VHGT") && len >= 4 + GRID * GRID) {
 				float[] h = new float[GRID * GRID];
 				float offset = b.getFloat(pos);
@@ -319,13 +338,14 @@ public final class SkyrimMap {
 	// ---- choosing the spots ---------------------------------------------------------------------
 
 	/** The ground in a circle (Skyrim units): its heights' range, dryness, and what stands on it. */
-	private record Ground(boolean dry, boolean wet, double min, double max, double mean, double depth, int obstacles, int trees, boolean shore) {
+	private record Ground(boolean dry, boolean wet, double min, double max, double mean, double depth, int obstacles, int trees, int nearTrees, int roads,
+		boolean shore) {
 	}
 
 	private Ground ground(double cx, double cy, double radius) {
 		boolean dry = true, wet = true, any = false;
 		double min = Double.POSITIVE_INFINITY, max = Double.NEGATIVE_INFINITY, sum = 0, depth = Double.POSITIVE_INFINITY;
-		int n = 0, above = 0, below = 0;
+		int n = 0, above = 0, below = 0, roads = 0;
 		double step = Math.max(128.0, radius / 8.0);
 		for (double dx = -radius; dx <= radius; dx += step) {
 			for (double dy = -radius; dy <= radius; dy += step) {
@@ -337,6 +357,7 @@ public final class SkyrimMap {
 					return null;
 				}
 				double w = waterUnits(cx + dx, cy + dy);
+				roads += onRoad(cx + dx, cy + dy) ? 1 : 0;
 				any = true;
 				if (h < w + 96) {
 					dry = false;
@@ -357,10 +378,11 @@ public final class SkyrimMap {
 		if (!any) {
 			return null;
 		}
-		int obstacles = 0, trees = 0;
+		int obstacles = 0, trees = 0, nearTrees = 0;
 		double reach = radius + 700.0;  // ten blocks round it too
-		for (int x = cellOf(cx - reach); x <= cellOf(cx + reach); x++) {
-			for (int y = cellOf(cy - reach); y <= cellOf(cy + reach); y++) {
+		double around = radius + 2800.0;  // forty blocks round it, for the woods it stands in
+		for (int x = cellOf(cx - around); x <= cellOf(cx + around); x++) {
+			for (int y = cellOf(cy - around); y <= cellOf(cy + around); y++) {
 				Cell c = cells.get(key(x, y));
 				if (c == null) {
 					continue;
@@ -371,13 +393,27 @@ public final class SkyrimMap {
 					}
 				}
 				for (float[] t : c.trees) {
-					if (sq(t[0] - cx) + sq(t[1] - cy) <= radius * radius) {
-						trees++;
+					double d2 = sq(t[0] - cx) + sq(t[1] - cy);
+					if (d2 <= (radius + 300.0) * (radius + 300.0)) {
+						trees++;  // in it (or within a few blocks)
+					} else if (d2 <= around * around) {
+						nearTrees++;
 					}
 				}
 			}
 		}
-		return new Ground(dry, wet, min, max, sum / n, depth, obstacles, trees, above > 0 && below > 0);
+		return new Ground(dry, wet, min, max, sum / n, depth, obstacles, trees, nearTrees, roads, above > 0 && below > 0);
+	}
+
+	/** On a quarter of a cell painted with a road texture. */
+	private boolean onRoad(double sx, double sy) {
+		int cx = cellOf(sx), cy = cellOf(sy);
+		Cell c = cells.get(key(cx, cy));
+		if (c == null) {
+			return false;
+		}
+		int qx = sx - cx * (double) CELL_UNITS >= CELL_UNITS / 2 ? 1 : 0, qy = sy - cy * (double) CELL_UNITS >= CELL_UNITS / 2 ? 1 : 0;
+		return c.road[qx + 2 * qy];
 	}
 
 	private static double sq(double v) {
@@ -397,25 +433,25 @@ public final class SkyrimMap {
 		double sea = defaultWater;
 		List<Kind> kinds = List.of(
 			// Big and rare first.
-			new Kind("Woodland mansion", "minecraft:mansion", 40, 0, flat(15, 40)),
+			new Kind("Woodland mansion", "minecraft:mansion", 40, 0, (g, x, y) -> flat(15, 0).of(g, x, y) + Math.min(g.nearTrees, 60) * 0.02),
 			new Kind("Ocean monument", "minecraft:monument", 32, 0, deep(32)),
-			new Kind("Snowy village", "minecraft:village_snowy", 48, 2, (g, x, y) -> g.mean > sea + 16000 ? flat(25, 40).of(g, x, y) : Double.NaN),
-			new Kind("Taiga village", "minecraft:village_taiga", 48, 2, (g, x, y) -> g.trees >= 25 ? flat(25, 999).of(g, x, y) + Math.min(g.trees, 80) * 0.02 : Double.NaN),
-			new Kind("Plains village", "minecraft:village_plains", 48, 3, flat(25, 12)),
-			new Kind("Savanna village", "minecraft:village_savanna", 48, 1, flat(25, 20)),
-			new Kind("Desert village", "minecraft:village_desert", 48, 1, flat(25, 4)),
-			new Kind("Pillager outpost", "minecraft:pillager_outpost", 22, 4, flat(16, 30)),
-			new Kind("Desert temple", "minecraft:desert_pyramid", 14, 0, flat(6, 2)),
-			new Kind("Jungle temple", "minecraft:jungle_pyramid", 10, 0, (g, x, y) -> g.trees >= 6 ? flat(8, 999).of(g, x, y) + Math.min(g.trees, 30) * 0.05 : Double.NaN),
-			new Kind("Witch hut", "minecraft:swamp_hut", 10, 0, (g, x, y) -> g.shore && g.obstacles == 0 && g.mean < sea + 2500 && g.max - g.min < 700 ? 5 : Double.NaN),
-			new Kind("Igloo", "minecraft:igloo", 8, 0, (g, x, y) -> g.mean > sea + 22000 ? flat(5, 999).of(g, x, y) + g.mean / 10000.0 : Double.NaN),
-			new Kind("Ruined portal", "minecraft:ruined_portal_desert", 8, 0, flat(8, 999)),  // partly buried
-			new Kind("Overgrown ruined portal", "minecraft:ruined_portal_jungle", 8, 0, flat(8, 999)),  // on the surface
-			new Kind("Trail ruins", "minecraft:trail_ruins", 15, 0, flat(10, 999)),
-			new Kind("Buried treasure", "minecraft:buried_treasure", 3, 0, (g, x, y) -> g.shore && g.obstacles == 0 ? 1 : Double.NaN),
-			new Kind("Shipwreck", "minecraft:shipwreck", 12, 0, deep(8)),
-			new Kind("Beached shipwreck", "minecraft:shipwreck_beached", 12, 0, (g, x, y) -> g.shore && g.obstacles == 0 ? 2 : Double.NaN),
-			new Kind("Ocean ruins", "minecraft:ocean_ruin_cold", 10, 1, deep(10)));
+			new Kind("Snowy village", "minecraft:village_snowy", 48, 4, (g, x, y) -> g.mean > sea + 16000 ? flat(25, 2).of(g, x, y) : Double.NaN),
+			new Kind("Taiga village", "minecraft:village_taiga", 48, 4, (g, x, y) -> y < -12 * CELL_UNITS ? flat(25, 8).of(g, x, y) + Math.min(g.nearTrees, 80) * 0.02 : Double.NaN),  // the southern forests (Falkreath, the Rift)
+			new Kind("Plains village", "minecraft:village_plains", 48, 6, flat(25, 1)),
+			new Kind("Savanna village", "minecraft:village_savanna", 48, 3, flat(25, 2)),
+			new Kind("Desert village", "minecraft:village_desert", 48, 2, flat(25, 0)),
+			new Kind("Pillager outpost", "minecraft:pillager_outpost", 22, 10, flat(16, 1)),
+			new Kind("Desert temple", "minecraft:desert_pyramid", 14, 2, flat(6, 0)),
+			new Kind("Jungle temple", "minecraft:jungle_pyramid", 10, 2, (g, x, y) -> g.nearTrees >= 10 ? flat(8, 0).of(g, x, y) + Math.min(g.nearTrees, 40) * 0.05 : Double.NaN),
+			new Kind("Witch hut", "minecraft:swamp_hut", 10, 2, (g, x, y) -> g.shore && g.obstacles == 0 && g.roads == 0 && g.trees == 0 && g.mean < sea + 2500 && g.max - g.min < 700 ? 5 : Double.NaN),
+			new Kind("Igloo", "minecraft:igloo", 8, 2, (g, x, y) -> g.mean > sea + 22000 ? flat(5, 0).of(g, x, y) + g.mean / 10000.0 : Double.NaN),
+			new Kind("Ruined portal", "minecraft:ruined_portal_desert", 8, 3, flat(8, 0)),  // partly buried
+			new Kind("Overgrown ruined portal", "minecraft:ruined_portal_jungle", 8, 3, flat(8, 0)),  // on the surface
+			new Kind("Trail ruins", "minecraft:trail_ruins", 15, 2, flat(10, 0)),
+			new Kind("Buried treasure", "minecraft:buried_treasure", 3, 3, (g, x, y) -> g.shore && g.obstacles == 0 && g.roads == 0 ? 1 : Double.NaN),
+			new Kind("Shipwreck", "minecraft:shipwreck", 12, 2, deep(8)),
+			new Kind("Beached shipwreck", "minecraft:shipwreck_beached", 12, 2, (g, x, y) -> g.shore && g.obstacles == 0 && g.roads == 0 ? 2 : Double.NaN),
+			new Kind("Ocean ruins", "minecraft:ocean_ruin_cold", 10, 3, deep(10)));
 		// Candidate spots: every half cell inside the part of Tamriel one can walk to.
 		List<double[]> spots = new ArrayList<>();
 		for (Cell c : cells.values()) {
@@ -429,17 +465,21 @@ public final class SkyrimMap {
 		}
 		spots.sort(Comparator.<double[]>comparingDouble(s -> s[0]).thenComparingDouble(s -> s[1]));  // the same order everywhere
 		List<double[]> chosen = new ArrayList<>();
+		// Each spot's ground for each size, worked out once (it was again for every pick: 46 s).
+		Map<Long, java.util.Optional<Ground>> grounds = new HashMap<>();
 		for (int round = 0; round < 2; round++) {
 			for (Kind kind : kinds) {
 				int count = round == 0 ? 1 : kind.extra;
 				for (int i = 0; i < count; i++) {
 					double[] best = null;
 					double bestScore = Double.NEGATIVE_INFINITY;
-					for (double[] s : spots) {
+					for (int si = 0; si < spots.size(); si++) {
+						double[] s = spots.get(si);
 						if (tooClose(chosen, s[0], s[1])) {
 							continue;
 						}
-						Ground g = ground(s[0], s[1], kind.radiusBlocks * UNITS);
+						long cacheKey = si * 1024L + (long) kind.radiusBlocks;
+						Ground g = grounds.computeIfAbsent(cacheKey, k -> java.util.Optional.ofNullable(ground(s[0], s[1], kind.radiusBlocks * UNITS))).orElse(null);
 						if (g == null) {
 							continue;
 						}
@@ -463,7 +503,7 @@ public final class SkyrimMap {
 	private static Score flat(double rangeBlocks, int maxTrees) {
 		return (g, x, y) -> {
 			double range = (g.max - g.min) / UNITS;
-			if (!g.dry || g.obstacles > 0 || g.trees > maxTrees || range > rangeBlocks) {
+			if (!g.dry || g.obstacles > 0 || g.roads > 0 || g.trees > maxTrees || range > rangeBlocks) {
 				return Double.NaN;
 			}
 			return 10.0 - range / rangeBlocks * 5.0 - g.trees * 0.02;
@@ -483,9 +523,9 @@ public final class SkyrimMap {
 		return x >= -50 && x <= 50 && y >= -32 && y <= 32;
 	}
 
-	/** At least about 450 blocks from every other spot. */
+	/** At least about 220 blocks from every other spot. */
 	private static boolean tooClose(List<double[]> chosen, double x, double y) {
-		double spacing = 450.0 * UNITS;
+		double spacing = 220.0 * UNITS;
 		for (double[] o : chosen) {
 			if (sq(o[0] - x) + sq(o[1] - y) < spacing * spacing) {
 				return true;

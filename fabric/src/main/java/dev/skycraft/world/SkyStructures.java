@@ -29,7 +29,6 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.MobCategory;
-import net.minecraft.world.entity.SpawnPlacements;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelHeightAccessor;
@@ -111,6 +110,8 @@ public final class SkyStructures {
 		BUILT.clear();
 		pending = null;
 		pendingNext = 0;
+		padColumns = null;
+		WRITTEN.clear();
 		builtFile = server.getWorldPath(LevelResource.ROOT).resolve("skycraft-structures.txt");
 		loadBuilt();
 		if (!enabled || map != null || reading) {
@@ -231,7 +232,7 @@ public final class SkyStructures {
 				return;  // one a second at most
 			}
 		}
-		if (server.getTickCount() % 300 == 7) {
+		if (server.getTickCount() % 100 == 7) {
 			spawnTheirOwn(level, host);
 		}
 	}
@@ -306,6 +307,155 @@ public final class SkyStructures {
 		return true;
 	}
 
+	// ---- the ground round a structure -----------------------------------------------------------
+
+	/**
+	 * The cells a structure wrote while placed (air too: its rooms), so its ground doesn't fill
+	 * them (LevelSetBlockMixin, while placing).
+	 */
+	private static final it.unimi.dsi.fastutil.longs.LongOpenHashSet WRITTEN = new it.unimi.dsi.fastutil.longs.LongOpenHashSet();
+	private static @Nullable List<int[]> padColumns;
+	private static int padNext;
+
+	public static void noteWritten(Level level, BlockPos pos) {
+		if (!level.isClientSide()) {
+			WRITTEN.add(pos.asLong());
+		}
+	}
+
+	private static final int UNDER = 0, EDGE = 1, SPECK = 2;  // what a column of the pad is
+	private static final int EDGE_BLOCKS = 3, SPECKS_TO = 6;
+
+	/**
+	 * The pad's columns: under the structure's pieces (with how low and high they go), a ring of
+	 * EDGE_BLOCKS round them, and specks scattered a few blocks further out. None at sea.
+	 */
+	private static List<int[]> padPlan(Pending job) {
+		List<int[]> columns = new ArrayList<>();
+		String id = job.site().structure();
+		if (id.contains("monument") || id.contains("ocean_ruin") || id.equals("minecraft:shipwreck") || id.contains("buried_treasure")) {
+			return columns;
+		}
+		Map<Long, int[]> under = new HashMap<>();
+		for (StructurePiece piece : job.start().getPieces()) {
+			BoundingBox b = piece.getBoundingBox();
+			for (int x = b.minX(); x <= b.maxX(); x++) {
+				for (int z = b.minZ(); z <= b.maxZ(); z++) {
+					int[] range = under.computeIfAbsent(ChunkPos.pack(x, z), k -> new int[] { Integer.MAX_VALUE, Integer.MIN_VALUE });
+					range[0] = Math.min(range[0], b.minY());
+					range[1] = Math.max(range[1], b.maxY());
+				}
+			}
+		}
+		Map<Long, Integer> around = new HashMap<>();
+		for (long key : under.keySet()) {
+			int x = ChunkPos.getX(key), z = ChunkPos.getZ(key);
+			for (int dx = -SPECKS_TO; dx <= SPECKS_TO; dx++) {
+				for (int dz = -SPECKS_TO; dz <= SPECKS_TO; dz++) {
+					long n = ChunkPos.pack(x + dx, z + dz);
+					if (under.containsKey(n)) {
+						continue;
+					}
+					int ring = Math.max(Math.abs(dx), Math.abs(dz)) <= EDGE_BLOCKS ? EDGE : SPECK;
+					around.merge(n, ring, Math::min);
+				}
+			}
+		}
+		under.forEach((key, range) -> columns.add(new int[] { ChunkPos.getX(key), ChunkPos.getZ(key), UNDER, range[0], range[1] }));
+		around.forEach((key, ring) -> {
+			int x = ChunkPos.getX(key), z = ChunkPos.getZ(key);
+			if (ring == EDGE || Math.floorMod((x * 73856093) ^ (z * 19349663), 10) < 3) {  // specks: about one in three
+				columns.add(new int[] { x, z, ring, 0, 0 });
+			}
+		});
+		return columns;
+	}
+
+	/** Ground blocks for this structure's land: top, under it, and deeper. */
+	private static BlockState[] groundFor(String structure, double groundY) {
+		if (structure.contains("desert")) {
+			return new BlockState[] { Blocks.SAND.defaultBlockState(), Blocks.SANDSTONE.defaultBlockState(), Blocks.STONE.defaultBlockState() };
+		}
+		if (structure.contains("snowy") || structure.contains("igloo") || groundY > 120) {
+			return new BlockState[] { Blocks.SNOW_BLOCK.defaultBlockState(), Blocks.DIRT.defaultBlockState(), Blocks.STONE.defaultBlockState() };
+		}
+		return new BlockState[] { Blocks.GRASS_BLOCK.defaultBlockState(), Blocks.DIRT.defaultBlockState(), Blocks.STONE.defaultBlockState() };
+	}
+
+	/**
+	 * Lays the pad's next columns, until the deadline: Skyrim's ground there is dug out (its land,
+	 * grass and clutter go, and the underground never fills the structure's rooms), and Minecraft
+	 * ground put in its place, level with Skyrim's land round it; under a structure standing above
+	 * the land, ground up to it (no floating cages). True when done.
+	 */
+	private static boolean pad(ServerLevel level, SkyrimMap m, Pending job, long deadline) {
+		List<int[]> columns = padColumns;
+		int world = SkyDig.worldFor(level);
+		BlockState[] ground = groundFor(job.site().structure(), job.site().groundY());
+		int flags = net.minecraft.world.level.block.Block.UPDATE_CLIENTS | net.minecraft.world.level.block.Block.UPDATE_KNOWN_SHAPE;
+		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+		SkyDig.beginBatch();
+		try {
+			while (padNext < columns.size() && System.nanoTime() < deadline) {
+				int[] c = columns.get(padNext++);
+				int x = c[0], z = c[1];
+				double g = m.groundAt(x + 0.5, z + 0.5);
+				if (Double.isNaN(g)) {
+					continue;
+				}
+				int top = (int) Math.round(g);  // ground cells are below this
+				int lo, hi;
+				if (c[2] == UNDER) {
+					lo = Math.min(top, c[3]) - 1;
+					hi = Math.max(top + 1, c[4]);
+				} else if (c[2] == EDGE) {
+					lo = top - 3;
+					hi = top + 1;
+				} else {
+					lo = top - 1;
+					hi = top + 1;
+				}
+				for (int y = lo; y <= hi; y++) {
+					SkyDig.markDug(level, world, pos.set(x, y, z));
+				}
+				// Its rooms below its box too (a temple's cellar, its stairs down): the underground
+				// never fills them.
+				for (int y = lo - 1; c[2] == UNDER && y >= lo - 48; y--) {
+					if (WRITTEN.contains(pos.set(x, y, z).asLong())) {
+						SkyDig.markDug(level, world, pos);
+					}
+				}
+				// Minecraft ground below Skyrim's land (not where the structure put anything).
+				for (int y = lo; y < top; y++) {
+					pos.set(x, y, z);
+					if (!WRITTEN.contains(pos.asLong()) && level.getBlockState(pos).isAir()) {
+						level.setBlock(pos, y == top - 1 ? ground[0] : y >= top - 4 ? ground[1] : ground[2], flags);
+					}
+				}
+				// And up to a structure standing above the land.
+				if (c[2] == UNDER) {
+					int lowest = Integer.MAX_VALUE;
+					for (int y = c[3]; y <= c[4]; y++) {
+						pos.set(x, y, z);
+						if (WRITTEN.contains(pos.asLong()) && !level.getBlockState(pos).isAir()) {
+							lowest = y;
+							break;
+						}
+					}
+					for (int y = top; y < lowest && lowest != Integer.MAX_VALUE; y++) {
+						pos.set(x, y, z);
+						if (!WRITTEN.contains(pos.asLong()) && level.getBlockState(pos).isAir()) {
+							level.setBlock(pos, ground[1], flags);
+						}
+					}
+				}
+			}
+		} finally {
+			SkyDig.endBatch();
+		}
+		return padNext >= columns.size();
+	}
+
 	/** Places the pending structure's next chunks, as many as PLACE_NANOS allows; done: it's recorded. */
 	private static void continueBuilding(ServerLevel level, SkyrimMap m) {
 		Pending job = pending;
@@ -343,14 +493,26 @@ public final class SkyStructures {
 		if (pendingNext < job.chunks().size()) {
 			return;
 		}
+		// Placed: then the ground round it (a few columns a tick too).
+		if (padColumns == null) {
+			padColumns = padPlan(job);
+			padNext = 0;
+		}
+		if (!pad(level, m, job, deadline)) {
+			return;
+		}
+		padColumns = null;
+		WRITTEN.clear();
 		pending = null;
 		pendingNext = 0;
-		BUILT.put(job.site().name(), new Built(job.site().structure(), job.box()));
+		// Where it ended up: temples and huts settle onto the ground as they're placed.
+		BoundingBox placed = BoundingBox.encapsulatingBoxes(job.start().getPieces().stream().map(StructurePiece::getBoundingBox).toList()).orElse(job.box());
+		BUILT.put(job.site().name(), new Built(job.site().structure(), placed));
 		saveBuilt();
-		var area = new net.minecraft.world.phys.AABB(job.box().minX(), job.box().minY(), job.box().minZ(), job.box().maxX() + 1, job.box().maxY() + 1, job.box().maxZ() + 1);
+		var area = new net.minecraft.world.phys.AABB(placed.minX(), placed.minY(), placed.minZ(), placed.maxX() + 1, placed.maxY() + 1, placed.maxZ() + 1);
 		int mobs = level.getEntitiesOfClass(Mob.class, area, Mob::isAlive).size();
 		SkyCraft.LOG.info("SkyCraft: built {} ({}) at {} in {} ms ({} chunks, {} mobs with it)", job.site().name(), job.site().structure(),
-			job.box().getCenter().toShortString(), (System.nanoTime() - job.started()) / 1_000_000, job.chunks().size(), mobs);
+			placed.getCenter().toShortString(), (System.nanoTime() - job.started()) / 1_000_000, job.chunks().size(), mobs);
 		if (!BUILD_ALL) {
 			String what = job.site().name().replaceAll(" [0-9]+$", "");
 			level.getServer().getPlayerList().broadcastSystemMessage(net.minecraft.network.chat.Component.literal("A " + what.toLowerCase(java.util.Locale.ROOT) + " stands nearby."), false);
@@ -416,11 +578,13 @@ public final class SkyStructures {
 			if (data == null) {
 				continue;
 			}
-			for (int tries = 0; tries < 12; tries++) {
+			for (int tries = 0; tries < 32; tries++) {
 				int x = box.minX() + random.nextInt(box.getXSpan()), z = box.minZ() + random.nextInt(box.getZSpan());
 				for (int y = box.maxY(); y >= box.minY(); y--) {
 					BlockPos pos = new BlockPos(x, y, z);
-					if (!SpawnPlacements.isSpawnPositionOk(data.type(), level, pos) || !level.noCollision(data.type().getSpawnAABB(x + 0.5, y, z + 0.5))) {
+					// Standing on a block with room (Minecraft's own rules turned down most of an outpost's floor).
+					if (!level.getBlockState(pos.below()).isFaceSturdy(level, pos.below(), net.minecraft.core.Direction.UP) || !level.getBlockState(pos).isAir()
+						|| !level.noCollision(data.type().getSpawnAABB(x + 0.5, y, z + 0.5))) {
 						continue;
 					}
 					Entity entity = data.type().create(level, EntitySpawnReason.STRUCTURE);
