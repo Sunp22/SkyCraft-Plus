@@ -156,7 +156,10 @@ public final class SkyStructures {
 		}
 		List<String> lines = new ArrayList<>();
 		for (SkyrimMap.Site s : read.sites()) {
-			lines.add(s.name() + "|" + s.structure() + "|" + Math.round(s.x()) + "|" + Math.round(s.groundY()) + "|" + Math.round(s.z()));
+			// At the water's surface over one under water (fast travel lands there, not on the sea floor).
+			double water = read.waterAt(s.x(), s.z());
+			double y = Double.isNaN(water) ? s.groundY() : Math.max(s.groundY(), water);
+			lines.add(s.name() + "|" + s.structure() + "|" + Math.round(s.x()) + "|" + Math.round(y) + "|" + Math.round(s.z()));
 		}
 		Path out = Path.of(local, "SkyCraft", "structures.txt");
 		try {

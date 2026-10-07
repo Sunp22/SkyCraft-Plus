@@ -168,6 +168,7 @@ namespace skycraft::MapMarkers
 			}
 			RE::TESObjectREFR* anchor = nullptr;
 			int                relisted = 0;
+			std::vector<RE::TESObjectREFR*> bare;  // ours from a save that kept the reference but not its marker
 			tamriel->persistentCell->ForEachReference([&](RE::TESObjectREFR* a_ref) {
 				if (!a_ref || a_ref->GetWorldspace() != tamriel) {
 					return RE::BSContainer::ForEachResult::kContinue;
@@ -175,12 +176,20 @@ namespace skycraft::MapMarkers
 				if (!anchor && !Ours(a_ref)) {
 					anchor = a_ref;
 				}
+				auto* refBase = a_ref->GetBaseObject();
+				if (refBase && refBase->GetFormID() == kMapMarkerStatic && (a_ref->GetFormID() >> 24) == 0xFF && !MarkerOf(a_ref) && !a_ref->IsDisabled()) {
+					bare.push_back(a_ref);
+				}
 				if (Ours(a_ref) && have.emplace(Key(a_ref->GetPosition()), a_ref).second) {
 					markers.push_back(a_ref->CreateRefHandle());
 					++relisted;
 				}
 				return RE::BSContainer::ForEachResult::kContinue;
 			});
+			for (auto* ref : bare) {
+				ref->Disable();
+				ref->SetDelete(true);
+			}
 			if (!anchor) {
 				return;
 			}
@@ -195,7 +204,7 @@ namespace skycraft::MapMarkers
 					++made;
 				}
 			}
-			logger::info("map markers: {} Minecraft structures marked ({} new, {} found again in the save)", a_spots.size(), made, relisted);
+			logger::info("map markers: {} Minecraft structures marked ({} new, {} found again in the save, {} bare ones removed)", a_spots.size(), made, relisted, bare.size());
 		}
 	}
 
