@@ -179,10 +179,10 @@ public final class SkyrimMap {
 					// only where a structure would stand on it. Buildings and walls keep their distance.
 					String model = model(d);
 					boolean landscape = model.startsWith("landscape\\");
-					if (model.contains("\roads\\")) {
+					if (model.contains("\\roads\\")) {
 						roadBases.add(form);
-					} else if (footprint >= 1000 && !landscape) {
-						obstacleBases.add(form);  // buildings, walls (not the rocks and clutter strewn everywhere)
+					} else if ((footprint >= 1000 && !landscape) || (footprint >= 150 && model.startsWith("architecture\\"))) {
+						obstacleBases.add(form);  // buildings, walls, farms' fences and stables (not rocks and clutter)
 					} else if (footprint >= 150) {
 						rockBases.add(form);  // they'd stand over a structure's ground, floating
 					}
@@ -417,6 +417,9 @@ public final class SkyrimMap {
 		int obstacles = 0, trees = 0, nearTrees = 0, rocks = 0;
 		double reach = radius + 700.0;  // ten blocks round it too
 		double around = radius + 2800.0;  // forty blocks round it, for the woods it stands in
+		// Roads as far as it may spread (a village's houses go well past the ground judged), and ten
+		// blocks more for a road piece's length: one ran through the village by Whiterun.
+		double roadReach = Math.min(2.0 * radius + 700.0, around);
 		for (int x = cellOf(cx - around); x <= cellOf(cx + around); x++) {
 			for (int y = cellOf(cy - around); y <= cellOf(cy + around); y++) {
 				Cell c = cells.get(key(x, y));
@@ -424,13 +427,13 @@ public final class SkyrimMap {
 					continue;
 				}
 				for (float[] o : c.obstacles) {
-					if (sq(o[0] - cx) + sq(o[1] - cy) <= reach * reach) {
+					if (sq(o[0] - cx) + sq(o[1] - cy) <= roadReach * roadReach) {  // (as far as roads: it spreads that far)
 						obstacles++;
 					}
 				}
 				for (float[] o : c.roadPieces) {
-					if (sq(o[0] - cx) + sq(o[1] - cy) <= reach * reach) {
-						roads++;  // (a piece is long: ten blocks round it)
+					if (sq(o[0] - cx) + sq(o[1] - cy) <= roadReach * roadReach) {
+						roads++;
 					}
 				}
 				for (float[] o : c.rocks) {
