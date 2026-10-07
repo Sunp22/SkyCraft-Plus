@@ -845,9 +845,75 @@ final class AvatarExporter implements SubmitNodeCollector {
 		CameraRenderState camera) {
 	}
 
+	/**
+	 * SkyCraft+ : text (signs). Minecraft's glyphs live in an atlas built at run time, which Skyrim
+	 * can't be sent; its plain bitmap font (textures/font/ascii.png, 16 by 16 characters of 8 by 8)
+	 * can, and the letters are cut from that, as wide as each one's pixels. Other characters: '?'.
+	 */
 	@Override
 	public void submitText(PoseStack poseStack, float x, float y, FormattedCharSequence string, boolean dropShadow, Font.DisplayMode displayMode, int lightCoords,
 		int color, int backgroundColor, int outlineColor) {
+		int texture = textureId(ASCII_FONT);
+		int[] widths = asciiWidths();
+		if (texture < 0 || widths == null) {
+			return;
+		}
+		this.capture.flush();
+		Batch batch = this.batch(texture, UV_RAW, SOLID);
+		Matrix4f pose = poseStack.last().pose();
+		Vector3f p = new Vector3f();
+		float[] pen = { x };
+		string.accept((index, style, codepoint) -> {
+			int c = codepoint < 256 && widths[codepoint] > 0 ? codepoint : codepoint == ' ' ? ' ' : '?';
+			if (c == ' ') {
+				pen[0] += 4.0F;
+				return true;
+			}
+			int argb = style.getColor() != null ? 0xFF000000 | style.getColor().getValue() : (color >>> 24) == 0 ? 0xFF000000 | color : color;
+			float w = widths[c];
+			float u0 = (c % 16) / 16.0F, v0 = (c / 16) / 16.0F, u1 = u0 + w / 128.0F, v1 = v0 + 8.0F / 128.0F;
+			float x0 = pen[0], x1 = pen[0] + w, y0 = y, y1 = y + 8.0F;
+			float[][] corners = { { x0, y0, u0, v0 }, { x0, y1, u0, v1 }, { x1, y1, u1, v1 }, { x1, y0, u1, v0 } };
+			for (int side = 0; side < 2; side++) {  // both windings: seen from the front whichever way round Skyrim culls
+				for (int k = 0; k < 4; k++) {
+					float[] v = corners[side == 0 ? k : 3 - k];
+					pose.transformPosition(v[0], v[1], 0.0F, p);
+					batch.add(p.x(), p.y(), p.z(), v[2], v[3], argb, lightCoords, OverlayTexture.NO_OVERLAY);
+				}
+			}
+			pen[0] += w + 1.0F;
+			return true;
+		});
+	}
+
+	private static final Identifier ASCII_FONT = Identifier.withDefaultNamespace("textures/font/ascii.png");
+	private static int @Nullable [] asciiWidths;
+
+	/** Each character's width in ascii.png: its rightmost column with any pixel, plus one (0: none). */
+	private static int @Nullable [] asciiWidths() {
+		if (asciiWidths != null) {
+			return asciiWidths;
+		}
+		NativeImage image = readTexture(ASCII_FONT);
+		if (image == null) {
+			return null;
+		}
+		int[] widths = new int[256];
+		try (image) {
+			int cell = image.getWidth() / 16;
+			for (int c = 0; c < 256; c++) {
+				for (int col = cell - 1; col >= 0 && widths[c] == 0; col--) {
+					for (int row = 0; row < cell; row++) {
+						if ((image.getPixel((c % 16) * cell + col, (c / 16) * cell + row) >>> 24) != 0) {
+							widths[c] = (col + 1) * 8 / cell;
+							break;
+						}
+					}
+				}
+			}
+		}
+		asciiWidths = widths;
+		return widths;
 	}
 
 	@Override
