@@ -1,3 +1,69 @@
+# SkyCraft+ (unofficial)
+
+**A big add-on to [SkyCraft](https://github.com/chasmlol/SkyCraft) by chasm**, built on its 0.1.2
+release. All credit for SkyCraft itself goes to chasm; this fork adds a lot on top. It isn't an
+official release.
+
+**Download:** the latest `SkyCraft-…-plus.zip` from [Releases](../../releases). Same requirements
+as SkyCraft (see [Requirements](#requirements)). Remove the original SkyCraft from your mod manager
+first, install the zip the same way, and start a **new Minecraft world** to get the structures.
+
+## What SkyCraft+ adds
+
+**Switch between Skyrim and Minecraft**
+- **K** swaps between Minecraft mode and full Skyrim mode: Skyrim's movement, body, HUD, weapons,
+  magic and shouts. Your blocks stay, and health carries over.
+- **Tab / I / P** open Skyrim's skills menu, inventory and magic while playing as Minecraft.
+- **Mix and match hands:** equip a Skyrim weapon, spell, shield or torch in one hand and keep a
+  Minecraft item in the other, like Flames in one hand and a diamond sword in the other.
+  Two-handers and bows take both hands.
+- In third person, your Minecraft body holds a matching Minecraft item for your Skyrim weapon.
+
+**Skyrim combat works on Minecraft mobs**
+- Skyrim melee, spells (Flames, bolts, beams), shouts and arrows hit Minecraft mobs, and fire
+  sets them alight.
+- Skyrim healing spells and potions heal your Minecraft hearts.
+- Opening Skyrim's menus pauses Minecraft too.
+
+**A living Minecraft world inside Skyrim**
+- Minecraft follows Skyrim's day and night and its weather.
+- Animals and monsters spawn on Skyrim's ground, and villagers live in Skyrim's towns.
+- Mobs walk Skyrim's terrain properly, and Skyrim's NPCs walk on, step up and path around your
+  blocks.
+
+**The real Minecraft underground**
+- Dig down anywhere and you're in real Minecraft terrain: caves, ores at the right depths,
+  mineshafts, dungeons, trial chambers, ancient cities and the stronghold.
+- Eyes of ender lead you to the stronghold under Skyrim.
+
+**The Nether and the End**
+- Build portals and go; you come back out where you went in.
+- Fight the Ender Dragon, with Skyrim's weapons and magic if you like.
+- Skyrim enemies (Dremora, atronachs, vampires, skeletons, Dwarven machines) turn up in the
+  Nether and among the End cities, and leave their loot when killed.
+
+**Minecraft's structures across Skyrim**
+- Villages (all five kinds), pillager outposts, the woodland mansion, desert and jungle temples,
+  witch huts, igloos, ruined portals, trail ruins, shipwrecks, ocean ruins and the ocean monument
+  stand at fixed spots in Skyrim's open world, each on Minecraft ground of its own, away from
+  roads, buildings and mountains.
+- They're **on Skyrim's map and compass with Skyrim's icons, and you can fast travel to them.**
+
+**And more**
+- A pause-menu **world switcher**: make, delete and switch Minecraft worlds, independent of your
+  Skyrim saves.
+- Each Skyrim interior keeps its own builds.
+- Sign text and name tags show in Skyrim.
+- Multiplayer guests get more of the Skyrim side too (not tested yet: reports welcome).
+- Everything new can be turned off in `SkyCraft.ini` and `skycraft.properties`.
+
+Made with the help of an AI coding assistant (Claude) and play-tested in game. Bug reports and
+ideas are welcome in [Issues](../../issues).
+
+---
+
+The rest of this page is SkyCraft's own README, updated for the additions.
+
 # SkyCraft
 
 ![SkyCraft: a Minecraft player walking through Riverwood with the Minecraft HUD](docs/screenshot.jpg)
