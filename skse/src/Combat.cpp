@@ -96,6 +96,29 @@ namespace skycraft
 			static inline REL::Relocation<decltype(thunk)> func;
 		};
 
+		// SkyCraft+ : Skyrim can't kill the player while Minecraft decides. Essential didn't stop one
+		// big hit (a Dremora's fireball, 120 at level 1: dead, and the last save loaded): health
+		// damage that would take it under 1 is cut to 1, and what was cut goes to Minecraft with the
+		// rest (BridgePlayerDamage). (ActorValueOwner::ModActorValue, the player's ActorValueOwner vtable.)
+		float cutDamage = 0.0f;
+
+		struct ModActorValueHook
+		{
+			static void thunk(RE::ActorValueOwner* a_this, RE::ACTOR_VALUE_MODIFIER a_modifier, RE::ActorValue a_value, float a_amount)
+			{
+				if (essentialSet && a_value == RE::ActorValue::kHealth && a_modifier == RE::ACTOR_VALUE_MODIFIER::kDamage && a_amount < 0.0f) {
+					const float cur = a_this->GetActorValue(RE::ActorValue::kHealth);
+					if (cur + a_amount < 1.0f) {
+						const float allowed = std::min(0.0f, 1.0f - cur);
+						cutDamage += allowed - a_amount;
+						a_amount = allowed;
+					}
+				}
+				func(a_this, a_modifier, a_value, a_amount);
+			}
+			static inline REL::Relocation<decltype(thunk)> func;
+		};
+
 		void SendHurt(proto::HurtKind a_kind, float a_damage, RE::FormID a_attacker, std::uint32_t a_flags)
 		{
 			if (a_damage <= 0.01f) {
@@ -166,7 +189,7 @@ namespace skycraft
 			}
 			lastHeld = held;
 			const float cur = av->GetActorValue(RE::ActorValue::kHealth);
-			const float deficit = held - cur;
+			const float deficit = held - cur + std::exchange(cutDamage, 0.0f);
 			lastHit.age += a_delta;
 			lastDamagerAge += a_delta;
 			if (!healthPrimed) {
@@ -885,6 +908,8 @@ namespace skycraft
 		{
 			REL::Relocation<std::uintptr_t> vtbl{ RE::VTABLE_PlayerCharacter[0] };
 			HandleHealthDamageHook::func = vtbl.write_vfunc(0x104, HandleHealthDamageHook::thunk);
+			REL::Relocation<std::uintptr_t> values{ RE::VTABLE_PlayerCharacter[5] };  // its ActorValueOwner (at +0xB8 on 1.7.104)
+			ModActorValueHook::func = values.write_vfunc(0x6, ModActorValueHook::thunk);
 			if (auto* events = RE::ScriptEventSourceHolder::GetSingleton()) {
 				events->AddEventSink<RE::TESHitEvent>(HitSink::Get());
 			}
