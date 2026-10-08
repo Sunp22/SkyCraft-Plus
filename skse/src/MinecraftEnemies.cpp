@@ -30,6 +30,10 @@ namespace skycraft::MinecraftEnemies
 			float               still = 0.0f;  // seconds it hasn't moved by itself
 			float               age = 0.0f;    // seconds since it was brought in (for one look at how it shows)
 			float               callOut = 0.0f;  // seconds until it's set on the player again, if it isn't fighting
+			RE::ObjectRefHandle tile;               // the floor kept under it (see PlaceBodyFloor)
+			RE::NiPoint3        tileAt;
+			float               tileAge = 99.0f;
+			float               relocated = 99.0f;  // seconds since it was last brought round
 			double              floor = 0.0;     // Minecraft y it last stood at, alive
 			float               deadFor = 0.0f;
 			bool                laidDown = false;  // its body held where it fell
@@ -48,17 +52,19 @@ namespace skycraft::MinecraftEnemies
 		};
 		std::vector<BodyFloor> floors;
 
-		void PlaceBodyFloor(RE::PlayerCharacter* a_player, const RE::NiPoint3& a_at)
+		RE::ObjectRefHandle PlaceBodyFloor(RE::PlayerCharacter* a_player, const RE::NiPoint3& a_at)
 		{
 			auto* base = RE::TESForm::LookupByID<RE::TESBoundObject>(kBodyFloor);
 			if (!base) {
-				return;
+				return {};
 			}
 			auto placed = a_player->PlaceObjectAtMe(base, false);
 			if (auto* ref = placed.get()) {
 				ref->SetPosition(a_at);
 				floors.push_back({ ref->CreateRefHandle(), false });
+				return floors.back().handle;
 			}
+			return {};
 		}
 
 		// Hide a floor's meshes once its 3D is in (its collision stays).
@@ -280,6 +286,9 @@ namespace skycraft::MinecraftEnemies
 		// Keep the living, near ones; the dead stay where they fell (lootable) until the player leaves.
 		int alive = 0;
 		const auto me = a_player->GetPosition();
+		static RE::NiPoint3 lastMe = me;
+		const bool playerFast = a_delta > 0.0f && me.GetDistance(lastMe) / a_delta > 8.0f * float(proto::kUnitsPerBlock);  // over 8 blocks a second
+		lastMe = me;
 		for (auto it = spawned.begin(); it != spawned.end();) {
 			auto  ref = it->handle.get();
 			auto* actor = ref ? ref->As<RE::Actor>() : nullptr;
@@ -290,14 +299,23 @@ namespace skycraft::MinecraftEnemies
 			if (actor->GetPosition().GetDistance(me) > kForgetBlocks * float(proto::kUnitsPerBlock) && !(actor->IsDead() && it->deadFor < 20.0f)) {
 				// Left behind: the living come round again near the player (like a new one); the dead
 				// stay where they fell.
+				// Not again and again while the player flies off (they flicked round the player): once in
+				// a while, with the player not racing away; left far behind, it goes.
 				RE::NiPoint3 at;
-				if (actor->IsDead() || !FindSpot(a_x, a_y, a_z, at)) {
+				const bool   veryFar = actor->GetPosition().GetDistance(me) > 2.0f * kForgetBlocks * float(proto::kUnitsPerBlock);
+				if (actor->IsDead() || (veryFar && (it->relocated < 15.0f || playerFast))) {
+					if (!actor->IsDead()) {
+						PutAway(actor);
+					}
 					it = spawned.erase(it);
 					continue;
 				}
-				actor->SetPosition(at, true);
-				it->last = actor->GetPosition();
-				it->still = 0.0f;
+				if (it->relocated >= 15.0f && !playerFast && FindSpot(a_x, a_y, a_z, at)) {
+					actor->SetPosition(at, true);
+					it->last = actor->GetPosition();
+					it->still = 0.0f;
+					it->relocated = 0.0f;
+				}
 			}
 			const float before = it->age;
 			it->age += a_delta;
@@ -309,6 +327,24 @@ namespace skycraft::MinecraftEnemies
 			if (!actor->IsDead()) {
 				++alive;
 				it->floor = SkyToMc(actor->GetPosition()).y;
+				it->relocated += a_delta;
+				// Its floor laid ahead of time, kept under it as it goes (on the ground, not mid-jump or
+				// falling): laid at death, a quickly falling body went through before it was solid.
+				it->tileAge += a_delta;
+				auto* controller = actor->GetCharController();
+				const bool onGround = controller && controller->context.currentState == RE::hkpCharacterStateType::kOnGround;
+				const auto feet = actor->GetPosition();
+				const auto tileRef = it->tile.get();
+				const bool moved = !tileRef || std::hypot(feet.x - it->tileAt.x, feet.y - it->tileAt.y) > 3.0f * proto::kUnitsPerBlock ||
+				                  std::fabs(feet.z - it->tileAt.z) > 0.5f * proto::kUnitsPerBlock;
+				if (onGround && moved && it->tileAge > 1.5f) {
+					if (tileRef) {
+						PutAway(tileRef.get());
+					}
+					it->tile = PlaceBodyFloor(a_player, feet);
+					it->tileAt = feet;
+					it->tileAge = 0.0f;
+				}
 				// Nothing here lets Skyrim's AI notice the player (an empty cell, no navmesh): one that
 				// isn't fighting stood where it came in. Set on the player, it comes (Steer).
 				if (!actor->IsInCombat() && (it->callOut -= a_delta) <= 0.0f) {
@@ -327,7 +363,11 @@ namespace skycraft::MinecraftEnemies
 				if (before == 0.0f) {
 					auto at = actor->GetPosition();
 					at.z = McToSky(0.0, it->floor, 0.0).z;
-					PlaceBodyFloor(a_player, at);
+					const bool tileNear = it->tile.get() && std::hypot(at.x - it->tileAt.x, at.y - it->tileAt.y) < 3.0f * proto::kUnitsPerBlock &&
+					                  std::fabs(at.z - it->tileAt.z) < 0.5f * proto::kUnitsPerBlock;
+					if (!tileNear) {
+						PlaceBodyFloor(a_player, at);  // none laid near it in time
+					}
 				}
 				it->deadFor += a_delta;
 				auto* root = actor->Get3D();
