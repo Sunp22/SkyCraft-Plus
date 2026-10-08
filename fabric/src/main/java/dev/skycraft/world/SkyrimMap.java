@@ -112,6 +112,9 @@ public final class SkyrimMap {
 	private final Set<Integer> treeBases = new HashSet<>();
 	private final Set<Integer> rockBases = new HashSet<>();
 	private final Set<Integer> roadBases = new HashSet<>();
+	/** BorderRegionSkyrim: Skyrim's invisible walls ("You cannot go that way"), its outlines (x, y pairs, units). */
+	private static final int BORDER_REGION = 0xC5859;
+	private final List<float[]> border = new ArrayList<>();
 	private final Set<Integer> roadTextures = new HashSet<>();
 	private final Map<Integer, Cell> cellsByForm = new HashMap<>();
 
@@ -162,7 +165,7 @@ public final class SkyrimMap {
 			if (t.equals("GRUP")) {
 				int label = buf.getInt(p + 8), groupType = buf.getInt(p + 12);
 				String top = type(p + 8);
-				boolean wanted = groupType != 0 || top.equals("STAT") || top.equals("TREE") || top.equals("DOOR") || top.equals("MSTT") || top.equals("WRLD") || top.equals("LTEX");
+				boolean wanted = groupType != 0 || top.equals("STAT") || top.equals("TREE") || top.equals("DOOR") || top.equals("MSTT") || top.equals("WRLD") || top.equals("LTEX") || top.equals("REGN");
 				if (wanted && (groupType != 1 || label == TAMRIEL)) {
 					int children = groupType == 6 ? label : groupType == 8 || groupType == 9 || groupType == 10 ? cell : -1;
 					walk(p + 24, p + size, tamriel || (groupType == 1 && label == TAMRIEL), children);
@@ -220,6 +223,20 @@ public final class SkyrimMap {
 				case "REFR" -> {
 					if (tamriel && cell != -1) {
 						readRef(cell, data(p, size, flags));
+					}
+				}
+				case "REGN" -> {
+					if (form == BORDER_REGION) {
+						byte[] d = data(p, size, flags);
+						subrecords(d, (st, b, pos, len) -> {
+							if (st.equals("RPLD") && len >= 24) {
+								float[] points = new float[len / 4];
+								for (int i = 0; i < points.length; i++) {
+									points[i] = b.getFloat(pos + 4 * i);
+								}
+								border.add(points);
+							}
+						});
 					}
 				}
 				case "NAVM" -> {
@@ -504,7 +521,7 @@ public final class SkyrimMap {
 		// Candidate spots: every half cell inside the part of Tamriel one can walk to.
 		List<double[]> spots = new ArrayList<>();
 		for (Cell c : cells.values()) {
-			if (c.land && c.navmesh && playable(c.x, c.y)) {
+			if (c.land && c.navmesh && playable(c.x, c.y) && insideUnits(c.x * (double) CELL_UNITS + 2048, c.y * (double) CELL_UNITS + 2048, 0)) {
 				for (int i = 0; i < 2; i++) {
 					for (int j = 0; j < 2; j++) {
 						spots.add(new double[] { c.x * (double) CELL_UNITS + 1024 + i * 2048, c.y * (double) CELL_UNITS + 1024 + j * 2048 });
@@ -524,7 +541,9 @@ public final class SkyrimMap {
 					double bestScore = Double.NEGATIVE_INFINITY;
 					for (int si = 0; si < spots.size(); si++) {
 						double[] s = spots.get(si);
-						if (tooClose(chosen, s[0], s[1])) {
+						// Well inside Skyrim's invisible walls, as far as it may spread and a little more (one
+						// beyond them couldn't be fast travelled to, and flying there left Skyrim's world).
+						if (tooClose(chosen, s[0], s[1]) || !insideUnits(s[0], s[1], (kind.radiusBlocks * 2.0 + 24.0) * UNITS)) {
 							continue;
 						}
 						long cacheKey = si * 1024L + (long) kind.radiusBlocks;
@@ -594,6 +613,35 @@ public final class SkyrimMap {
 	 * Inside the part of Tamriel one can walk to (its outer cells are mountains and sea behind
 	 * Skyrim's invisible borders), in cells.
 	 */
+	/**
+	 * Inside Skyrim's border (its invisible walls) by at least {@code marginBlocks} (Minecraft x, z).
+	 * True when Skyrim.esm has no border (a total conversion): nothing to keep inside.
+	 */
+	public boolean insideBorder(double x, double z, double marginBlocks) {
+		return insideUnits(x * UNITS, -z * UNITS, marginBlocks * UNITS);
+	}
+
+	private boolean insideUnits(double sx, double sy, double margin) {
+		if (border.isEmpty()) {
+			return true;
+		}
+		boolean inside = false;
+		double nearest = Double.MAX_VALUE;
+		for (float[] poly : border) {
+			int n = poly.length / 2;
+			for (int i = 0, j = n - 1; i < n; j = i++) {
+				double xi = poly[2 * i], yi = poly[2 * i + 1], xj = poly[2 * j], yj = poly[2 * j + 1];
+				if ((yi > sy) != (yj > sy) && sx < (xj - xi) * (sy - yi) / (yj - yi) + xi) {
+					inside = !inside;
+				}
+				double ex = xj - xi, ey = yj - yi, len2 = ex * ex + ey * ey;
+				double t = len2 > 0 ? Math.max(0, Math.min(1, ((sx - xi) * ex + (sy - yi) * ey) / len2)) : 0;
+				nearest = Math.min(nearest, Math.hypot(sx - (xi + t * ex), sy - (yi + t * ey)));
+			}
+		}
+		return inside && nearest >= margin;
+	}
+
 	private static boolean playable(int x, int y) {
 		return x >= -50 && x <= 50 && y >= -32 && y <= 32;
 	}

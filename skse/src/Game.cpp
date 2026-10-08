@@ -1495,6 +1495,24 @@ namespace skycraft
 		{
 			static void thunk(RE::PlayerCharacter* a_this, float a_delta)
 			{
+				// SkyCraft+ : off Skyrim's world. Minecraft's player flown past Skyrim's invisible walls
+				// took Skyrim's to where there are no cells, and Skyrim's own update crashed on the
+				// missing cell (SkyrimSE+0x757322). Back where it last had one, without this update.
+				static RE::NiPoint3 lastWithCell;
+				static bool         haveLastWithCell = false;
+				static int          rescues = 0;
+				auto*               ui = RE::UI::GetSingleton();
+				if (auto* cell = a_this->GetParentCell()) {
+					lastWithCell = a_this->GetPosition();
+					haveLastWithCell = !cell->IsInteriorCell();  // (only out in the open world)
+				} else if (haveLastWithCell && State().puppeting && !State().parked && State().mcWorld == proto::kDimTamriel && a_this->Is3DLoaded() && ui &&
+						   !ui->IsMenuOpen(RE::LoadingMenu::MENU_NAME)) {
+					if (++rescues <= 5) {
+						logger::warn("Skyrim's player is off its world (no cell): back to ({:.0f}, {:.0f}, {:.0f})", lastWithCell.x, lastWithCell.y, lastWithCell.z);
+					}
+					a_this->SetPosition(lastWithCell, true);
+					return;
+				}
 				func(a_this, a_delta);
 				try {
 					Perf::Scope timer(Perf::kUpdate);
