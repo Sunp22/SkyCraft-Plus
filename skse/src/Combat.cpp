@@ -195,7 +195,10 @@ namespace skycraft
 			}
 			lastHeld = held;
 			const float cur = av->GetActorValue(RE::ActorValue::kHealth);
-			const float deficit = held - cur + std::exchange(cutDamage, 0.0f);
+			// What Skyrim's health is given back (to where it's held), and the damage Minecraft gets: that
+			// and what was cut off a hit that would have killed (ModActorValueHook).
+			const float deficit = held - cur;
+			const float hurt = deficit + std::exchange(cutDamage, 0.0f);
 			lastHit.age += a_delta;
 			lastDamagerAge += a_delta;
 			if (!healthPrimed) {
@@ -217,6 +220,8 @@ namespace skycraft
 			}
 			if (deficit > 0.01f) {
 				av->RestoreActorValue(RE::ActorValue::kHealth, deficit);
+			}
+			if (hurt > 0.01f) {
 				RE::FormID      attacker = 0;
 				proto::HurtKind kind = proto::kHurtOther;
 				std::uint32_t   flags = 0;
@@ -230,11 +235,11 @@ namespace skycraft
 					kind = proto::kHurtMagic;  // damage over time from someone (spells, poison)
 				}
 				if (kind == proto::kHurtMelee || kind == proto::kHurtProjectile) {
-					SendHurt(kind, deficit, attacker, flags);
+					SendHurt(kind, hurt, attacker, flags);
 				} else {
 					dot.attacker = attacker ? attacker : dot.attacker;
 					dot.kind = kind;
-					dot.damage += deficit;
+					dot.damage += hurt;
 				}
 			}
 			dot.age += a_delta;
@@ -930,6 +935,7 @@ namespace skycraft
 				if (essentialSet) {
 					SetEssential(a_player, false);
 				}
+				cutDamage = 0.0f;  // not a hit when control comes back
 				healthPrimed = false;
 				engaged = false;
 				// Still drain Minecraft's events so stale hits don't land when control resumes.

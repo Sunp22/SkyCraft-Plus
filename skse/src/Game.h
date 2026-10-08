@@ -238,6 +238,7 @@ namespace skycraft
 		// Main thread, every frame while Minecraft is in its world: other people's projectiles stop at
 		// Minecraft's solid blocks.
 		void StopShotsAtBlocks(RE::PlayerCharacter* a_player);
+		void OnGameLoaded();
 	}
 
 	namespace WorldRender

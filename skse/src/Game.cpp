@@ -1865,6 +1865,7 @@ namespace skycraft
 		void OnGameLoaded()
 		{
 			MapMarkers::OnGameLoaded();
+			MinecraftEnemies::OnGameLoaded();
 			teleportPending = true;
 			homeCheck = true;
 			bringingBack = 0.0f;

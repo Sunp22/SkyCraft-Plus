@@ -247,10 +247,21 @@ namespace skycraft::MinecraftEnemies
 		}
 	}
 
+	void OnGameLoaded()
+	{
+		// A loaded game has its own enemies (a save made in the Nether): the cell is cleared again, and
+		// none of this game's handles carry over.
+		spawned.clear();
+		wasThere = false;
+	}
+
 	void PerFrame(RE::PlayerCharacter* a_player, float a_delta, bool a_parked, std::uint32_t a_world, double a_x, double a_y, double a_z)
 	{
 		auto&      st = State();
-		const bool endCities = a_world == proto::kDimEnd && std::sqrt(a_x * a_x + a_z * a_z) > kEndCityBlocks;
+		// (In from 900 blocks, out under 850: back and forth across the line, it cleared the enemies
+		// and their loot each time.)
+		const double fromCentre = std::sqrt(a_x * a_x + a_z * a_z);
+		const bool   endCities = a_world == proto::kDimEnd && fromCentre > (wasThere ? kEndCityBlocks - 50.0f : kEndCityBlocks);
 		const bool here = a_parked && st.skyrimEnemiesOption && (a_world == proto::kDimNether || endCities);
 		if (here != wasThere) {
 			wasThere = here;

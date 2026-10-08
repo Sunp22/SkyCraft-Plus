@@ -155,7 +155,11 @@ namespace skycraft::SkyrimShots
 						continue;
 					}
 					const auto id = projectile->GetFormID();
-					Describe(projectile.get(), id, tracked[id]);
+					auto&      t = tracked[id];
+					if (t.gone >= 0.0f) {
+						t = Tracked{};  // SkyCraft+ : a finished shot's form ID used again by a new one
+					}
+					Describe(projectile.get(), id, t);
 				}
 			}
 		}
