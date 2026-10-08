@@ -240,7 +240,7 @@ namespace skycraft::MinecraftEnemies
 				it = spawned.erase(it);
 				continue;
 			}
-			if (actor->GetPosition().GetDistance(me) > kForgetBlocks * float(proto::kUnitsPerBlock)) {
+			if (actor->GetPosition().GetDistance(me) > kForgetBlocks * float(proto::kUnitsPerBlock) && !(actor->IsDead() && it->deadFor < 20.0f)) {
 				// Left behind: the living come round again near the player (like a new one); the dead
 				// stay where they fell.
 				RE::NiPoint3 at;
@@ -290,7 +290,9 @@ namespace skycraft::MinecraftEnemies
 				const double low = pelvis ? SkyToMc(pelvis->world.translate).y : SkyToMc(actor->GetPosition()).y;
 				if (!it->laidDown && (low < it->floor + 0.35 || it->deadFor > 4.0f)) {
 					it->laidDown = true;
-					actor->SetMotionType(RE::hkpMotion::MotionType::kKeyframed);
+					// Forced: unforced, the ragdoll went on falling.
+					const bool held = root && root->SetMotionType(RE::hkpMotion::MotionType::kKeyframed, true, true, true);
+					logger::info("Skyrim enemies: {} keyframed: {}", actor->GetName(), held ? "yes" : "no");
 					logger::info("Skyrim enemies: {} down, held (pelvis {:.2f}, floor {:.2f}, {})", actor->GetName(), low, it->floor, pelvis ? "by its pelvis" : "no pelvis");
 				}
 				if (it->laidDown && low < it->floor - 0.25) {
