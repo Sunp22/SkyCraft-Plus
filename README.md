@@ -45,6 +45,36 @@ shared memory. Minecraft runs hidden in the background, and Skyrim draws everyth
   gives Skyrim's death camera with your Minecraft body ragdolling.
 - **Skyrim's own animations:** chairs, crafting stations, beds, pull levers, horses and scripted
   scenes hand control to Skyrim until they finish.
+- **Skyrim's menus and Skyrim mode:** Tab, I and P open Skyrim's menu, inventory and magic. **K**
+  switches to Skyrim mode (Skyrim's own movement, body, HUD, weapons, magic and shouts) and back;
+  your blocks stay, and health carries across as a share.
+- **Mix and match hands:** equip a Skyrim weapon, spell, shield or torch in one hand (Skyrim's
+  inventory or magic menu) and that hand is Skyrim's: Flames in one hand, a diamond sword in the
+  other. Two-handers and bows take both. In third person your Minecraft body holds a Minecraft
+  stand-in for it.
+- **Skyrim combat on Minecraft mobs:** Skyrim melee, spells (sprays, bolts, beams), shouts and
+  arrows hit Minecraft's mobs; fire sets them alight. Skyrim heals heal Minecraft's hearts, and
+  Skyrim menus pause Minecraft. One Skyrim hit takes at most half your hearts (`fMaxHitHealth`).
+- **A living Minecraft world:** Skyrim's clock and weather, animals and monsters spawning on
+  Skyrim's ground, villagers in Skyrim's towns. Mobs path over Skyrim's terrain, and Skyrim's
+  NPCs stand on, step up and walk around Minecraft's blocks.
+- **The Minecraft underground:** dig down and the real Minecraft underground is under Skyrim:
+  caves, ores at their depths, mineshafts, dungeons, trial chambers, ancient cities and the
+  stronghold (eyes of ender find it), with their monsters.
+- **The Nether and the End:** build a portal and go. Skyrim keeps its player in an empty cell
+  meanwhile and draws Minecraft's worlds; you come back out where you went in. The Ender Dragon
+  can be fought with Skyrim's weapons and magic. Skyrim's Dremora, atronachs, vampires and
+  Dwarven machines turn up in the Nether and among the End cities (their loot drops in a sack).
+- **Minecraft's structures in Skyrim:** villages, pillager outposts, the woodland mansion,
+  temples, witch huts, igloos, ruined portals, trail ruins, wrecks, ocean ruins and the ocean
+  monument stand at fixed spots in Skyrim's open world, chosen from your Skyrim.esm (off roads,
+  buildings and mountains, inside the borders). Each is built on Minecraft ground of its own when
+  you first come near, and is marked on Skyrim's map and compass (you can fast travel there).
+- **Several Minecraft worlds:** the pause menu's world switcher creates, deletes and switches
+  Minecraft worlds; none is tied to a Skyrim save.
+- **Interiors and worldspaces:** each Skyrim interior keeps its own builds, and other worldspaces
+  (Solstheim, Blackreach...) have Minecraft dimensions of their own.
+- **Signs and name tags** are drawn.
 - **Multiplayer (Minecraft side only):** friends who also run SkyCraft can join your Minecraft
   world over the internet (see [Playing with friends](#playing-with-friends)).
 
@@ -166,11 +196,16 @@ Every other key is Minecraft's: **E** inventory, **F5** camera, **T** chat, **/*
 - Minecraft hits only reach NPCs, not Skyrim objects such as the web around Arvel in Bleak Falls
   Barrow. Press K for Skyrim mode, deal with the object with Skyrim's own weapons or magic, and
   press K again.
-- Sign text isn't drawn yet.
-- All Skyrim interiors share one Minecraft world, so blocks placed in one interior can appear in
-  another at the same coordinates.
+- Sign text is drawn in Minecraft's plain font: letters outside it show as `?`.
+- Mobs and dropped items stay behind when you leave an interior (each interior's blocks are kept).
+- Skyrim enemies in the Nether and the End leave a sack with their loot instead of a body (bodies
+  fell through Minecraft's blocks).
+- Skyrim has few big flat places away from its mountains, so few villages fit.
+  `structuresOffMountains=false` in Minecraft's `config\skycraft.properties` allows more, on
+  mountainsides.
 - Multiplayer syncs only the Minecraft world. Each player has their own Skyrim, and guests
-  can't hit their own Skyrim NPCs yet.
+  can't hit their own Skyrim NPCs yet. Guests' Skyrim-mode use of blocks, Skyrim hands and
+  Skyrim magic on mobs are built but untested.
 - Mods that also take over the camera (Improved Camera SE, SmoothCam, True Directional Movement)
   will conflict.
 
