@@ -905,14 +905,16 @@ final class AvatarExporter implements SubmitNodeCollector {
 
 	private static final Identifier ASCII_FONT = Identifier.withDefaultNamespace("textures/font/ascii.png");
 	private static int @Nullable [] asciiWidths;
+	private static boolean asciiMissing;  // couldn't be read: not tried again for every text
 
 	/** Each character's width in ascii.png: its rightmost column with any pixel, plus one (0: none). */
 	private static int @Nullable [] asciiWidths() {
-		if (asciiWidths != null) {
+		if (asciiWidths != null || asciiMissing) {
 			return asciiWidths;
 		}
 		NativeImage image = readTexture(ASCII_FONT);
 		if (image == null) {
+			asciiMissing = true;
 			return null;
 		}
 		int[] widths = new int[256];

@@ -128,8 +128,10 @@ public final class SkyNet {
 			case Act.USE_BLOCK -> {
 				var hit = new net.minecraft.world.phys.BlockHitResult(new net.minecraft.world.phys.Vec3(act.hx, act.hy, act.hz),
 					net.minecraft.core.Direction.from3DDataValue(act.face), act.pos, false);
-				if (player.getEyePosition().distanceToSqr(hit.getLocation()) > 8.0 * 8.0) {
-					return;
+				if (player.getEyePosition().distanceToSqr(hit.getLocation()) > 8.0 * 8.0
+					|| player.getEyePosition().distanceToSqr(net.minecraft.world.phys.Vec3.atCenterOf(act.pos)) > 8.0 * 8.0
+					|| !player.level().mayInteract(player, act.pos)) {
+					return;  // (the block itself in reach, and not spawn-protected)
 				}
 				var state = player.level().getBlockState(act.pos);
 				var result = state.useWithoutItem(player.level(), player, hit);

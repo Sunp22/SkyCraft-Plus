@@ -72,9 +72,12 @@ public final class SkyMagic {
 		}
 		GUEST_SHOTS_AT.keySet().removeIf(id -> server.getPlayerList().getPlayer(id) == null);
 		GUEST_SHOTS.keySet().retainAll(GUEST_SHOTS_AT.keySet());
-		if (!SkyLink.active() || !SkyLink.readSkyrimShots(SHOTS)) {
+		if (!SkyLink.active()) {
 			HIT.keySet().retainAll(live);
 			return;
+		}
+		if (!SkyLink.readSkyrimShots(SHOTS)) {
+			return;  // Skyrim mid-write: next tick (forgetting the host's hits now, its shots hit again)
 		}
 		ServerPlayer hostPlayer = null;
 		for (ServerPlayer player : server.getPlayerList().getPlayers()) {

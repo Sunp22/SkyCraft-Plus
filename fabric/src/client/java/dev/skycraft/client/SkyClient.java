@@ -138,12 +138,13 @@ public final class SkyClient {
 		if (player != lastPlayer) {
 			lastPlayer = player;
 			teleportPending = true;
+			sentHands = -1;  // SkyCraft+ : a server just joined (or rejoined) has forgotten them
 		}
 		if (sky.teleportSeq != lastTeleportSeq) {
 			lastTeleportSeq = sky.teleportSeq;
 			teleportPending = true;
 		}
-		if (teleportPending && sky.inGame() && !sky.loading() && ((inMinecraftWorld(minecraft) && !sky.bringBack()) || sky.parked())) {
+		if (teleportPending && sky.inGame() && !sky.loading() && ((inMinecraftWorld(minecraft) && (!sky.bringBack() || minecraft.getSingleplayerServer() == null)) || sky.parked())) {
 			// SkyCraft+ : the Nether and the End. Skyrim has nowhere there to put us: it follows
 			// (it parks its player in an empty cell), so its teleports are acknowledged, not taken.
 			teleportAck = sky.teleportSeq;
@@ -162,8 +163,9 @@ public final class SkyClient {
 		SkyCombat.leftHandSkyrim = sky.leftHandSkyrim();
 		// SkyCraft+ : multiplayer. A guest tells the host's server which hands its Skyrim holds.
 		int hands = (sky.rightHandSkyrim() ? 1 : 0) | (sky.leftHandSkyrim() ? 2 : 0);
-		if (hands != sentHands && minecraft.getSingleplayerServer() == null) {
-			sentHands = hands;
+		if (hands != sentHands && minecraft.getSingleplayerServer() == null
+			&& net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.canSend(dev.skycraft.net.SkyNet.Act.TYPE)) {
+			sentHands = hands;  // (only once it can go: sent too early, it was dropped and never sent again)
 			act(minecraft, dev.skycraft.net.SkyNet.Act.simple(dev.skycraft.net.SkyNet.Act.HANDS, hands, 0.0F, 0.0F));
 		}
 		// SkyCraft+ : multiplayer. A guest's Skyrim spells, shouts and arrows go to the host's server,
