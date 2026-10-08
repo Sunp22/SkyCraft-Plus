@@ -106,7 +106,9 @@ public final class SkyInteriors {
 		}
 		try {
 			Files.createDirectories(folder);
-			Files.write(folder.resolve("current.txt"), lines);
+			Path temp = folder.resolve("current.txt.tmp");  // whole or not at all
+			Files.write(temp, lines);
+			Files.move(temp, folder.resolve("current.txt"), java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
 		} catch (IOException e) {
 			SkyCraft.LOG.warn("SkyCraft: couldn't save interiors state", e);
 		}
@@ -202,7 +204,10 @@ public final class SkyInteriors {
 		root.put("blocks", blocks);
 		try {
 			Files.createDirectories(folder);
-			NbtIo.writeCompressed(root, fileFor(interior));
+			Path file = fileFor(interior);
+			Path temp = file.resolveSibling(file.getFileName() + ".tmp");  // whole or not at all
+			NbtIo.writeCompressed(root, temp);
+			Files.move(temp, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
 		} catch (IOException e) {
 			SkyCraft.LOG.warn("SkyCraft: couldn't save interior {}'s builds; they stay", Integer.toHexString(interior), e);
 			return -1;

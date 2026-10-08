@@ -18,7 +18,7 @@ public abstract class ServerLevelSeaMixin {
 	@Inject(method = "getSeaLevel", at = @At("HEAD"), cancellable = true)
 	private void skycraft$skyrimSea(CallbackInfoReturnable<Integer> cir) {
 		int sea = SkyStructures.placingSea;
-		if (sea != Integer.MIN_VALUE && SkyStructures.placing != null) {
+		if (sea != Integer.MIN_VALUE && SkyStructures.placingIn(this)) {
 			cir.setReturnValue(sea);
 		}
 	}

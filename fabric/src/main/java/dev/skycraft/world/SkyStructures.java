@@ -78,6 +78,14 @@ public final class SkyStructures {
 	public static volatile @Nullable SkyrimMap placing;
 	/** While an ocean structure is placed: the sea level it should see (Skyrim's water there); else MIN_VALUE. */
 	public static volatile int placingSea = Integer.MIN_VALUE;
+	/** The level being placed in (the mixins answer for it alone, on the server thread). */
+	public static volatile @Nullable ServerLevel placingLevel;
+
+	/** A call from the level being placed in, on its server's thread: Skyrim's ground counts. */
+	public static boolean placingIn(Object level) {
+		ServerLevel placed = placingLevel;
+		return placing != null && placed != null && level == placed && placed.getServer().isSameThread();
+	}
 
 	private record Built(String structure, BoundingBox box) {
 	}
@@ -115,6 +123,7 @@ public final class SkyStructures {
 			map = null;  // chosen again with the other rule
 		}
 		BUILT.clear();
+		INSIDE.clear();  // (another world's)
 		pending = null;
 		pendingNext = 0;
 		padColumns = null;
@@ -135,7 +144,13 @@ public final class SkyStructures {
 		Thread thread = new Thread(() -> {
 			try {
 				long t0 = System.nanoTime();
-				SkyrimMap read = SkyrimMap.read(esm);
+				// Read again if the mountain rule changed meanwhile (a world switched to with the other setting).
+				boolean rule;
+				SkyrimMap read;
+				do {
+					rule = SkyrimMap.offMountains;
+					read = SkyrimMap.read(esm);
+				} while (rule != SkyrimMap.offMountains);
 				map = read;
 				SkyCraft.LOG.info("SkyCraft: Minecraft's structures in Skyrim: {} spots from {} in {} s", read.sites().size(), esm,
 					String.format("%.1f", (System.nanoTime() - t0) / 1e9));
@@ -223,7 +238,10 @@ public final class SkyStructures {
 		BUILT.forEach((name, b) -> lines.add(name + "|" + b.structure + "|" + b.box.minX() + "|" + b.box.minY() + "|" + b.box.minZ() + "|" + b.box.maxX() + "|"
 			+ b.box.maxY() + "|" + b.box.maxZ()));
 		try {
-			Files.write(builtFile, lines);
+			// Whole or not at all (half a file: structures built again on top of themselves).
+			Path temp = builtFile.resolveSibling(builtFile.getFileName() + ".tmp");
+			Files.write(temp, lines);
+			Files.move(temp, builtFile, java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
 		} catch (IOException e) {
 			SkyCraft.LOG.warn("SkyCraft: couldn't save {}", builtFile, e);
 		}
@@ -293,7 +311,7 @@ public final class SkyStructures {
 
 	private static void tick(MinecraftServer server) {
 		SkyrimMap m = map;
-		if (m != null && SkyWorld.valid()) {
+		if (m != null && SkyWorld.valid() && SkyWorld.tamriel() && !SkyWorld.interior()) {
 			keepInsideBorder(server, m);
 		}
 		if (pending != null && m != null) {
@@ -358,6 +376,7 @@ public final class SkyStructures {
 		long t0 = System.nanoTime();
 		StructureStart start;
 		placing = m;
+		placingLevel = level;
 		try {
 			start = holder.get().value().generate(holder.get(), level.dimension(), level.registryAccess(), ground, ground.getBiomeSource(),
 				level.getChunkSource().randomState().createClimateSampler(net.minecraft.world.level.levelgen.densityfunction.SamplerContext.EMPTY_UNCACHED),
@@ -402,6 +421,7 @@ public final class SkyStructures {
 			saveBuilt();
 		} finally {
 			placing = null;
+			placingLevel = null;
 			placingSea = Integer.MIN_VALUE;
 		}
 	}
@@ -510,7 +530,7 @@ public final class SkyStructures {
 	 */
 	private static boolean pad(ServerLevel level, SkyrimMap m, Pending job, long deadline) {
 		List<int[]> columns = padColumns;
-		int world = SkyDig.worldFor(level);
+		int world = 0x3C;  // Tamriel's: the host may be in a city's worldspace or a house meanwhile
 		BlockState[] ground = groundFor(job.site().structure(), job.site().groundY());
 		int flags = net.minecraft.world.level.block.Block.UPDATE_CLIENTS | net.minecraft.world.level.block.Block.UPDATE_KNOWN_SHAPE;
 		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
@@ -590,6 +610,7 @@ public final class SkyStructures {
 		Pending job = pending;
 		long deadline = System.nanoTime() + PLACE_NANOS;
 		placing = m;
+		placingLevel = level;
 		placingSea = ((Ground) job.ground()).seaBlock();
 		try {
 			while (pendingNext < job.chunks().size() && System.nanoTime() < deadline) {
@@ -619,6 +640,7 @@ public final class SkyStructures {
 			pendingNext = job.chunks().size();
 		} finally {
 			placing = null;
+			placingLevel = null;
 			placingSea = Integer.MIN_VALUE;
 		}
 		if (pendingNext < job.chunks().size()) {
@@ -714,9 +736,12 @@ public final class SkyStructures {
 				int x = box.minX() + random.nextInt(box.getXSpan()), z = box.minZ() + random.nextInt(box.getZSpan());
 				for (int y = box.maxY(); y >= box.minY(); y--) {
 					BlockPos pos = new BlockPos(x, y, z);
-					// Standing on a block with room (Minecraft's own rules turned down most of an outpost's floor).
-					if (!level.getBlockState(pos.below()).isFaceSturdy(level, pos.below(), net.minecraft.core.Direction.UP) || !level.getBlockState(pos).isAir()
-						|| !level.noCollision(data.type().getSpawnAABB(x + 0.5, y, z + 0.5))) {
+					// Standing on a block with room (Minecraft's own rules turned down most of an outpost's floor);
+					// in water, for those that live there (a monument's guardians).
+					boolean swims = net.minecraft.world.entity.SpawnPlacements.getPlacementType(data.type()) == net.minecraft.world.entity.SpawnPlacementTypes.IN_WATER;
+					boolean room = swims ? level.getFluidState(pos).isSource() && level.getFluidState(pos.above()).isSource()
+						: level.getBlockState(pos.below()).isFaceSturdy(level, pos.below(), net.minecraft.core.Direction.UP) && level.getBlockState(pos).isAir();
+					if (!room || !level.noCollision(data.type().getSpawnAABB(x + 0.5, y, z + 0.5))) {
 						continue;
 					}
 					Entity entity = data.type().create(level, EntitySpawnReason.STRUCTURE);

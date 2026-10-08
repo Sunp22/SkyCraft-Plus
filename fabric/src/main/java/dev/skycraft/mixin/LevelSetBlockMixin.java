@@ -17,7 +17,7 @@ public abstract class LevelSetBlockMixin {
 	/** Every cell a structure writes while placed (air too), so the ground round it leaves them be. */
 	@Inject(method = "setBlock(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;II)Z", at = @At("HEAD"))
 	private void skycraft$noteStructureBlock(BlockPos pos, BlockState state, int flags, int limit, CallbackInfoReturnable<Boolean> cir) {
-		if (SkyStructures.placing != null) {
+		if (SkyStructures.placingIn(this)) {
 			SkyStructures.noteWritten((Level) (Object) this, pos);
 		}
 	}

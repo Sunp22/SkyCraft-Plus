@@ -24,7 +24,7 @@ public abstract class LevelHeightMixin {
 	@Inject(method = "getHeight(Lnet/minecraft/world/level/levelgen/Heightmap$Types;II)I", at = @At("RETURN"), cancellable = true)
 	private void skycraft$skyrimGround(Heightmap.Types type, int x, int z, CallbackInfoReturnable<Integer> cir) {
 		SkyrimMap map = SkyStructures.placing;
-		if (map != null && !((Level) (Object) this).isClientSide()) {
+		if (map != null && SkyStructures.placingIn(this)) {
 			cir.setReturnValue(SkyStructures.heightWhilePlacing(map, type, x, z, cir.getReturnValue()));
 		}
 	}
@@ -34,7 +34,7 @@ public abstract class LevelHeightMixin {
 		SkyrimMap map = SkyStructures.placing;
 		// (Not the structure's own rooms: a chest is turned away from its one solid neighbour, and in
 		// a temple's chest room every side looked solid, so all four faced the same way.)
-		if (map != null && cir.getReturnValue().isAir() && !((Level) (Object) this).isClientSide() && !SkyStructures.wrote(pos)) {
+		if (map != null && cir.getReturnValue().isAir() && SkyStructures.placingIn(this) && !SkyStructures.wrote(pos)) {
 			double ground = map.groundAt(pos.getX() + 0.5, pos.getZ() + 0.5);
 			if (!Double.isNaN(ground) && pos.getY() < Math.round(ground)) {
 				cir.setReturnValue(Blocks.STONE.defaultBlockState());
