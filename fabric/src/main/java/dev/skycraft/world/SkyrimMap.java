@@ -51,6 +51,7 @@ public final class SkyrimMap {
 		boolean navmesh;  // Skyrim's NPCs can walk it: inside the borders, not the land beyond them
 		final List<float[]> obstacles = new ArrayList<>();  // Skyrim buildings, walls, cliffs, doors (x, y)
 		final List<float[]> trees = new ArrayList<>();
+		final List<float[]> mountains = new ArrayList<>();  // mountain and cliff pieces
 		final List<float[]> roadPieces = new ArrayList<>();  // Skyrim's paved roads: meshes laid on the land
 		final List<float[]> rocks = new ArrayList<>();  // boulders and the like (two blocks across or more)
 		final boolean[] road = new boolean[4];  // its quarters painted with a road texture
@@ -112,6 +113,9 @@ public final class SkyrimMap {
 	private final Set<Integer> treeBases = new HashSet<>();
 	private final Set<Integer> rockBases = new HashSet<>();
 	private final Set<Integer> roadBases = new HashSet<>();
+	private final Set<Integer> mountainBases = new HashSet<>();
+	/** Structures keep off mountains (skycraft.properties structuresOffMountains): fewer villages, cleaner ground. */
+	public static volatile boolean offMountains = true;
 	/** BorderRegionSkyrim: Skyrim's invisible walls ("You cannot go that way"), its outlines (x, y pairs, units). */
 	private static final int BORDER_REGION = 0xC5859;
 	private final List<float[]> border = new ArrayList<>();
@@ -184,6 +188,9 @@ public final class SkyrimMap {
 					boolean landscape = model.startsWith("landscape\\");
 					if (model.contains("\\roads\\")) {
 						roadBases.add(form);
+					} else if (model.startsWith("landscape\\mountains\\") || model.startsWith("landscape\\dirtcliffs\\") || model.startsWith("landscape\\ice\\")
+						|| (landscape && model.contains("cliff") && footprint >= 150)) {
+						mountainBases.add(form);  // mountains and cliffs: dug through for a structure's ground, they stood up in it in pieces
 					} else if ((footprint >= 1000 && !landscape) || (footprint >= 150 && model.startsWith("architecture\\"))) {
 						obstacleBases.add(form);  // buildings, walls, farms' fences and stables (not rocks and clutter)
 					} else if (footprint >= 150) {
@@ -385,6 +392,8 @@ public final class SkyrimMap {
 			c.rocks.add(pos[0]);
 		} else if (roadBases.contains(base[0])) {
 			c.roadPieces.add(pos[0]);
+		} else if (mountainBases.contains(base[0])) {
+			c.mountains.add(pos[0]);
 		}
 	}
 
@@ -392,7 +401,7 @@ public final class SkyrimMap {
 
 	/** The ground in a circle (Skyrim units): its heights' range, dryness, and what stands on it. */
 	private record Ground(boolean dry, boolean wet, double min, double max, double mean, double depth, int obstacles, int trees, int nearTrees, int roads,
-		int rocks, boolean shore) {
+		int rocks, int mountains, boolean shore) {
 	}
 
 	private Ground ground(double cx, double cy, double radius) {
@@ -431,7 +440,7 @@ public final class SkyrimMap {
 		if (!any) {
 			return null;
 		}
-		int obstacles = 0, trees = 0, nearTrees = 0, rocks = 0;
+		int obstacles = 0, trees = 0, nearTrees = 0, rocks = 0, mountains = 0;
 		double reach = radius + 700.0;  // ten blocks round it too
 		double around = radius + 2800.0;  // forty blocks round it, for the woods it stands in
 		// Roads as far as it may spread (a village's houses go well past the ground judged), and ten
@@ -446,6 +455,11 @@ public final class SkyrimMap {
 				for (float[] o : c.obstacles) {
 					if (sq(o[0] - cx) + sq(o[1] - cy) <= roadReach * roadReach) {  // (as far as roads: it spreads that far)
 						obstacles++;
+					}
+				}
+				for (float[] o : c.mountains) {
+					if (sq(o[0] - cx) + sq(o[1] - cy) <= radius * radius) {
+						mountains++;  // (on the structure itself: they stand everywhere round it)
 					}
 				}
 				for (float[] o : c.roadPieces) {
@@ -468,7 +482,7 @@ public final class SkyrimMap {
 				}
 			}
 		}
-		return new Ground(dry, wet, min, max, sum / n, depth, obstacles, trees, nearTrees, roads, rocks, above > 0 && below > 0);
+		return new Ground(dry, wet, min, max, sum / n, depth, obstacles, trees, nearTrees, roads, rocks, mountains, above > 0 && below > 0);
 	}
 
 	/** On a quarter of a cell painted with a road texture. */
@@ -539,6 +553,10 @@ public final class SkyrimMap {
 				for (int i = 0; i < count; i++) {
 					double[] best = null;
 					double bestScore = Double.NEGATIVE_INFINITY;
+					// Never on a mountain (dug into, it stood up through the structure's ground in pieces) but the
+					// first of a kind, if there's nowhere else for it: one of every structure.
+					for (int pass = 0; pass < (round == 0 ? 2 : 1) && best == null; pass++) {
+					final boolean onMountains = pass == 1;
 					for (int si = 0; si < spots.size(); si++) {
 						double[] s = spots.get(si);
 						// Well inside Skyrim's invisible walls, as far as it may spread and a little more (one
@@ -548,7 +566,7 @@ public final class SkyrimMap {
 						}
 						long cacheKey = si * 1024L + (long) kind.radiusBlocks;
 						Ground g = grounds.computeIfAbsent(cacheKey, k -> java.util.Optional.ofNullable(ground(s[0], s[1], kind.radiusBlocks * UNITS))).orElse(null);
-						if (g == null) {
+						if (g == null || (g.mountains > 0 && !onMountains && offMountains)) {
 							continue;
 						}
 						double score = kind.score.of(g, s[0], s[1]) - crowding(kind.structure, s[0] / UNITS, -s[1] / UNITS);
@@ -556,6 +574,7 @@ public final class SkyrimMap {
 							bestScore = score;
 							best = s;
 						}
+					}
 					}
 					if (best == null) {
 						break;
