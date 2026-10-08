@@ -38,7 +38,6 @@ public final class SkyMagic {
 	private static final int REPEAT_TICKS = 10; // sprays and beams: each mob again every half second
 	private static final int STOPPED = Integer.MIN_VALUE;
 	private static int logged;
-	private static int readsLogged;
 
 	private SkyMagic() {
 	}
@@ -92,15 +91,6 @@ public final class SkyMagic {
 		HIT.keySet().retainAll(live);
 		if (SHOTS.isEmpty()) {
 			return;
-		}
-		if (readsLogged < 5) {
-			readsLogged++;
-			StringBuilder list = new StringBuilder();
-			for (SkyLink.Shot shot : SHOTS) {
-				list.append(String.format(" [%x flags %x %.1f,%.1f,%.1f -> %.1f,%.1f,%.1f r %.2f dmg %.2f]", shot.id(), shot.flags(), shot.x0(), shot.y0(),
-					shot.z0(), shot.x1(), shot.y1(), shot.z1(), shot.radius(), shot.damage()));
-			}
-			SkyCraft.LOG.info("SkyCraft: Skyrim shots:{}", list);
 		}
 		ServerPlayer host = null;
 		for (ServerPlayer player : server.getPlayerList().getPlayers()) {

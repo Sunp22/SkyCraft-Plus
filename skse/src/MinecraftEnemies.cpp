@@ -302,7 +302,7 @@ namespace skycraft::MinecraftEnemies
 			}
 			const float before = it->age;
 			it->age += a_delta;
-			if (before < 3.0f && it->age >= 3.0f) {
+			if (before < 3.0f && it->age >= 3.0f && DiagnosticsEnabled()) {
 				auto* root = actor->Get3D();
 				logger::info("Skyrim enemies: {} after 3 s: 3D {}, {} visible, {:.0f} blocks away", actor->GetName(), root ? "loaded" : "not loaded",
 					root && !root->GetFlags().any(RE::NiAVObject::Flag::kHidden) ? "" : "not", actor->GetPosition().GetDistance(me) / float(proto::kUnitsPerBlock));
@@ -395,7 +395,7 @@ namespace skycraft::MinecraftEnemies
 		lastShotPos = std::move(seen);
 		for (auto& projectile : blocked) {
 			static int logged = 0;
-			if (logged++ < 10) {
+			if (DiagnosticsEnabled() && logged++ < 10) {
 				logger::info("shots: {:X} stopped by a Minecraft block", projectile->GetFormID());
 			}
 			lastShotPos.erase(projectile->GetFormID());
