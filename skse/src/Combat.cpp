@@ -124,6 +124,12 @@ namespace skycraft
 			if (a_damage <= 0.01f) {
 				return;
 			}
+			// SkyCraft+ : one Skyrim hit takes at most this much of Minecraft's health (5 Skyrim damage is
+			// 1 Minecraft): a Dremora's fireball (120) was 24, dead from full in one hit at level 1.
+			if (const float cap = State().maxHitHealth; cap > 0.0f && a_damage > cap * 5.0f) {
+				logger::info("player hit for {:.1f} Skyrim damage: capped at {:.1f} ({} Minecraft health)", a_damage, cap * 5.0f, cap);
+				a_damage = cap * 5.0f;
+			}
 			Link::Get().PushInput(proto::kInHurt, static_cast<std::uint16_t>(a_kind), static_cast<std::int32_t>(a_damage * 100.0f),
 				static_cast<std::int32_t>(a_attacker), static_cast<std::int32_t>(a_flags));
 			logger::info("player hit by {:08X}: {:.1f} Skyrim damage ({}) -> {:.1f} Minecraft", a_attacker, a_damage,

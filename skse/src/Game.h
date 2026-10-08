@@ -54,6 +54,8 @@ namespace skycraft
 		bool                       structureMarkersOption{ true };
 		// SkyCraft+ : the Nether and the End: Minecraft's blocks drawn before Skyrim's effects ([Worlds] bBlocksBeforeEffects).
 		bool                       blocksBeforeEffects{ true };
+		// SkyCraft+ : most of Minecraft's health one Skyrim hit may take ([Combat] fMaxHitHealth; 0: no cap).
+		float                      maxHitHealth{ 10.0f };
 		// SkyCraft+ : the underground. Skyrim's land is more than two blocks above the player (a mine).
 		std::atomic<bool>          playerUnderLand{ false };
 

@@ -155,6 +155,7 @@ namespace skycraft
 			State().enemySeconds = static_cast<float>(ini.GetDoubleValue("Worlds", "fEnemySeconds", 12.0));
 			State().structureMarkersOption = ini.GetBoolValue("Worlds", "bStructureMarkers", true);
 			State().blocksBeforeEffects = ini.GetBoolValue("Worlds", "bBlocksBeforeEffects", true);
+			State().maxHitHealth = static_cast<float>(ini.GetDoubleValue("Combat", "fMaxHitHealth", 10.0));
 			logger::info("Minecraft's structures on Skyrim's map: {}", State().structureMarkersOption ? "on" : "off");
 			logger::info("Skyrim enemies in the Nether and the End: {} ({} and {} kinds, up to {}, about every {:.0f} s)",
 				State().skyrimEnemiesOption ? "on" : "off", State().netherEnemies.size(), State().endEnemies.size(), State().enemyCap, State().enemySeconds);
