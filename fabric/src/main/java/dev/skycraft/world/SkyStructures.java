@@ -76,6 +76,8 @@ public final class SkyStructures {
 
 	/** Set while a structure is laid out and placed: the ground Level.getHeight reports (LevelHeightMixin). */
 	public static volatile @Nullable SkyrimMap placing;
+	/** While an ocean structure is placed: the sea level it should see (Skyrim's water there); else MIN_VALUE. */
+	public static volatile int placingSea = Integer.MIN_VALUE;
 
 	private record Built(String structure, BoundingBox box) {
 	}
@@ -223,8 +225,40 @@ public final class SkyStructures {
 	/** Development: SKYCRAFT_BUILD_ALL_STRUCTURES=1 builds every spot at once, with no Skyrim or player. */
 	private static final boolean BUILD_ALL = "1".equals(System.getenv("SKYCRAFT_BUILD_ALL_STRUCTURES"));
 
+	/** Where each player last was inside Skyrim's border (the open world). */
+	private static final Map<java.util.UUID, net.minecraft.world.phys.Vec3> INSIDE = new HashMap<>();
+
+	/**
+	 * Skyrim's invisible walls hold Minecraft's players too: flying past them took Skyrim's player
+	 * off its world (no cell there, and Skyrim crashed). Over the line, back to where they were.
+	 */
+	private static void keepInsideBorder(MinecraftServer server, SkyrimMap m) {
+		ServerLevel overworld = server.overworld();
+		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+			if (player.level() != overworld || !player.isAlive()) {
+				continue;
+			}
+			var pos = player.position();
+			if (m.insideBorder(pos.x, pos.z, 0.0)) {
+				INSIDE.put(player.getUUID(), pos);
+				continue;
+			}
+			var back = INSIDE.get(player.getUUID());
+			if (back == null) {
+				continue;  // never seen inside (came in out there): left alone
+			}
+			player.teleportTo(back.x, back.y, back.z);
+			player.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO);
+			player.sendOverlayMessage(net.minecraft.network.chat.Component.literal("You can't go that way."));
+		}
+		INSIDE.keySet().removeIf(id -> server.getPlayerList().getPlayer(id) == null);
+	}
+
 	private static void tick(MinecraftServer server) {
 		SkyrimMap m = map;
+		if (m != null && SkyWorld.valid()) {
+			keepInsideBorder(server, m);
+		}
 		if (pending != null && m != null) {
 			continueBuilding(server.overworld(), m);
 			return;
@@ -278,7 +312,11 @@ public final class SkyStructures {
 		int shift = 80 - (int) Math.floor(site.groundY());
 		boolean ocean = site.structure().contains("ocean") || site.structure().contains("monument") || site.structure().contains("shipwreck");
 		Holder<Biome> biome = level.registryAccess().lookupOrThrow(Registries.BIOME).getOrThrow(biomeFor(site.structure()));
-		Ground ground = new Ground(flat.settings().withBiomeAndLayers(List.of(), Optional.empty(), biome), m, shift, ocean);
+		// The sea there: Skyrim's water at the spot (a monument built to the world's usual sea level stood
+		// over water lower than that, its own water hanging above Skyrim's).
+		double localWater = m.waterAt(site.x(), site.z());
+		double sea = Double.isNaN(localWater) ? m.seaLevel() : localWater;
+		Ground ground = new Ground(flat.settings().withBiomeAndLayers(List.of(), Optional.empty(), biome), m, shift, ocean, sea);
 		BlockPos at = BlockPos.containing(site.x(), site.groundY(), site.z());
 		long t0 = System.nanoTime();
 		StructureStart start;
@@ -296,6 +334,15 @@ public final class SkyStructures {
 			}
 			for (StructurePiece piece : start.getPieces()) {
 				piece.move(0, -shift, 0);
+			}
+			if (site.structure().contains("monument")) {
+				// Minecraft builds a monument at a fixed height (y 39, 24 under its usual sea), whatever the
+				// ground: moved down to Skyrim's ground it was buried. 24 under Skyrim's sea there.
+				int lowest = start.getPieces().stream().mapToInt(piece -> piece.getBoundingBox().minY()).min().orElse(0);
+				int by = (int) Math.round(sea) - 24 - lowest;
+				for (StructurePiece piece : start.getPieces()) {
+					piece.move(0, by, 0);
+				}
 			}
 			BoundingBox box = start.getBoundingBox();
 			ChunkPos min = new ChunkPos(SectionPos.blockToSectionCoord(box.minX()), SectionPos.blockToSectionCoord(box.minZ()));
@@ -318,6 +365,7 @@ public final class SkyStructures {
 			saveBuilt();
 		} finally {
 			placing = null;
+			placingSea = Integer.MIN_VALUE;
 		}
 	}
 
@@ -500,6 +548,7 @@ public final class SkyStructures {
 		Pending job = pending;
 		long deadline = System.nanoTime() + PLACE_NANOS;
 		placing = m;
+		placingSea = ((Ground) job.ground()).seaBlock();
 		try {
 			while (pendingNext < job.chunks().size() && System.nanoTime() < deadline) {
 				ChunkPos c = job.chunks().get(pendingNext);
@@ -528,6 +577,7 @@ public final class SkyStructures {
 			pendingNext = job.chunks().size();
 		} finally {
 			placing = null;
+			placingSea = Integer.MIN_VALUE;
 		}
 		if (pendingNext < job.chunks().size()) {
 			return;
@@ -663,12 +713,14 @@ public final class SkyStructures {
 		private final SkyrimMap m;
 		private final int shift;
 		private final boolean ocean;
+		private final double sea;
 
-		Ground(FlatLevelGeneratorSettings settings, SkyrimMap m, int shift, boolean ocean) {
+		Ground(FlatLevelGeneratorSettings settings, SkyrimMap m, int shift, boolean ocean, double sea) {
 			super(settings);
 			this.m = m;
 			this.shift = shift;
 			this.ocean = ocean;
+			this.sea = sea;
 		}
 
 		private double ground(int x, int z) {
@@ -705,7 +757,12 @@ public final class SkyStructures {
 		@Override
 		public int getSeaLevel() {
 			// Above water: as low as can be, so nothing counts as under the sea; at sea: Skyrim's.
-			return this.ocean ? (int) Math.round(this.m.seaLevel()) + this.shift : -1000;
+			return this.ocean ? (int) Math.round(this.sea) + this.shift : -1000;
+		}
+
+		/** The sea level an ocean structure sees while placed (MIN_VALUE: Minecraft's own). */
+		int seaBlock() {
+			return this.ocean ? (int) Math.round(this.sea) : Integer.MIN_VALUE;
 		}
 
 		@Override

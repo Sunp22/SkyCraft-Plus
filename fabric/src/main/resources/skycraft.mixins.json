@@ -28,6 +28,7 @@
     "ServerExplosionMixin",
     "ServerGamePacketListenerMixin",
     "ServerChunkCacheSpawningMixin",
+    "ServerLevelSeaMixin",
     "ServerLevelSpawningMixin",
     "ServerLevelStructureMixin",
     "ServerPlayerMixin",
