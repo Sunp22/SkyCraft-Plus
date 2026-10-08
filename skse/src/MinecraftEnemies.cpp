@@ -271,10 +271,12 @@ namespace skycraft::MinecraftEnemies
 					}
 				}
 				Steer(a_player, *it, actor, a_delta);
-			} else if (!it->laidDown) {
+			} else if (it->deadFor < 20.0f) {
 				// A body is a ragdoll, which Minecraft's blocks don't hold up (they hold up the living:
 				// DigPhysics). Watched by its pelvis (the reference stays where it died while the body
-				// falls): once that's down by the floor it stood on, the body is held as it lies.
+				// falls): down by the floor it stood on, it's made keyframed; sunk under it anyway, the
+				// whole body is lifted back (for a while: then it's left as it lies).
+				const float before = it->deadFor;
 				it->deadFor += a_delta;
 				auto* root = actor->Get3D();
 				RE::NiAVObject* pelvis = nullptr;
@@ -286,9 +288,18 @@ namespace skycraft::MinecraftEnemies
 					}
 				}
 				const double low = pelvis ? SkyToMc(pelvis->world.translate).y : SkyToMc(actor->GetPosition()).y;
-				if (low < it->floor + 0.35 || it->deadFor > 4.0f) {
+				if (!it->laidDown && (low < it->floor + 0.35 || it->deadFor > 4.0f)) {
 					it->laidDown = true;
 					actor->SetMotionType(RE::hkpMotion::MotionType::kKeyframed);
+					logger::info("Skyrim enemies: {} down, held (pelvis {:.2f}, floor {:.2f}, {})", actor->GetName(), low, it->floor, pelvis ? "by its pelvis" : "no pelvis");
+				}
+				if (it->laidDown && low < it->floor - 0.25) {
+					auto at = actor->GetPosition();
+					at.z += float((it->floor + 0.1 - low) * proto::kUnitsPerBlock);
+					actor->SetPosition(at, true);
+				}
+				if (before < 6.0f && it->deadFor >= 6.0f) {
+					logger::info("Skyrim enemies: {}'s body 6 s on: pelvis {:.2f}, floor {:.2f}", actor->GetName(), low, it->floor);
 				}
 			}
 			++it;
