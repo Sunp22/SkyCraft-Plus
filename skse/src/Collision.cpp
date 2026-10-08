@@ -1,6 +1,7 @@
 #include "Collision.h"
 
 #include "Dig.h"
+#include "Game.h"
 
 namespace skycraft
 {
@@ -352,6 +353,16 @@ namespace skycraft
 				RE::hkAabb box;
 				if (!GuardedAabb(shape, xf, box)) {
 					continue;
+				}
+				// SkyCraft+ : the Nether and the End. The floors laid under Skyrim enemies' bodies
+				// (MinecraftEnemies) are for their ragdolls only: Minecraft's player stood on them, out
+				// over the edge of the blocks.
+				if (a_fixed && State().parked) {
+					auto* ref = RE::TESHavokUtilities::FindCollidableRef(collidable);
+					auto* refBase = ref ? ref->GetBaseObject() : nullptr;
+					if (refBase && refBase->GetFormID() == 0xD06CF && (ref->GetFormID() >> 24) == 0xFF) {
+						continue;
+					}
 				}
 				Body body{ shape, xf, {}, {}, IsStairHelper(collidable.GetCollisionLayer()) };
 				HkAabbToMc(box, k, body.lo, body.hi);
