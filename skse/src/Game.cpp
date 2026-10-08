@@ -696,6 +696,15 @@ namespace skycraft
 			// first ones are still the Nether's or the End's): wait until it has stood still a second.
 			static double settleX = 0.0, settleY = 0.0, settleZ = 0.0;
 			static float  settled = -1.0f;
+			// Where it last was in the Nether or the End: standing still in a portal, that position was
+			// still reported while the open world loaded, and taken for where it came out (Skyrim's
+			// player went to the Nether's coordinates, in the air). It has to have moved from there.
+			static double awayX = 0.0, awayZ = 0.0;
+			static float  sinceBack = 0.0f;
+			if (world >= proto::kDimNether) {
+				awayX = mc.x, awayZ = mc.z;
+				sinceBack = 0.0f;
+			}
 			if (!parked || world != proto::kDimTamriel) {
 				settled = -1.0f;
 			}
@@ -750,6 +759,11 @@ namespace skycraft
 				return parked;
 			}
 			if (parked && world == proto::kDimTamriel) {
+				sinceBack += a_delta;
+				const double adx = mc.x - awayX, adz = mc.z - awayZ;
+				if (adx * adx + adz * adz < 4.0 && sinceBack < 20.0f) {
+					return parked;  // still the Nether's (or End's) position: its new one hasn't come
+				}
 				const double sdx = mc.x - settleX, sdy = mc.y - settleY, sdz = mc.z - settleZ;
 				if (settled < 0.0f || sdx * sdx + sdy * sdy + sdz * sdz > 0.25) {
 					settleX = mc.x, settleY = mc.y, settleZ = mc.z;
