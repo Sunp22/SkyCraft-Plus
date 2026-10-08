@@ -30,9 +30,7 @@ namespace skycraft::MinecraftEnemies
 			float               still = 0.0f;  // seconds it hasn't moved by itself
 			float               age = 0.0f;    // seconds since it was brought in (for one look at how it shows)
 			float               callOut = 0.0f;  // seconds until it's set on the player again, if it isn't fighting
-			RE::ObjectRefHandle tile;               // the floor kept under it (see PlaceBodyFloor)
-			RE::NiPoint3        tileAt;
-			float               tileAge = 99.0f;
+			RE::NiPoint3        tileAt;             // where it last stood (its loot goes there)
 			float               relocated = 99.0f;  // seconds since it was last brought round
 			double              floor = 0.0;     // Minecraft y it last stood at, alive
 			float               deadFor = 0.0f;
@@ -40,49 +38,10 @@ namespace skycraft::MinecraftEnemies
 		};
 		std::vector<Spawned> spawned;
 
-		// A body is a ragdoll, which Minecraft's blocks don't hold up (they hold up the living: DigPhysics)
-		// and which neither keyframing nor moving stopped falling: it gets a floor of Skyrim's own under
-		// it where it stood, a castle floor tile (512 units square, its top at its origin) with its
-		// meshes hidden and its collision kept.
+		// Floors once laid under bodies (WRIntCastleFloorWoodMid01Quad, meshes hidden): found in older saves'
+		// waiting cell and cleared with the rest.
 		constexpr RE::FormID kBodyFloor = 0xD06CF;  // WRIntCastleFloorWoodMid01Quad
-		struct BodyFloor
-		{
-			RE::ObjectRefHandle handle;
-			bool                hidden = false;
-		};
-		std::vector<BodyFloor> floors;
 
-		RE::ObjectRefHandle PlaceBodyFloor(RE::PlayerCharacter* a_player, const RE::NiPoint3& a_at)
-		{
-			auto* base = RE::TESForm::LookupByID<RE::TESBoundObject>(kBodyFloor);
-			if (!base) {
-				return {};
-			}
-			auto placed = a_player->PlaceObjectAtMe(base, false);
-			if (auto* ref = placed.get()) {
-				ref->SetPosition(a_at);
-				floors.push_back({ ref->CreateRefHandle(), false });
-				return floors.back().handle;
-			}
-			return {};
-		}
-
-		// Hide a floor's meshes once its 3D is in (its collision stays).
-		void HideBodyFloors()
-		{
-			for (auto& f : floors) {
-				auto ref = f.handle.get();
-				auto* root = ref ? ref->Get3D() : nullptr;
-				if (f.hidden || !root) {
-					continue;
-				}
-				RE::BSVisit::TraverseScenegraphGeometries(root, [](RE::BSGeometry* a_mesh) {
-					a_mesh->SetAppCulled(true);
-					return RE::BSVisit::BSVisitControl::kContinue;
-				});
-				f.hidden = true;
-			}
-		}
 		float                timer = 8.0f;
 		bool                 wasThere = false;
 		std::mt19937         rng{ std::random_device{}() };
@@ -128,6 +87,7 @@ namespace skycraft::MinecraftEnemies
 			return Resolve(picks[std::uniform_int_distribution<std::size_t>(0, picks.size() - 1)(rng)], a_level, a_depth + 1);
 		}
 
+
 		/**
 		 * Out of the way for good, without Disable: in the waiting cell (no navmesh) Disable rebuilds
 		 * an actor's movement controller half-made and Skyrim crashed (SkyrimSE+0x7964f2). Far under
@@ -141,6 +101,30 @@ namespace skycraft::MinecraftEnemies
 			a_ref->SetDelete(true);
 		}
 
+		constexpr RE::FormID kLootSack = 0x10E889;  // MiscSack02Small_NoRespawn
+
+		// An enemy's loot, in a sack on the floor where it last stood; its body goes.
+		void LootSack(RE::PlayerCharacter* a_player, RE::Actor* a_body, RE::NiPoint3 a_at, double a_floor)
+		{
+			auto* base = RE::TESForm::LookupByID<RE::TESBoundObject>(kLootSack);
+			auto  placed = base ? a_player->PlaceObjectAtMe(base, false) : RE::NiPointer<RE::TESObjectREFR>();
+			auto* sack = placed.get();
+			if (!sack) {
+				return;
+			}
+			a_at.z = McToSky(0.0, a_floor, 0.0).z;
+			sack->SetPosition(a_at);
+			int moved = 0;
+			for (auto& [item, entry] : a_body->GetInventory()) {
+				if (item && entry.first > 0 && item->GetPlayable()) {
+					a_body->RemoveItem(item, entry.first, RE::ITEM_REMOVE_REASON::kStoreInContainer, nullptr, sack);
+					++moved;
+				}
+			}
+			logger::info("Skyrim enemies: {}'s loot ({} kinds of thing) in a sack where it fell", a_body->GetName(), moved);
+			PutAway(a_body);
+		}
+
 		/**
 		 * The enemies in the waiting cell, alive or dead: ours, from now or from a save. Never a
 		 * follower, a summon or anyone else friendly that came along with the player.
@@ -151,8 +135,8 @@ namespace skycraft::MinecraftEnemies
 			if (auto* cell = a_player->GetParentCell()) {
 				cell->ForEachReference([&](RE::TESObjectREFR* a_ref) {
 					auto* actor = a_ref ? a_ref->As<RE::Actor>() : nullptr;
-					if (auto* refBase = a_ref ? a_ref->GetBaseObject() : nullptr; refBase && refBase->GetFormID() == kBodyFloor && (a_ref->GetFormID() >> 24) == 0xFF) {
-						gone.push_back(a_ref);  // a floor laid under a body
+					if (auto* refBase = a_ref ? a_ref->GetBaseObject() : nullptr; refBase && (refBase->GetFormID() == kBodyFloor || refBase->GetFormID() == kLootSack) && (a_ref->GetFormID() >> 24) == 0xFF) {
+						gone.push_back(a_ref);  // a loot sack (or a floor laid under a body, before)
 						return RE::BSContainer::ForEachResult::kContinue;
 					}
 					if (actor && actor != a_player && !actor->IsPlayerTeammate() && !actor->IsCommandedActor() &&
@@ -169,7 +153,6 @@ namespace skycraft::MinecraftEnemies
 				logger::info("Skyrim enemies: {} cleared from the waiting cell", gone.size());
 			}
 			spawned.clear();
-			floors.clear();
 		}
 
 		/** Ground a body fits on near the player: a solid block, and three free above it. */
@@ -327,24 +310,8 @@ namespace skycraft::MinecraftEnemies
 			if (!actor->IsDead()) {
 				++alive;
 				it->floor = SkyToMc(actor->GetPosition()).y;
+				it->tileAt = actor->GetPosition();  // where it last stood (its loot goes there)
 				it->relocated += a_delta;
-				// Its floor laid ahead of time, kept under it as it goes (on the ground, not mid-jump or
-				// falling): laid at death, a quickly falling body went through before it was solid.
-				it->tileAge += a_delta;
-				auto* controller = actor->GetCharController();
-				const bool onGround = controller && controller->context.currentState == RE::hkpCharacterStateType::kOnGround;
-				const auto feet = actor->GetPosition();
-				const auto tileRef = it->tile.get();
-				const bool moved = !tileRef || std::hypot(feet.x - it->tileAt.x, feet.y - it->tileAt.y) > 3.0f * proto::kUnitsPerBlock ||
-				                  std::fabs(feet.z - it->tileAt.z) > 0.5f * proto::kUnitsPerBlock;
-				if (onGround && moved && it->tileAge > 1.5f) {
-					if (tileRef) {
-						PutAway(tileRef.get());
-					}
-					it->tile = PlaceBodyFloor(a_player, feet);
-					it->tileAt = feet;
-					it->tileAge = 0.0f;
-				}
 				// Nothing here lets Skyrim's AI notice the player (an empty cell, no navmesh): one that
 				// isn't fighting stood where it came in. Set on the player, it comes (Steer).
 				if (!actor->IsInCombat() && (it->callOut -= a_delta) <= 0.0f) {
@@ -354,46 +321,20 @@ namespace skycraft::MinecraftEnemies
 					}
 				}
 				Steer(a_player, *it, actor, a_delta);
-			} else if (it->deadFor < 20.0f) {
+			} else if (!it->laidDown) {
 				// A body is a ragdoll, which Minecraft's blocks don't hold up (they hold up the living:
-				// DigPhysics). Watched by its pelvis (the reference stays where it died while the body
-				// falls): down by the floor it stood on, it's made keyframed; sunk under it anyway, the
-				// whole body is lifted back (for a while: then it's left as it lies).
-				const float before = it->deadFor;
-				if (before == 0.0f) {
-					auto at = actor->GetPosition();
-					at.z = McToSky(0.0, it->floor, 0.0).z;
-					const bool tileNear = it->tile.get() && std::hypot(at.x - it->tileAt.x, at.y - it->tileAt.y) < 3.0f * proto::kUnitsPerBlock &&
-					                  std::fabs(at.z - it->tileAt.z) < 0.5f * proto::kUnitsPerBlock;
-					if (!tileNear) {
-						PlaceBodyFloor(a_player, at);  // none laid near it in time
-					}
-				}
+				// DigPhysics), and nothing tried kept it from falling through them (keyframing, lifting,
+				// a hidden floor under it). Its loot goes into a sack where it last stood instead, once
+				// its death loot is in (half a second), and the body goes.
 				it->deadFor += a_delta;
-				auto* root = actor->Get3D();
-				RE::NiAVObject* pelvis = nullptr;
-				if (root) {
-					for (const char* bone : { "NPC Pelvis [Pelv]", "NPC COM [COM ]", "Pelvis", "NPC Root [Root]" }) {
-						if ((pelvis = root->GetObjectByName(bone)) != nullptr) {
-							break;
-						}
-					}
-				}
-				const double low = pelvis ? SkyToMc(pelvis->world.translate).y : SkyToMc(actor->GetPosition()).y;
-				if (!it->laidDown && (low < it->floor + 0.35 || it->deadFor > 4.0f)) {
+				if (it->deadFor >= 0.5f) {
 					it->laidDown = true;
-					// Forced: unforced, the ragdoll went on falling.
-					const bool held = root && root->SetMotionType(RE::hkpMotion::MotionType::kKeyframed, true, true, true);
-					logger::info("Skyrim enemies: {} keyframed: {}", actor->GetName(), held ? "yes" : "no");
-					logger::info("Skyrim enemies: {} down, held (pelvis {:.2f}, floor {:.2f}, {})", actor->GetName(), low, it->floor, pelvis ? "by its pelvis" : "no pelvis");
-				}
-				if (before < 6.0f && it->deadFor >= 6.0f) {
-					logger::info("Skyrim enemies: {}'s body 6 s on: pelvis {:.2f}, floor {:.2f}", actor->GetName(), low, it->floor);
+					LootSack(a_player, actor, it->tileAt, it->floor);
+					it->deadFor = 99.0f;  // gone: forgotten once far
 				}
 			}
 			++it;
 		}
-		HideBodyFloors();
 		timer -= a_delta;
 		if (timer <= 0.0f) {
 			timer = st.enemySeconds * Uniform(0.6f, 1.4f);
