@@ -273,15 +273,22 @@ namespace skycraft::MinecraftEnemies
 				Steer(a_player, *it, actor, a_delta);
 			} else if (!it->laidDown) {
 				// A body is a ragdoll, which Minecraft's blocks don't hold up (they hold up the living:
-				// DigPhysics): once it sinks below where it stood (or settles a while), it's held there.
+				// DigPhysics). Watched by its pelvis (the reference stays where it died while the body
+				// falls): once that's down by the floor it stood on, the body is held as it lies.
 				it->deadFor += a_delta;
-				const auto body = SkyToMc(actor->GetPosition());
-				if (body.y < it->floor - 0.15 || it->deadFor > 3.0f) {
+				auto* root = actor->Get3D();
+				RE::NiAVObject* pelvis = nullptr;
+				if (root) {
+					for (const char* bone : { "NPC Pelvis [Pelv]", "NPC COM [COM ]", "Pelvis", "NPC Root [Root]" }) {
+						if ((pelvis = root->GetObjectByName(bone)) != nullptr) {
+							break;
+						}
+					}
+				}
+				const double low = pelvis ? SkyToMc(pelvis->world.translate).y : SkyToMc(actor->GetPosition()).y;
+				if (low < it->floor + 0.35 || it->deadFor > 4.0f) {
 					it->laidDown = true;
 					actor->SetMotionType(RE::hkpMotion::MotionType::kKeyframed);
-					if (body.y < it->floor) {
-						actor->SetPosition(McToSky(body.x, it->floor, body.z), true);
-					}
 				}
 			}
 			++it;
