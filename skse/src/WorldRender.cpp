@@ -3095,6 +3095,18 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 			static void thunk(bool a_unk)
 			{
 				Game::BeforeRenderWorld();
+				// SkyCraft+ : the Nether and the End. Skyrim's actors are drawn before this call and its
+				// effects (spells, fire, sparks) during it, and effects don't write depth: blocks drawn
+				// after went over every one of them, and there everything behind them is blocks. So there,
+				// the blocks first (behind the actors already drawn), the effects over them.
+				if (State().parked && State().blocksBeforeEffects) {
+					{
+						Perf::Scope timer(Perf::kInFrame);
+						DrawInFrame();
+					}
+					func(a_unk);
+					return;
+				}
 				func(a_unk);
 				Perf::Scope timer(Perf::kInFrame);
 				DrawInFrame();

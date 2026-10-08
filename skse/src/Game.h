@@ -52,6 +52,8 @@ namespace skycraft
 		float                      enemySeconds{ 12.0f };
 		// SkyCraft+ : Minecraft's structures marked on Skyrim's map and compass ([Worlds] bStructureMarkers).
 		bool                       structureMarkersOption{ true };
+		// SkyCraft+ : the Nether and the End: Minecraft's blocks drawn before Skyrim's effects ([Worlds] bBlocksBeforeEffects).
+		bool                       blocksBeforeEffects{ true };
 		// SkyCraft+ : the underground. Skyrim's land is more than two blocks above the player (a mine).
 		std::atomic<bool>          playerUnderLand{ false };
 
