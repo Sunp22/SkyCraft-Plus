@@ -758,6 +758,13 @@ namespace skycraft::Dig
 			if (areas.empty() || !base || a_root->worldBound.radius > 3000.0f) {
 				return false;
 			}
+			// Only out in Tamriel itself, where the structures are: an interior's or another worldspace's
+			// coordinates can fall in a structure's box, and a dungeon's walls went (for good: it's saved).
+			auto* tes = RE::TES::GetSingleton();
+			auto* world = a_ref->GetWorldspace();
+			if (!tes || tes->interiorCell || !world || world->GetFormID() != 0x3C) {
+				return false;
+			}
 			switch (base->GetFormType()) {
 			case RE::FormType::Static:
 			case RE::FormType::MovableStatic:

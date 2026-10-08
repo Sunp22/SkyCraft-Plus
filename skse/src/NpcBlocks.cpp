@@ -254,11 +254,10 @@ namespace skycraft
 				{
 					const double catchBlocks = State().parked ? 2.0 : 0.6;
 					const int    mx = int(std::floor(mc.x)), mz = int(std::floor(mc.z));
-					double       top = mc.y;
-					for (int by = int(std::floor(mc.y)); by <= int(std::floor(mc.y + catchBlocks)); ++by) {
-						if (BlocksBody(mx, by, mz)) {
-							top = by + 1.0;
-						}
+					// From the block the feet are in, up through solid ones only (not over a gap onto a roof).
+					double top = mc.y;
+					for (int by = int(std::floor(mc.y)); BlocksBody(mx, by, mz) && by + 1.0 - mc.y <= catchBlocks; ++by) {
+						top = by + 1.0;
 					}
 					if (top - mc.y > 0.02 && !ColumnBlocked(mx, mz, int(top), int(std::floor(top + h - 0.1)))) {
 						feetY = top;

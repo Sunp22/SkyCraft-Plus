@@ -1470,7 +1470,9 @@ namespace skycraft
 			lastSkyTick = GetTickCount64();
 
 			settleTimer -= a_delta;
-			if (haveMc && !loading && cell && settleTimer <= 0.0f) {
+			// SkyCraft+ : not while parked: the empty cell's (or anything else's) collision would be solid
+			// in the Nether and the End, and its unknown parts kept mobs there from pathing.
+			if (haveMc && !loading && cell && settleTimer <= 0.0f && !st.parked) {
 				Perf::Scope timer(Perf::kCollision);
 				Collision::Get().Update(puppet ? McVec{ mc.x, mc.y, mc.z } : skyMc);
 			}
@@ -1518,6 +1520,7 @@ namespace skycraft
 				static RE::NiPoint3 lastWithCell;
 				static bool         haveLastWithCell = false;
 				static int          rescues = 0;
+				bool                offWorld = false;
 				auto*               ui = RE::UI::GetSingleton();
 				if (auto* cell = a_this->GetParentCell()) {
 					lastWithCell = a_this->GetPosition();
@@ -1528,9 +1531,11 @@ namespace skycraft
 						logger::warn("Skyrim's player is off its world (no cell): back to ({:.0f}, {:.0f}, {:.0f})", lastWithCell.x, lastWithCell.y, lastWithCell.z);
 					}
 					a_this->SetPosition(lastWithCell, true);
-					return;
+					offWorld = true;  // Skyrim's own update skipped this frame (ours still runs)
 				}
-				func(a_this, a_delta);
+				if (!offWorld) {
+					func(a_this, a_delta);
+				}
 				try {
 					Perf::Scope timer(Perf::kUpdate);
 					PerFrame(a_this, a_delta);
