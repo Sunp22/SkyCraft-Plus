@@ -764,14 +764,17 @@ namespace skycraft
 				if (adx * adx + adz * adz < 4.0 && sinceBack < 20.0f) {
 					return parked;  // still the Nether's (or End's) position: its new one hasn't come
 				}
-				const double sdx = mc.x - settleX, sdy = mc.y - settleY, sdz = mc.z - settleZ;
-				if (settled < 0.0f || sdx * sdx + sdy * sdy + sdz * sdz > 0.25) {
+				// Still across (not up and down: one falling, with no Skyrim ground under it yet, never
+				// stood still, Skyrim waited on in its empty cell and the player fell out of the world),
+				// for a second; or four seconds back, whatever it's doing.
+				const double sdx = mc.x - settleX, sdz = mc.z - settleZ;
+				if (sinceBack < 4.0f && (settled < 0.0f || sdx * sdx + sdz * sdz > 0.25)) {
 					settleX = mc.x, settleY = mc.y, settleZ = mc.z;
 					settled = 0.0f;
 					return parked;
 				}
 				settled += a_delta;
-				if (settled < 1.0f) {
+				if (settled < 1.0f && sinceBack < 4.0f) {
 					return parked;
 				}
 				settled = -1.0f;
