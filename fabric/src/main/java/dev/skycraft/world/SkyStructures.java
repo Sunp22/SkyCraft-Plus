@@ -109,13 +109,20 @@ public final class SkyStructures {
 			}
 		}
 		enabled = Boolean.parseBoolean(p.getProperty("skyrimStructures", "true").trim());
+		boolean offMountains = Boolean.parseBoolean(p.getProperty("structuresOffMountains", "true").trim());
+		if (offMountains != SkyrimMap.offMountains) {
+			SkyrimMap.offMountains = offMountains;
+			map = null;  // chosen again with the other rule
+		}
 		BUILT.clear();
 		pending = null;
 		pendingNext = 0;
 		padColumns = null;
 		WRITTEN.clear();
+		BOTTOMS.clear();
 		builtFile = server.getWorldPath(LevelResource.ROOT).resolve("skycraft-structures.txt");
 		loadBuilt();
+		writeAreasForSkyrim();  // this world's (another's were there)
 		if (!enabled || map != null || reading) {
 			return;
 		}
@@ -219,6 +226,36 @@ public final class SkyStructures {
 			Files.write(builtFile, lines);
 		} catch (IOException e) {
 			SkyCraft.LOG.warn("SkyCraft: couldn't save {}", builtFile, e);
+		}
+		writeAreasForSkyrim();
+	}
+
+	/**
+	 * The built structures' areas for Skyrim (structure-areas.txt in %LOCALAPPDATA%/SkyCraft, a line each:
+	 * minX|minY|minZ|maxX|maxY|maxZ, Minecraft blocks): Skyrim's rocks, cliffs and trees standing in one
+	 * (or over it) go whole, rather than cut round its ground in pieces (DigMesh). Not the sea's.
+	 */
+	private static void writeAreasForSkyrim() {
+		String local = System.getenv("LOCALAPPDATA");
+		if (local == null || BUILD_ALL) {
+			return;
+		}
+		List<String> lines = new ArrayList<>();
+		for (Built b : BUILT.values()) {
+			String id = b.structure;
+			if (b.box.getXSpan() < 2 || id.contains("monument") || id.contains("ocean_ruin") || id.equals("minecraft:shipwreck") || id.contains("buried_treasure")) {
+				continue;
+			}
+			// Its ground reaches six blocks round it; Skyrim's things floating over it, well above.
+			lines.add((b.box.minX() - 6) + "|" + (b.box.minY() - 4) + "|" + (b.box.minZ() - 6) + "|" + (b.box.maxX() + 6) + "|" + (b.box.maxY() + 30) + "|" + (b.box.maxZ() + 6));
+		}
+		Path out = Path.of(local, "SkyCraft", "structure-areas.txt");
+		try {
+			Path temp = out.resolveSibling("structure-areas.txt.tmp");
+			Files.write(temp, lines);
+			Files.move(temp, out, java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+		} catch (IOException | RuntimeException e) {
+			SkyCraft.LOG.warn("SkyCraft: couldn't write {} for Skyrim: {}", out, e.toString());
 		}
 	}
 
@@ -390,6 +427,8 @@ public final class SkyStructures {
 	 */
 	private static final it.unimi.dsi.fastutil.longs.LongOpenHashSet WRITTEN = new it.unimi.dsi.fastutil.longs.LongOpenHashSet();
 	private static @Nullable List<int[]> padColumns;
+	/** Each pad column's pieces' bottoms (a house's floor over a path below it). */
+	private static final Map<Long, List<Integer>> BOTTOMS = new HashMap<>();
 	private static int padNext;
 
 	/** The structure being placed wrote this cell (its rooms' air too). */
@@ -424,6 +463,7 @@ public final class SkyStructures {
 					int[] range = under.computeIfAbsent(ChunkPos.pack(x, z), k -> new int[] { Integer.MAX_VALUE, Integer.MIN_VALUE });
 					range[0] = Math.min(range[0], b.minY());
 					range[1] = Math.max(range[1], b.maxY());
+					BOTTOMS.computeIfAbsent(ChunkPos.pack(x, z), k -> new ArrayList<>()).add(b.minY());
 				}
 			}
 		}
@@ -529,7 +569,9 @@ public final class SkyStructures {
 							break;
 						}
 					}
-					for (int y = top; y < lowest && lowest <= c[3] + 1; y++) {
+					final int bottom = lowest;
+					boolean onItsBottom = BOTTOMS.getOrDefault(ChunkPos.pack(x, z), List.of()).stream().anyMatch(b -> bottom - b >= 0 && bottom - b <= 1);
+					for (int y = top; y < lowest && onItsBottom; y++) {
 						pos.set(x, y, z);
 						if (!WRITTEN.contains(pos.asLong()) && level.getBlockState(pos).isAir()) {
 							level.setBlock(pos, ground[1], flags);
@@ -592,6 +634,7 @@ public final class SkyStructures {
 		}
 		padColumns = null;
 		WRITTEN.clear();
+		BOTTOMS.clear();
 		pending = null;
 		pendingNext = 0;
 		// Where it ended up: temples and huts settle onto the ground as they're placed.

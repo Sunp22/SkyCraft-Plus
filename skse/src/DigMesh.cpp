@@ -3,6 +3,7 @@
 #include "Game.h"
 
 #include <format>
+#include <fstream>
 
 // Cuts dug blocks out of the meshes Skyrim draws: the ground (land) and diggable objects. A cut
 // mesh is a clone of the original BSTriShape with its own vertex and index buffers (the parts of
@@ -710,8 +711,79 @@ namespace skycraft::Dig
 			}
 		}
 
+		// SkyCraft+ : Minecraft's structures. Their areas (SkyStructures writes them to
+		// %LOCALAPPDATA%/SkyCraft/structure-areas.txt, Minecraft blocks): Skyrim's rocks, cliffs and trees
+		// standing in one go whole, rather than cut round its ground (pieces of them stood up in it and
+		// hung over it, and cutting them against thousands of dug blocks stuttered).
+		struct Area
+		{
+			float lo[3], hi[3];
+		};
+		std::vector<Area>               areas;
+		std::filesystem::file_time_type areasTime{};
+
+		void LoadAreas()
+		{
+			wchar_t local[MAX_PATH]{};
+			if (::ExpandEnvironmentStringsW(L"%LOCALAPPDATA%\\SkyCraft\\structure-areas.txt", local, MAX_PATH) == 0) {
+				return;
+			}
+			std::error_code ec;
+			const auto      time = std::filesystem::last_write_time(local, ec);
+			if (ec) {
+				areas.clear();
+				return;
+			}
+			if (time == areasTime) {
+				return;
+			}
+			areasTime = time;
+			areas.clear();
+			std::ifstream in{ std::filesystem::path(local) };
+			std::string   line;
+			while (std::getline(in, line)) {
+				Area area{};
+				if (std::sscanf(line.c_str(), "%f|%f|%f|%f|%f|%f", &area.lo[0], &area.lo[1], &area.lo[2], &area.hi[0], &area.hi[1], &area.hi[2]) == 6) {
+					areas.push_back(area);
+				}
+			}
+			logger::info("dig: {} Minecraft structure areas (Skyrim's rocks and trees in them go whole)", areas.size());
+		}
+
+		// A rock, cliff piece, tree or plant standing in a structure's area (by its middle; a whole
+		// mountain is too big to take: structures keep off those).
+		bool InStructureArea(RE::TESObjectREFR* a_ref, RE::NiAVObject* a_root)
+		{
+			auto* base = a_ref->GetBaseObject();
+			if (areas.empty() || !base || a_root->worldBound.radius > 3000.0f) {
+				return false;
+			}
+			switch (base->GetFormType()) {
+			case RE::FormType::Static:
+			case RE::FormType::MovableStatic:
+			case RE::FormType::Tree:
+			case RE::FormType::Flora:
+				break;
+			default:
+				return false;
+			}
+			const auto* model = base->As<RE::TESModel>();
+			const char* path = model ? model->GetModel() : nullptr;
+			if (path && (_strnicmp(path, "architecture", 12) == 0 || _strnicmp(path, "landscape\\roads", 15) == 0)) {
+				return false;  // buildings and roads (structures keep off them anyway)
+			}
+			const auto c = SkyToMc(a_root->worldBound.center);
+			for (const auto& area : areas) {
+				if (c.x >= area.lo[0] && c.x <= area.hi[0] + 1 && c.y >= area.lo[1] && c.y <= area.hi[1] + 1 && c.z >= area.lo[2] && c.z <= area.hi[2] + 1) {
+					return true;
+				}
+			}
+			return false;
+		}
+
 		void Scan(RE::PlayerCharacter* a_player)
 		{
+			LoadAreas();
 			const auto  here = SkyToMc(a_player->GetPosition());
 			const float lo[3] = { float(here.x) - kScanRadiusBlocks, float(here.y) - kScanRadiusBlocks * 0.5f, float(here.z) - kScanRadiusBlocks };
 			const float hi[3] = { float(here.x) + kScanRadiusBlocks, float(here.y) + kScanRadiusBlocks * 0.5f, float(here.z) + kScanRadiusBlocks };
@@ -826,6 +898,21 @@ namespace skycraft::Dig
 					return RE::BSContainer::ForEachResult::kContinue;
 				}
 				auto* root = a_ref->Get3D();
+				if (root && InStructureArea(a_ref, root)) {
+					static int loggedArea = 0;
+					if (++loggedArea <= 10) {
+						logger::info("dig: removed {} (in a Minecraft structure's area)", a_ref->GetDisplayFullName());
+					}
+					const auto  mid = SkyToMc(root->worldBound.center);
+					const float r = root->worldBound.radius / float(proto::kUnitsPerBlock);
+					for (int dx : { -1, 1 }) {
+						for (int dz : { -1, 1 }) {
+							removed.push_back({ int(std::floor(mid.x + dx * r)), int(std::floor(mid.y)), int(std::floor(mid.z + dz * r)) });
+						}
+					}
+					toDisable.emplace_back(a_ref);
+					return RE::BSContainer::ForEachResult::kContinue;
+				}
 				if (!root || !nearDug(root)) {
 					return RE::BSContainer::ForEachResult::kContinue;  // nothing dug near it (cheap: do this first)
 				}
