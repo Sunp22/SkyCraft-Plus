@@ -43,6 +43,9 @@ public final class SkyrimMap {
 	private final Map<Long, Cell> cells = new HashMap<>();
 	private final List<Site> sites = new ArrayList<>();
 	private float defaultWater = -14000.0f;
+	// SkyCraft+ : strongholds. Cells whose land is all above their water (Skyrim's water reaches all the
+	// way down: under it, a stronghold flooded and couldn't be walled off).
+	private final Set<Long> dry = new HashSet<>();
 
 	private static final class Cell {
 		int x, y;
@@ -132,6 +135,7 @@ public final class SkyrimMap {
 		map.buf = null;
 		map.cellsByForm.clear();
 		map.choose();
+		map.findDry();
 		map.keepHeightsNearSites();
 		return map;
 	}
@@ -675,6 +679,71 @@ public final class SkyrimMap {
 			}
 		}
 		return false;
+	}
+
+	private void findDry() {
+		for (Cell c : cells.values()) {
+			float[] h = heights.get(key(c.x, c.y));
+			if (h == null || !c.land || !c.navmesh || !playable(c.x, c.y)) {
+				continue;
+			}
+			double water = Float.isNaN(c.water) ? defaultWater : c.water;
+			float low = Float.MAX_VALUE;
+			for (float v : h) {
+				low = Math.min(low, v);
+			}
+			if (low > water + 4 * UNITS) {
+				dry.add(key(c.x, c.y));
+			}
+		}
+	}
+
+	/**
+	 * SkyCraft+ : strongholds. The nearest spot to a Minecraft x/z with dry land three cells (about 175
+	 * blocks) all round it and at least 400 blocks from those {@code taken}: Minecraft x, z. Null when
+	 * there's none within about 2800 blocks.
+	 */
+	public double[] dryGroundNear(double x, double z, List<double[]> taken) {
+		int ox = cellOf(x * UNITS), oy = cellOf(-z * UNITS);
+		if (ox < -50 - 48 || ox > 50 + 48 || oy < -32 - 48 || oy > 32 + 48) {
+			return null;  // nowhere near Skyrim's land
+		}
+		for (int r = 0; r <= 48; r++) {
+			double[] best = null;
+			int bestD = Integer.MAX_VALUE;
+			for (int dx = -r; dx <= r; dx++) {
+				for (int dy = -r; dy <= r; dy++) {
+					if (Math.max(Math.abs(dx), Math.abs(dy)) != r || dx * dx + dy * dy >= bestD || !dryAround(ox + dx, oy + dy, 3)) {
+						continue;
+					}
+					double sx = (ox + dx) * (double) CELL_UNITS + CELL_UNITS / 2.0, sy = (oy + dy) * (double) CELL_UNITS + CELL_UNITS / 2.0;
+					double mx = sx / UNITS, mz = -sy / UNITS;
+					boolean near = false;
+					for (double[] t : taken) {
+						near |= sq(t[0] - mx) + sq(t[1] - mz) < 400.0 * 400.0;
+					}
+					if (!near && insideUnits(sx, sy, 0)) {
+						best = new double[] { mx, mz };
+						bestD = dx * dx + dy * dy;
+					}
+				}
+			}
+			if (best != null) {
+				return best;
+			}
+		}
+		return null;
+	}
+
+	private boolean dryAround(int cx, int cy, int reach) {
+		for (int dx = -reach; dx <= reach; dx++) {
+			for (int dy = -reach; dy <= reach; dy++) {
+				if (!dry.contains(key(cx + dx, cy + dy))) {
+					return false;
+				}
+			}
+		}
+		return true;
 	}
 
 	/** Only the land within three cells of a spot is kept (for building there); the rest goes. */

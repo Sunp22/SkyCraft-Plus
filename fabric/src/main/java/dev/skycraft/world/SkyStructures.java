@@ -70,6 +70,8 @@ public final class SkyStructures {
 	private static boolean enabled = true;
 	private static volatile @Nullable SkyrimMap map;
 	private static volatile boolean reading;
+	/** SkyCraft+ : strongholds. No map is coming this run (structures off, Skyrim's Data folder unknown, a failed read). */
+	private static volatile boolean noMap;
 	/** Built in this world: site name -> its bounding box (and structure, for its own mobs). */
 	private static final Map<String, Built> BUILT = new HashMap<>();
 	private static @Nullable Path builtFile;
@@ -132,11 +134,13 @@ public final class SkyStructures {
 		builtFile = server.getWorldPath(LevelResource.ROOT).resolve("skycraft-structures.txt");
 		loadBuilt();
 		writeAreasForSkyrim();  // this world's (another's were there)
+		noMap = !enabled && map == null && !reading;
 		if (!enabled || map != null || reading) {
 			return;
 		}
 		Path esm = skyrimEsm();
 		if (esm == null) {
+			noMap = true;
 			SkyCraft.LOG.info("SkyCraft: Minecraft's structures in Skyrim: Skyrim's Data folder isn't known yet (start Skyrim with SkyCraft once)");
 			return;
 		}
@@ -160,6 +164,7 @@ public final class SkyStructures {
 				writeForSkyrim(read);
 			} catch (IOException | RuntimeException e) {
 				SkyCraft.LOG.warn("SkyCraft: couldn't read Skyrim's land from {}", esm, e);
+				noMap = true;
 			} finally {
 				reading = false;
 			}
@@ -167,6 +172,23 @@ public final class SkyStructures {
 		thread.setDaemon(true);
 		thread.setPriority(Thread.MIN_PRIORITY);
 		thread.start();
+	}
+
+	/**
+	 * SkyCraft+ : strongholds. Skyrim's map once it's read (it starts when the server has, about 12 s):
+	 * null when none is coming, or it took longer than {@code timeoutMs}.
+	 */
+	public static @Nullable SkyrimMap awaitMap(long timeoutMs) {
+		long until = System.currentTimeMillis() + timeoutMs;
+		while (map == null && !noMap && System.currentTimeMillis() < until) {
+			try {
+				Thread.sleep(100);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				return null;
+			}
+		}
+		return map;
 	}
 
 	/**

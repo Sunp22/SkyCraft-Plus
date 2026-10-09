@@ -33,6 +33,7 @@
     "ServerLevelStructureMixin",
     "ServerPlayerMixin",
     "ServerPlayerRespawnMixin",
+    "StrongholdPlacementMixin",
     "WalkNodeEvaluatorMixin",
     "WorldOptionsMixin",
     "SmithingMixin"
