@@ -29,6 +29,7 @@ namespace skycraft::MapMarkers
 		std::filesystem::file_time_type fileTime{};
 		bool                            appliedThisGame = false;
 		float                           timer = 3.0f;
+		float                           recheckTimer = 30.0f;
 
 		std::filesystem::path File()
 		{
@@ -150,7 +151,7 @@ namespace skycraft::MapMarkers
 			return ref;
 		}
 
-		void Apply(RE::PlayerCharacter* a_player, const std::vector<Spot>& a_spots)
+		void Apply(RE::PlayerCharacter* a_player, const std::vector<Spot>& a_spots, bool a_quietIfNone)
 		{
 			auto* tamriel = RE::TESForm::LookupByID<RE::TESWorldSpace>(kTamriel);
 			auto* base = RE::TESForm::LookupByID<RE::TESBoundObject>(kMapMarkerStatic);
@@ -159,10 +160,18 @@ namespace skycraft::MapMarkers
 			}
 			auto& markers = a_player->GetPlayerRuntimeData().currentMapMarkers;
 			// Ours already made (listed, or saved in Tamriel's persistent cell and not listed yet).
+			// Gone, disabled or hidden ones don't count (put back below): once, most of the structures
+			// went missing from the map while they stood in the world.
 			std::unordered_map<std::uint64_t, RE::TESObjectREFR*> have;
+			int shown = 0;
 			for (auto& handle : markers) {
 				auto ref = handle.get();
-				if (ref && Ours(ref.get())) {
+				if (ref && Ours(ref.get()) && !ref->IsDisabled() && !ref->IsMarkedForDeletion()) {
+					auto* data = MarkerOf(ref.get());
+					if (!data->flags.all(RE::MapMarkerData::Flag::kVisible, RE::MapMarkerData::Flag::kCanTravelTo)) {
+						data->flags.set(RE::MapMarkerData::Flag::kVisible, RE::MapMarkerData::Flag::kCanTravelTo);
+						++shown;
+					}
 					have.emplace(Key(ref->GetPosition()), ref.get());
 				}
 			}
@@ -180,7 +189,7 @@ namespace skycraft::MapMarkers
 				if (refBase && refBase->GetFormID() == kMapMarkerStatic && (a_ref->GetFormID() >> 24) == 0xFF && !MarkerOf(a_ref) && !a_ref->IsDisabled()) {
 					bare.push_back(a_ref);
 				}
-				if (Ours(a_ref) && have.emplace(Key(a_ref->GetPosition()), a_ref).second) {
+				if (Ours(a_ref) && !a_ref->IsDisabled() && !a_ref->IsMarkedForDeletion() && have.emplace(Key(a_ref->GetPosition()), a_ref).second) {
 					markers.push_back(a_ref->CreateRefHandle());
 					++relisted;
 				}
@@ -204,7 +213,11 @@ namespace skycraft::MapMarkers
 					++made;
 				}
 			}
-			logger::info("map markers: {} Minecraft structures marked ({} new, {} found again in the save, {} bare ones removed)", a_spots.size(), made, relisted, bare.size());
+			if (a_quietIfNone && made == 0 && relisted == 0 && shown == 0 && bare.empty()) {
+				return;
+			}
+			logger::info("map markers: {} Minecraft structures marked ({} new, {} found again in the save, {} shown again, {} bare ones removed)", a_spots.size(), made, relisted,
+				shown, bare.size());
 		}
 	}
 
@@ -229,15 +242,21 @@ namespace skycraft::MapMarkers
 		const auto       file = File();
 		std::error_code  ec;
 		const auto       time = std::filesystem::last_write_time(file, ec);
-		if (ec || (appliedThisGame && time == fileTime)) {
+		if (ec) {
 			return;
 		}
+		// Unchanged since applied: checked again now and then, and any gone missing put back.
+		const bool recheck = appliedThisGame && time == fileTime;
+		if (recheck && (recheckTimer -= 5.0f) > 0.0f) {
+			return;
+		}
+		recheckTimer = 30.0f;
 		const auto spots = Read(file);
 		if (spots.empty()) {
 			return;
 		}
 		fileTime = time;
 		appliedThisGame = true;
-		Apply(a_player, spots);
+		Apply(a_player, spots, recheck);
 	}
 }
