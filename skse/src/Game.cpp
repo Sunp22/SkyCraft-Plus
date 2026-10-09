@@ -930,7 +930,7 @@ namespace skycraft
 				teleportPending = true;
 				haveLastSet = false;
 				settleTimer = kSettleSeconds;
-			} else if (haveLastSet && current.GetDistance(lastSetPos) > kSkyrimTeleportThreshold) {
+			} else if (!st.parked && haveLastSet && current.GetDistance(lastSetPos) > kSkyrimTeleportThreshold) {  // (parked: Minecraft leads, nothing to resync)
 				const float dx = current.x - lastSetPos.x, dy = current.y - lastSetPos.y, dz = current.z - lastSetPos.z;
 				// SkyCraft+ : underground. Down a mine, under Skyrim's land, Skyrim lifts the player back
 				// up to it (no loading screen, same world, mostly straight up). Minecraft is driving and
