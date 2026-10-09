@@ -20,6 +20,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.FallingBlock;
@@ -128,7 +129,7 @@ public final class SkyUnderground {
 	}
 
 	/** How far under Skyrim's land a point is surely ground, whatever Skyrim has (or hasn't) sent around it. */
-	private static final double DEEP = 8.0;
+	public static final double DEEP = 8.0;
 
 	/** The underground is on (config/skycraft.properties deepUnderground). */
 	public static boolean enabled() {
@@ -290,6 +291,11 @@ public final class SkyUnderground {
 		if (!state.canOcclude()) {
 			bringUpEntities(hidden, level, at, pos); // a minecart on rails, say
 		}
+		if (!state.isSolidRender()) {
+			// Doors, stairs, fences, rails, cobwebs: one sees past them, so what's behind opens too (a
+			// stronghold's rooms waited behind plain stone at each door until a block there was broken).
+			open(world, pos);
+		}
 		if (logged < 20 && !state.is(Blocks.STONE) && !state.is(Blocks.DEEPSLATE)) {
 			logged++;
 			SkyCraft.LOG.info("SkyCraft: underground: {} at {} (Minecraft y {})", state.getBlock().getName().getString(), pos.toShortString(), vy);
@@ -343,6 +349,9 @@ public final class SkyUnderground {
 		for (var player : server.getPlayerList().getPlayers()) {
 			if (player.level() == level && dev.skycraft.net.SkyNet.isHost(player)) {
 				refocus(player.getX(), player.getEyeY(), player.getZ());
+				if (deep(player.getX(), player.getEyeY(), player.getZ())) {
+					heal(level, player, server.getTickCount());
+				}
 			}
 		}
 		SkyDig.beginBatch();
@@ -350,6 +359,53 @@ public final class SkyUnderground {
 			reveal(level, hidden, server);
 		} finally {
 			SkyDig.endBatch();
+		}
+	}
+
+	/**
+	 * Revealed cells around the host still facing an unrevealed one deep in the ground (a reveal cut
+	 * short: the game closed, or a save loaded, before it was done) open on: one chunk column a tick,
+	 * round the 5 x 5 around the host. Left alone, they showed as holes out of the world.
+	 */
+	private static void heal(ServerLevel level, ServerPlayer host, int tick) {
+		int world = SkyDig.worldFor(level);
+		int k = Math.floorMod(tick, 25);
+		int cx = (host.getBlockX() >> 4) + k % 5 - 2, cz = (host.getBlockZ() >> 4) + k / 5 - 2, sy = host.getBlockY() >> 4;
+		LevelChunk chunk = level.getChunkSource().getChunkNow(cx, cz);
+		SkyDig.DugColumn column = chunk == null ? null : chunk.getAttached(SkyDig.DUG);
+		if (column == null) {
+			return;
+		}
+		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos(), n = new BlockPos.MutableBlockPos();
+		int healed = 0;
+		for (int y = sy - 2; y <= sy + 2; y++) {
+			long[] dug = column.bits(world, y);
+			if (dug == null) {
+				continue;
+			}
+			for (int word = 0; word < 64; word++) {
+				long bits = dug[word];
+				while (bits != 0) {
+					int bit = word * 64 + Long.numberOfTrailingZeros(bits);
+					bits &= bits - 1;
+					pos.set(cx * 16 + (bit & 15), y * 16 + (bit >> 8), cz * 16 + ((bit >> 4) & 15));
+					if (level.getBlockState(pos).isSolidRender()) {
+						continue;
+					}
+					for (Direction d : Direction.values()) {
+						n.setWithOffset(pos, d);
+						if (level.isLoaded(n) && !SkyDig.isDug(level, world, n) && deep(n.getX() + 0.5, n.getY() + 0.5, n.getZ() + 0.5)) {
+							open(world, pos.immutable());
+							healed++;
+							break;
+						}
+					}
+				}
+			}
+		}
+		if (healed > 0 && logged < 40) {
+			logged++;
+			SkyCraft.LOG.info("SkyCraft: underground: {} revealed cells in chunk {}, {} opened on (a reveal cut short)", healed, cx, cz);
 		}
 	}
 
@@ -398,7 +454,7 @@ public final class SkyUnderground {
 			// Skyrim's shape may have arrived for these by now.
 			for (long key : WAITING.toLongArray()) {
 				BlockPos p = BlockPos.of(key);
-				if (SkyCollision.isKnown(p.getX(), p.getY(), p.getZ())) {
+				if (SkyCollision.isKnown(p.getX(), p.getY(), p.getZ()) || deep(p.getX() + 0.5, p.getY() + 0.5, p.getZ() + 0.5)) {
 					WAITING.remove(key);
 					OPENING.enqueue(key);
 				}
@@ -408,7 +464,14 @@ public final class SkyUnderground {
 			BlockPos from = BlockPos.of(OPENING.dequeueLong());
 			for (Direction d : Direction.values()) {
 				BlockPos n = from.relative(d);
-				if (!level.isLoaded(n) || SkyDig.isDug(level, openingWorld, n)) {
+				if (!level.isLoaded(n)) {
+					// Not loaded yet: later, not never (left undone, the cave ended in a hole out of the world).
+					if (WAITING.size() < MAX_WAITING) {
+						WAITING.add(from.asLong());
+					}
+					continue;
+				}
+				if (SkyDig.isDug(level, openingWorld, n)) {
 					continue;
 				}
 				boolean deep = deep(n.getX() + 0.5, n.getY() + 0.5, n.getZ() + 0.5);

@@ -1,7 +1,9 @@
 package dev.skycraft.client.render;
 
+import dev.skycraft.link.Proto;
 import dev.skycraft.world.SkyDig;
 import dev.skycraft.world.SkyTri;
+import dev.skycraft.world.SkyUnderground;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -51,18 +53,28 @@ final class DigWalls {
 				bits &= bits - 1;
 				int x = sx * 16 + (bit & 15), y = sy * 16 + (bit >> 8), z = sz * 16 + ((bit >> 4) & 15);
 				cell.set(x, y, z);
-				if (level.getBlockState(cell).canOcclude()) {
+				// SkyCraft+ : the underground. A whole opaque block, not just one that "can occlude": stairs,
+				// slabs and fences can, and the open half beside them showed out of the world.
+				if (level.getBlockState(cell).isSolidRender()) {
 					continue; // a solid block fills the dug cell: nothing to see from in it
 				}
 				emit.light = LightCoordsUtil.pack(level.getBrightness(LightLayer.BLOCK, cell), level.getBrightness(LightLayer.SKY, cell));
 				for (Direction dir : WALLS) {
 					int nx = x + dir.getStepX(), ny = y + dir.getStepY(), nz = z + dir.getStepZ();
-					if (lookup.isDug(nx, ny, nz) || level.getBlockState(new BlockPos(nx, ny, nz)).canOcclude()) {
+					if (lookup.isDug(nx, ny, nz) || level.getBlockState(new BlockPos(nx, ny, nz)).isSolidRender()) {
+						continue;
+					}
+					emit.rects = null;
+					emit.material = -1;
+					// SkyCraft+ : the underground. Well under the land a cell not revealed yet is ground,
+					// whatever Skyrim's shapes around it say (or haven't sent): a whole stone face.
+					if (SkyUnderground.deep(nx + 0.5, ny + 0.5, nz + 0.5)) {
+						if (emit.texture(faces, Proto.DIG_STONE, SkyUnderground.DEEP)) {
+							whole(dir, x, y, z, emit);
+						}
 						continue;
 					}
 					probe.around(nx, ny, nz, nx + 1, ny + 1, nz + 1);
-					emit.rects = null;
-					emit.material = -1;
 					face(probe, dir, x, y, z, faces, emit);
 				}
 			}
@@ -333,6 +345,15 @@ final class DigWalls {
 			}
 		}
 		return out;
+	}
+
+	/** The whole face between dug cell (x, y, z) and its neighbour in dir. */
+	private static void whole(Direction dir, int x, int y, int z, Emitter emit) {
+		List<double[]> world = List.of(onFace(dir, x, y, z, 0, 0), onFace(dir, x, y, z, 1, 0), onFace(dir, x, y, z, 1, 1), onFace(dir, x, y, z, 0, 1));
+		List<double[]> uvs = dir.getAxis() == Direction.Axis.Y
+			? List.of(new double[] { 0, 0 }, new double[] { 1, 0 }, new double[] { 1, 1 }, new double[] { 0, 1 })
+			: List.of(new double[] { 0, 1 }, new double[] { 1, 1 }, new double[] { 1, 0 }, new double[] { 0, 0 });
+		emit.polygon(world, uvs, rectFor(dir), dir.getOpposite());
 	}
 
 	// Rocks, cliffs, cave walls: the face in STEPS x STEPS pieces, each drawn if its middle is inside
