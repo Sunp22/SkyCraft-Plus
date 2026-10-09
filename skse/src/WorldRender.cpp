@@ -3069,7 +3069,11 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 		{
 			auto& st = State();
 			auto* renderer = RE::BSGraphics::Renderer::GetSingleton();
-			if (!st.parked || !renderer || !depthKnown) {
+			// (Not waiting for the depth probe: it runs only in Skyrim's world, so after loading a save
+			// made in the Nether straight from the main menu it never had, nothing was cleared, and the
+			// main menu's old frames hid the blocks but for a moment now and then. Unprobed, Skyrim's
+			// own standard depth is cleared to.)
+			if (!st.parked || !renderer) {
 				return;
 			}
 			auto& prd = renderer->GetRuntimeData();
