@@ -524,7 +524,8 @@ public final class SkyrimMap {
 			new Kind("Desert temple", "minecraft:desert_pyramid", 14, 2, flat(6, 0, 18)),  // its cellar goes 14 down
 			new Kind("Jungle temple", "minecraft:jungle_pyramid", 10, 2, (g, x, y) -> g.nearTrees >= 10 ? flat(8, 0, 10).of(g, x, y) + Math.min(g.nearTrees, 40) * 0.05 : Double.NaN),
 			new Kind("Witch hut", "minecraft:swamp_hut", 10, 2, (g, x, y) -> g.shore && g.obstacles == 0 && g.roads == 0 && g.trees == 0 && g.mean < sea + 2500 && g.max - g.min < 700 ? 5 : Double.NaN),
-			new Kind("Igloo", "minecraft:igloo", 8, 2, (g, x, y) -> g.mean > sea + 22000 ? flat(5, 0, 14).of(g, x, y) + g.mean / 10000.0 : Double.NaN),
+			// (Igloos are left out for now: high up on the mountains they stood in the air, and fast travel
+			// to them landed under the ground.)
 			new Kind("Ruined portal", "minecraft:ruined_portal_desert", 8, 3, flat(8, 0, 8)),  // partly buried
 			new Kind("Overgrown ruined portal", "minecraft:ruined_portal_jungle", 8, 3, flat(8, 0)),  // on the surface
 			new Kind("Trail ruins", "minecraft:trail_ruins", 15, 2, flat(10, 0, 16)),  // buried
