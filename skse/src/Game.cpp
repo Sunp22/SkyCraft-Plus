@@ -921,7 +921,11 @@ namespace skycraft
 			}
 
 			// Skyrim moved the player itself (load door, fast travel, script, loading a save).
-			const auto current = a_player->GetPosition();
+			// SkyCraft+ : just back from the Nether or the End, it's held where Minecraft's player came out
+			// (returnPin). Under Skyrim's land (a stronghold's End portal) Skyrim lifts it out every frame:
+			// taken for Skyrim moving it, each lift sent Minecraft a new teleport (to the surface), it never
+			// caught up and both stood frozen until the hold ran out. The held place counts instead.
+			const auto current = returnPinTime > 0.0f && cell && !cell->IsInteriorCell() ? returnPin : a_player->GetPosition();
 			if (loading) {
 				teleportPending = true;
 				haveLastSet = false;
