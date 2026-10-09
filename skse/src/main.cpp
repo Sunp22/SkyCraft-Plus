@@ -63,6 +63,12 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 	skycraft::CrashLog::Install();
 	logger::info("SkyCraft {} loading (runtime {})", "0.1.2-plus", a_skse->RuntimeVersion().string());
 	SKSE::GetMessagingInterface()->RegisterListener(OnMessage);
+	if (auto* serialization = SKSE::GetSerializationInterface()) {
+		serialization->SetUniqueID('SKYC');
+		serialization->SetSaveCallback(skycraft::Game::OnSave);
+		serialization->SetLoadCallback(skycraft::Game::OnLoad);
+		serialization->SetRevertCallback(skycraft::Game::OnRevert);
+	}
 	// As early as possible: Minecraft takes about as long to start as Skyrim does to reach its menu.
 	skycraft::Launcher::StartMinecraft();
 	return true;

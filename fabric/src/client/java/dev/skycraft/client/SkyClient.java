@@ -144,7 +144,10 @@ public final class SkyClient {
 			lastTeleportSeq = sky.teleportSeq;
 			teleportPending = true;
 		}
-		if (teleportPending && sky.inGame() && !sky.loading() && ((inMinecraftWorld(minecraft) && (!sky.bringBack() || minecraft.getSingleplayerServer() == null)) || sky.parked())) {
+		// SkyCraft+ : a save made in the Nether or the End was loaded: the host goes back into it (sendToWorld).
+		boolean sendAway = sky.sendToWorld != 0 && minecraft.getSingleplayerServer() != null;
+		if (teleportPending && sky.inGame() && !sky.loading() && !sendAway
+			&& ((inMinecraftWorld(minecraft) && (!sky.bringBack() || minecraft.getSingleplayerServer() == null)) || sky.parked())) {
 			// SkyCraft+ : the Nether and the End. Skyrim has nowhere there to put us: it follows
 			// (it parks its player in an empty cell), so its teleports are acknowledged, not taken.
 			teleportAck = sky.teleportSeq;
@@ -439,6 +442,12 @@ public final class SkyClient {
 	 * since their coordinates overlap Tamriel's.
 	 */
 	private static net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> dimensionFor(SkyLink.SkyState sky) {
+		if (sky.sendToWorld == Proto.DIM_NETHER) {
+			return net.minecraft.world.level.Level.NETHER;
+		}
+		if (sky.sendToWorld == Proto.DIM_END) {
+			return net.minecraft.world.level.Level.END;
+		}
 		if ((sky.placeFlags & Proto.PLACE_INTERIOR) != 0) {
 			return INTERIORS;
 		}

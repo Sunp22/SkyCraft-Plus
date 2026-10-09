@@ -88,6 +88,10 @@ namespace skycraft
 	{
 		void Install();
 		void OnGameLoaded();
+		// SkyCraft+ : the SKSE co-save. A save made in the Nether or the End keeps which, and where.
+		void OnSave(SKSE::SerializationInterface* a_intfc);
+		void OnLoad(SKSE::SerializationInterface* a_intfc);
+		void OnRevert(SKSE::SerializationInterface* a_intfc);
 		// A Skyrim menu that takes the mouse or pauses the game is open (checked live: while it
 		// pauses the game, the per-frame update that normally tracks it doesn't run).
 		bool SkyrimMenuOpen();

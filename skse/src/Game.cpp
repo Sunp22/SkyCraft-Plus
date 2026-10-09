@@ -34,6 +34,12 @@ namespace skycraft
 		// place wins: Minecraft's player is brought back from a world of its own (kSkyBringBack).
 		bool           homeCheck = true;
 		float          bringingBack = 0.0f;  // seconds left to wait for Minecraft to come back
+		// SkyCraft+ : a save made in the Nether or the End: Minecraft's world and place then (the SKSE
+		// co-save), and seconds left for Minecraft's player to get back there after the save loads.
+		std::uint32_t  savedWorld = 0;
+		double         savedX = 0.0, savedY = 0.0, savedZ = 0.0;
+		float          sendingAway = 0.0f;
+		bool           savedCheck = false;  // the save just loaded hasn't been checked yet
 		std::uint32_t  worldId = 0;
 		std::uint32_t  epoch = 0;
 		RE::NiPoint3   lastSetPos{};
@@ -715,10 +721,35 @@ namespace skycraft
 			// A save in the open world loaded (or Minecraft connected) with Minecraft's player still in the
 			// Nether or the End: the save wins. Parking Skyrim's player then pulled it out of the place
 			// just loaded (and smeared the picture): Minecraft's comes back to it instead.
-			if (std::exchange(homeCheck, false) && !parked && world >= proto::kDimNether) {
+			const bool home = std::exchange(homeCheck, false);
+			if (home && !parked && world >= proto::kDimNether) {
 				logger::info("Minecraft's player is in {} but this save is in Skyrim's world: bringing it back", world == proto::kDimNether ? "the Nether" : "the End");
 				bringingBack = 20.0f;
 				teleportPending = true;
+			}
+			// A save made in the Nether or the End loaded with Minecraft's player out in the open world (or
+			// elsewhere in that world): it goes back to where the save was made. (Taken for its coming out of
+			// a portal, Skyrim's player went to Minecraft's place in the open world, nothing loaded round it.)
+			const char* savedName = savedWorld == proto::kDimNether ? "the Nether" : "the End";
+			const bool fromSave = home && std::exchange(savedCheck, false);  // (not again when Minecraft reconnects later)
+			if (fromSave && parked && savedWorld >= proto::kDimNether) {
+				const double dx = mc.x - savedX, dz = mc.z - savedZ;
+				if (world != savedWorld || dx * dx + dz * dz > 16.0 * 16.0) {
+					logger::info("this save was made in {}: Minecraft's player goes back there ({:.0f}, {:.0f}, {:.0f})", savedName, savedX, savedY, savedZ);
+					sendingAway = 20.0f;
+					++teleportSeq;
+				}
+			}
+			if (sendingAway > 0.0f) {
+				const double dx = mc.x - savedX, dz = mc.z - savedZ;
+				if (world == savedWorld && dx * dx + dz * dz < 8.0 * 8.0) {
+					logger::info("Minecraft's player is back in {}", savedName);
+					sendingAway = 0.0f;
+				} else if ((sendingAway -= a_delta) > 0.0f) {
+					return parked;
+				} else {
+					logger::warn("Minecraft's player didn't go back to {}; Skyrim's follows it instead", savedName);
+				}
 			}
 			if (bringingBack > 0.0f) {
 				if (world < proto::kDimNether) {
@@ -1457,6 +1488,12 @@ namespace skycraft
 			sky.posX = skyMc.x;
 			sky.posY = skyMc.y;
 			sky.posZ = skyMc.z;
+			if (sendingAway > 0.0f) {
+				sky.sendToWorld = static_cast<std::uint8_t>(savedWorld);
+				sky.posX = savedX;
+				sky.posY = savedY;
+				sky.posZ = savedZ;
+			}
 			sky.yaw = st.yaw;
 			sky.pitch = st.pitch;
 			sky.teleportSeq = teleportSeq;
@@ -1874,8 +1911,49 @@ namespace skycraft
 			teleportPending = true;
 			homeCheck = true;
 			bringingBack = 0.0f;
+			sendingAway = 0.0f;
 			haveLastSet = false;
 			State().lookInitialized = false;
+		}
+
+		// SkyCraft+ : saves made in the Nether or the End keep which, and where (the SKSE co-save).
+		constexpr std::uint32_t kWorldRecord = 'MCWD';
+
+		void OnSave(SKSE::SerializationInterface* a_intfc)
+		{
+			if (!State().parked || mc.dimension < proto::kDimNether) {
+				return;
+			}
+			const std::uint32_t world = mc.dimension;
+			if (!a_intfc->OpenRecord(kWorldRecord, 1) || !a_intfc->WriteRecordData(world) || !a_intfc->WriteRecordData(mc.x) || !a_intfc->WriteRecordData(mc.y) ||
+				!a_intfc->WriteRecordData(mc.z)) {
+				logger::warn("couldn't keep Minecraft's world in the save");
+				return;
+			}
+			logger::info("saved in {} at ({:.0f}, {:.0f}, {:.0f})", world == proto::kDimNether ? "the Nether" : "the End", mc.x, mc.y, mc.z);
+		}
+
+		void OnLoad(SKSE::SerializationInterface* a_intfc)
+		{
+			std::uint32_t type = 0, version = 0, length = 0;
+			while (a_intfc->GetNextRecordInfo(type, version, length)) {
+				std::uint32_t world = 0;
+				double        x = 0.0, y = 0.0, z = 0.0;
+				if (type == kWorldRecord && version == 1 && a_intfc->ReadRecordData(world) && a_intfc->ReadRecordData(x) && a_intfc->ReadRecordData(y) &&
+					a_intfc->ReadRecordData(z) && (world == proto::kDimNether || world == proto::kDimEnd)) {
+					savedWorld = world;
+					savedX = x, savedY = y, savedZ = z;
+					savedCheck = true;
+					logger::info("this save was made in {} at ({:.0f}, {:.0f}, {:.0f})", world == proto::kDimNether ? "the Nether" : "the End", x, y, z);
+				}
+			}
+		}
+
+		void OnRevert(SKSE::SerializationInterface*)
+		{
+			savedWorld = 0;
+			savedCheck = false;
+			sendingAway = 0.0f;
 		}
 	}
 }

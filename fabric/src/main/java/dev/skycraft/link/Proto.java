@@ -8,7 +8,7 @@ public final class Proto {
 	}
 
 	public static final int MAGIC = 0x43594B53;
-	public static final int VERSION = 29;
+	public static final int VERSION = 30;
 	// A second client on the same PC (multiplayer testing) talks to its own stand-in Skyrim:
 	// -Dskycraft.link=Local\SkyCraft_guest (see tools/fake_guest.py).
 	public static final String MAPPING_NAME = System.getProperty("skycraft.link", "Local\\SkyCraft_v1");
@@ -161,6 +161,7 @@ public final class Proto {
 	public static final long SS_PLACE_FLAGS = 0x44;
 	public static final long SS_SEA_LEVEL = 0x48;
 	public static final long SS_HAND_KINDS = 0x4C; // SkyCraft+ : v29, two bytes (right, left)
+	public static final long SS_SEND_TO_WORLD = 0x4E; // SkyCraft+ : v30, one byte (a DIM_*; 0: none)
 
 	public static final int SKY_IN_GAME = 1;
 	public static final int SKY_MENU_OPEN = 1 << 1;
