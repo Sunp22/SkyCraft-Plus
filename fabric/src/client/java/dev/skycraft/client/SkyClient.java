@@ -483,6 +483,7 @@ public final class SkyClient {
 		player.resetFallDistance();
 		var server = minecraft.getSingleplayerServer();
 		var dimension = dimensionFor(sky);
+		boolean bySave = sky.sendToWorld != 0;
 		if (server != null) {
 			var uuid = player.getUUID();
 			server.execute(() -> {
@@ -491,7 +492,12 @@ public final class SkyClient {
 					var target = server.getLevel(dimension);
 					if (target != null && target != sp.level()) {
 						// SkyCraft+ : interiors and other worldspaces have dimensions of their own.
-						sp.teleportTo(target, x, y, z, java.util.Set.of(), yaw, pitch, true);
+						dev.skycraft.world.SkyMinecraftWorlds.sentBySave = bySave;
+						try {
+							sp.teleportTo(target, x, y, z, java.util.Set.of(), yaw, pitch, true);
+						} finally {
+							dev.skycraft.world.SkyMinecraftWorlds.sentBySave = false;
+						}
 						SkyCraft.LOG.info("SkyCraft: into {}", dimension.identifier());
 					} else {
 						// Turn first: teleportTo sends the player its rotation along with the position.

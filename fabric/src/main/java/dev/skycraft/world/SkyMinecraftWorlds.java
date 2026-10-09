@@ -40,6 +40,12 @@ public final class SkyMinecraftWorlds {
 
 	/** Each player's last position in the open world (the portal they step into). */
 	private static final Map<UUID, BlockPos> LAST = new HashMap<>();
+	/**
+	 * Set (server thread) while a loaded save sends the player into the Nether or the End: not a portal,
+	 * so the portal they last left by stays the way back. (Taken for one, the way back became the other
+	 * save's spot, with no portal there, and the player fell under Skyrim's ground.)
+	 */
+	public static boolean sentBySave;
 
 	private SkyMinecraftWorlds() {
 	}
@@ -55,7 +61,7 @@ public final class SkyMinecraftWorlds {
 		});
 		ServerEntityLevelChangeEvents.AFTER_PLAYER_CHANGE_LEVEL.register((player, origin, destination) -> {
 			BlockPos at = LAST.get(player.getUUID());
-			if (origin.dimension() == Level.OVERWORLD && SkyDig.minecraftsOwnWorld(destination) && at != null) {
+			if (origin.dimension() == Level.OVERWORLD && SkyDig.minecraftsOwnWorld(destination) && at != null && !sentBySave) {
 				player.setAttached(LEFT_AT, at);
 				SkyCraft.LOG.info("SkyCraft: left the open world at {} for {}", at.toShortString(), destination.dimension().identifier());
 			}
