@@ -42,12 +42,14 @@ first, install the zip the same way, and start a **new Minecraft world** to get 
 - Skyrim enemies (Dremora, atronachs, vampires, skeletons, Dwarven machines) turn up in the
   Nether and among the End cities, and leave their loot when killed.
 
-**Minecraft's structures across Skyrim**
+**Minecraft's structures across Skyrim (beta)**
 - Villages (all five kinds), pillager outposts, the woodland mansion, desert and jungle temples,
-  witch huts, igloos, ruined portals, trail ruins, shipwrecks, ocean ruins and the ocean monument
+  witch huts, ruined portals, trail ruins, shipwrecks, ocean ruins and the ocean monument
   stand at fixed spots in Skyrim's open world, each on Minecraft ground of its own, away from
   roads, buildings and mountains.
 - They're **on Skyrim's map and compass with Skyrim's icons, and you can fast travel to them.**
+- Structures are a **work in progress**: they work well enough to explore and loot, but they're
+  still rough around the edges where they meet Skyrim's land. Igloos are left out for now.
 
 **And more**
 - A pause-menu **world switcher**: make, delete and switch Minecraft worlds, independent of your
@@ -56,6 +58,21 @@ first, install the zip the same way, and start a **new Minecraft world** to get 
 - Sign text and name tags show in Skyrim.
 - Multiplayer guests get more of the Skyrim side too (not tested yet: reports welcome).
 - Everything new can be turned off in `SkyCraft.ini` and `skycraft.properties`.
+
+## Known bugs
+
+We know about these and are working on them:
+
+- Lava in the Nether and end stone in the End flicker while you turn the camera (they're fine
+  while it's still).
+- Lighting a Nether portal can leave fire on the frame. Put out, the portal looks lit except
+  that one spot and doesn't work: break a frame block and light it again.
+- Structures (beta) can sit oddly where they meet Skyrim's land: seams, slopes, bits of Skyrim
+  showing through.
+- In Skyrim mode, third person, your body can play the falling animation while standing on
+  Minecraft blocks.
+- Mobs sometimes take odd routes over Skyrim's curved ground.
+- A little stutter flying low over ground where caves were dug out.
 
 Made with the help of an AI coding assistant (Claude) and play-tested in game. Bug reports and
 ideas are welcome in [Issues](../../issues).
@@ -131,8 +148,8 @@ shared memory. Minecraft runs hidden in the background, and Skyrim draws everyth
   meanwhile and draws Minecraft's worlds; you come back out where you went in. The Ender Dragon
   can be fought with Skyrim's weapons and magic. Skyrim's Dremora, atronachs, vampires and
   Dwarven machines turn up in the Nether and among the End cities (their loot drops in a sack).
-- **Minecraft's structures in Skyrim:** villages, pillager outposts, the woodland mansion,
-  temples, witch huts, igloos, ruined portals, trail ruins, wrecks, ocean ruins and the ocean
+- **Minecraft's structures in Skyrim (beta):** villages, pillager outposts, the woodland mansion,
+  temples, witch huts, ruined portals, trail ruins, wrecks, ocean ruins and the ocean
   monument stand at fixed spots in Skyrim's open world, chosen from your Skyrim.esm (off roads,
   buildings and mountains, inside the borders). Each is built on Minecraft ground of its own when
   you first come near, and is marked on Skyrim's map and compass (you can fast travel there).
