@@ -257,6 +257,27 @@ Minecraft has priority. These keys still go to Skyrim:
 Every other key is Minecraft's: **E** inventory, **F5** camera, **T** chat, **/** commands,
 **Shift** crouch/sneak, and so on.
 
+### Controller
+
+A controller (Xbox layout) plays Minecraft mode too, laid out like console Minecraft
+(`bController` in `SkyCraft.ini`):
+
+| Button | Minecraft mode | In a Minecraft screen (inventory, chest) |
+|---|---|---|
+| Left stick | Move (click: sprint) | Cursor |
+| Right stick | Look (click: switch Minecraft/Skyrim mode) | Cursor |
+| RT / LT | Attack, break / use, place | |
+| A | Jump | Click |
+| B | Sneak | Close |
+| X | Drop item | Right-click |
+| Y | Inventory | Move a whole stack |
+| LB / RB | Hotbar left / right | Scroll |
+| D-pad | Up: Skyrim activate; right: Minecraft camera; down: Minecraft pause menu; left: Skyrim map | |
+| Start / Back | Skyrim journal / wait | |
+
+Movement is on or off (no slow walk yet), and Skyrim's shout has no controller button in
+Minecraft mode (RB is the hotbar); in Skyrim mode the controller is Skyrim's as usual.
+
 ## Known limitations
 
 - If something goes wrong, `Documents\My Games\Skyrim Special Edition\SKSE\SkyCraft.log` says what.
