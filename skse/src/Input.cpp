@@ -50,6 +50,8 @@ namespace skycraft
 		std::array<bool, 256> extraMenuKeys{};
 		// SkyCraft+ : mode switch. sModeToggleKey: Minecraft mode <-> Skyrim mode (0: none).
 		std::uint32_t modeToggleKey = 0;
+		// SkyCraft+ : controller. bController: a gamepad plays Minecraft mode too (see Pad below).
+		bool padEnabled = true;
 
 		// "Tab", "I", "F1", "0x0F" -> DirectInput scan code, or 0 if unknown.
 		std::uint32_t DikFromName(std::string a_name)
@@ -160,6 +162,9 @@ namespace skycraft
 			logger::info("Skyrim enemies in the Nether and the End: {} ({} and {} kinds, up to {}, about every {:.0f} s)",
 				State().skyrimEnemiesOption ? "on" : "off", State().netherEnemies.size(), State().endEnemies.size(), State().enemyCap, State().enemySeconds);
 
+			padEnabled = ini.GetBoolValue("Controls", "bController", true);
+			logger::info("controller in Minecraft mode: {}", padEnabled ? "on (right stick click switches modes)" : "off");
+
 			const std::string toggle = ini.GetValue("Controls", "sModeToggleKey", "");
 			if (!toggle.empty()) {
 				const auto code = DikFromName(toggle);
@@ -268,6 +273,237 @@ namespace skycraft
 			}
 		}
 
+		// SkyCraft+ : controller. Skyrim reads the gamepad; in Minecraft mode its buttons and sticks
+		// become the keys, mouse buttons, wheel and look Minecraft already gets from the keyboard and
+		// mouse, laid out like console Minecraft:
+		//   left stick move (click: sprint), right stick look, RT attack/break, LT use/place,
+		//   A jump, B sneak, X drop, Y inventory, LB/RB hotbar, right stick click: mode switch,
+		//   D-pad up Skyrim activate (G), right Minecraft camera (F5), down Minecraft's pause menu,
+		//   left Skyrim's map; Start and Back stay Skyrim's (journal, wait).
+		// In a Minecraft screen (inventory, chest, crafting) either stick moves the cursor: A clicks,
+		// X right-clicks, Y moves a whole stack (shift-click), B closes, LB/RB scroll.
+		namespace Pad
+		{
+			using K = RE::BSWin32GamepadDevice::Key;
+
+			constexpr std::uint16_t kSdlW = 26, kSdlA = 4, kSdlS = 22, kSdlD = 7;
+			constexpr std::uint16_t kSdlSpace = 44, kSdlShift = 225, kSdlCtrl = 224, kSdlQ = 20, kSdlE = 8, kSdlEsc = 41, kSdlF5 = 62;
+			constexpr float         kMoveAt = 0.35f;        // stick past this: that way's key down
+			constexpr float         kLookRate = 1200.0f;    // mouse counts a second at full tilt (~180 degrees/s at default sensitivity)
+			constexpr float         kCursorRate = 1.1f;     // screen heights a second at full tilt
+
+			float        left[2]{}, right[2]{};
+			std::uint8_t moveHeld = 0;  // W A S D
+			float        cursorRestX = 0.0f, cursorRestY = 0.0f;
+			bool         wasRouting = false;
+
+			struct Held
+			{
+				bool          mouse;
+				std::uint16_t code;
+			};
+			// What each held button pressed in Minecraft, released with it whatever opened in between.
+			std::unordered_map<std::uint32_t, Held> held;
+
+			void Send(const Held& a_what, bool a_down)
+			{
+				Link::Get().PushInput(a_what.mouse ? proto::kInMouseButton : proto::kInKey, a_what.code, a_down ? 1 : 0);
+			}
+
+			void Hold(std::uint32_t a_button, Held a_what)
+			{
+				Send(a_what, true);
+				held[a_button] = a_what;
+			}
+
+			void Tap(Held a_what)
+			{
+				Send(a_what, true);
+				Send(a_what, false);
+			}
+
+			void Scroll(int a_notches)
+			{
+				Link::Get().PushInput(proto::kInScroll, 0, a_notches * 120);
+			}
+
+			void OpenMap()
+			{
+				if (auto* queue = RE::UIMessageQueue::GetSingleton()) {
+					queue->AddMessage(RE::MapMenu::MENU_NAME, RE::UI_MESSAGE_TYPE::kShow, nullptr);
+				}
+			}
+
+			float Curve(float a_v)
+			{
+				return a_v * std::abs(a_v);  // fine aim near the middle, fast turns at the edge
+			}
+
+			/** A gamepad button, pressed or released, while Minecraft takes the input. */
+			void Button(RE::ButtonEvent* a_button, bool a_down)
+			{
+				auto&      st = State();
+				const auto code = a_button->GetIDCode();
+				if (!a_down) {
+					if (const auto it = held.find(code); it != held.end()) {
+						Send(it->second, false);
+						held.erase(it);
+					}
+					return;
+				}
+				if (st.mcScreenOpen) {
+					switch (code) {
+					case K::kA:
+						Hold(code, { true, 1 });
+						break;
+					case K::kX:
+						Hold(code, { true, 3 });
+						break;
+					case K::kY:
+						Send({ false, kSdlShift }, true);
+						Tap({ true, 1 });
+						Send({ false, kSdlShift }, false);
+						break;
+					case K::kB:
+						Tap({ false, kSdlEsc });
+						break;
+					case K::kLeftShoulder:
+						Scroll(1);
+						break;
+					case K::kRightShoulder:
+						Scroll(-1);
+						break;
+					default:
+						break;
+					}
+					return;
+				}
+				switch (code) {
+				case K::kA:
+					Hold(code, { false, kSdlSpace });
+					break;
+				case K::kB:
+					Hold(code, { false, kSdlShift });
+					break;
+				case K::kX:
+					Tap({ false, kSdlQ });
+					break;
+				case K::kY:
+					Tap({ false, kSdlE });
+					break;
+				case K::kLeftThumb:
+					Hold(code, { false, kSdlCtrl });
+					break;
+				case K::kRightTrigger:
+					if (!st.rightHandSkyrim) {  // a Skyrim right hand attacks in Skyrim (PlayerControlsHook)
+						Hold(code, { true, 1 });
+					}
+					break;
+				case K::kLeftTrigger:
+					if (!st.leftHandSkyrim || RightClickToMinecraft(a_button)) {
+						Hold(code, { true, 3 });
+					}
+					break;
+				case K::kLeftShoulder:
+					Scroll(1);
+					break;
+				case K::kRightShoulder:
+					Scroll(-1);
+					break;
+				case K::kUp:
+					ActivateSkyrimTarget();
+					break;
+				case K::kRight:
+					Tap({ false, kSdlF5 });
+					break;
+				case K::kDown:
+					Input::ReleaseAll();
+					held.clear();
+					Link::Get().PushInput(proto::kInOpenMenu, 0);
+					break;
+				case K::kLeft:
+					OpenMap();
+					break;
+				default:
+					break;  // Start, Back: Skyrim's (MenuControlsHook lets them through)
+				}
+			}
+
+			void Stick(RE::ThumbstickEvent* a_stick)
+			{
+				float* s = a_stick->IsLeft() ? left : a_stick->IsRight() ? right : nullptr;
+				if (s) {
+					s[0] = a_stick->xValue;
+					s[1] = a_stick->yValue;
+				}
+			}
+
+			/** Once a frame (main thread): held sticks move, look and steer the cursor. */
+			void Frame(float a_delta, float& a_lookDx, float& a_lookDy)
+			{
+				auto&      st = State();
+				const bool routing = padEnabled && (st.puppeting || (st.skyrimDrives && st.mcScreenOpen)) && !Game::SkyrimMenuOpen();
+				if (!routing) {
+					if (wasRouting) {
+						// Into Skyrim's hands or a menu: let go of everything held.
+						for (int k = 0; k < 4; ++k) {
+							if (moveHeld & (1 << k)) {
+								Send({ false, std::array{ kSdlW, kSdlA, kSdlS, kSdlD }[k] }, false);
+							}
+						}
+						for (const auto& [button, what] : held) {
+							Send(what, false);
+						}
+						held.clear();
+						moveHeld = 0;
+						left[0] = left[1] = right[0] = right[1] = 0.0f;
+					}
+					wasRouting = false;
+					return;
+				}
+				wasRouting = true;
+				std::uint8_t want = 0;
+				if (!st.mcScreenOpen) {
+					want |= left[1] > kMoveAt ? 1 : 0;
+					want |= left[0] < -kMoveAt ? 2 : 0;
+					want |= left[1] < -kMoveAt ? 4 : 0;
+					want |= left[0] > kMoveAt ? 8 : 0;
+					a_lookDx += Curve(right[0]) * kLookRate * a_delta;
+					a_lookDy -= Curve(right[1]) * kLookRate * a_delta * 0.75f;
+				} else {
+					const float vx = std::clamp(left[0] + right[0], -1.0f, 1.0f), vy = std::clamp(left[1] + right[1], -1.0f, 1.0f);
+					if (vx != 0.0f || vy != 0.0f) {
+						const float speed = kCursorRate * static_cast<float>(st.viewportH.load());
+						cursorRestX += Curve(vx) * speed * a_delta;
+						cursorRestY -= Curve(vy) * speed * a_delta;
+						const int stepX = static_cast<int>(cursorRestX), stepY = static_cast<int>(cursorRestY);
+						if (stepX != 0 || stepY != 0) {
+							cursorRestX -= static_cast<float>(stepX);
+							cursorRestY -= static_cast<float>(stepY);
+							const int x = std::clamp(st.cursorX.load() + stepX, 0, st.viewportW.load() - 1);
+							const int y = std::clamp(st.cursorY.load() + stepY, 0, st.viewportH.load() - 1);
+							st.cursorX = x;
+							st.cursorY = y;
+							Link::Get().PushInput(proto::kInCursor, 0, x, y);
+						}
+					}
+				}
+				for (int k = 0; k < 4; ++k) {
+					const bool on = want & (1 << k);
+					if (on != bool(moveHeld & (1 << k))) {
+						Send({ false, std::array{ kSdlW, kSdlA, kSdlS, kSdlD }[k] }, on);
+					}
+				}
+				moveHeld = want;
+			}
+
+			bool IsModeToggle(RE::InputEvent* a_event)
+			{
+				return padEnabled && a_event->GetEventType() == RE::INPUT_EVENT_TYPE::kButton && a_event->GetDevice() == RE::INPUT_DEVICE::kGamepad &&
+				       a_event->AsButtonEvent()->GetIDCode() == K::kRightThumb;
+			}
+		}
+
 		class InputSink final : public RE::BSTEventSink<RE::InputEvent*>
 		{
 		public:
@@ -302,8 +538,9 @@ namespace skycraft
 					}
 					// The mode switch key works in both modes (Skyrim mode doesn't route), never
 					// reaches Minecraft, and waits while a menu or Minecraft screen is open.
-					if (modeToggleKey && e->GetEventType() == RE::INPUT_EVENT_TYPE::kButton && e->GetDevice() == RE::INPUT_DEVICE::kKeyboard &&
-						e->AsButtonEvent()->GetIDCode() == modeToggleKey) {
+					if ((modeToggleKey && e->GetEventType() == RE::INPUT_EVENT_TYPE::kButton && e->GetDevice() == RE::INPUT_DEVICE::kKeyboard &&
+							e->AsButtonEvent()->GetIDCode() == modeToggleKey) ||
+						Pad::IsModeToggle(e)) {
 						if (e->AsButtonEvent()->IsDown() && !menuOpen && !st.mcScreenOpen) {
 							Game::ToggleSkyrimMode();
 						}
@@ -366,6 +603,10 @@ namespace skycraft
 								if (const auto sdl = kDikToSdl[code & 0xFF]) {
 									link.PushInput(proto::kInKey, sdl, down ? 1 : 0);
 								}
+							} else if (button->GetDevice() == RE::INPUT_DEVICE::kGamepad) {
+								if (padEnabled) {
+									Pad::Button(button, down);
+								}
 							} else if (button->GetDevice() == RE::INPUT_DEVICE::kMouse) {
 								if (code == 8 || code == 9) {
 									if (down) {
@@ -386,6 +627,11 @@ namespace skycraft
 							}
 							break;
 						}
+					case RE::INPUT_EVENT_TYPE::kThumbstick:
+						if (route && padEnabled) {
+							Pad::Stick(e->AsThumbstickEvent());
+						}
+						break;
 					case RE::INPUT_EVENT_TYPE::kChar:
 						if (route && st.mcScreenOpen) {
 							link.PushInput(proto::kInText, 0, static_cast<std::int32_t>(e->AsCharEvent()->keyCode));
@@ -424,6 +670,13 @@ namespace skycraft
 							keep.push_back(e);
 						}
 					}
+					// SkyCraft+ : controller. Start (journal) and Back (wait) stay Skyrim's.
+					if (padEnabled && e->GetEventType() == RE::INPUT_EVENT_TYPE::kButton && e->GetDevice() == RE::INPUT_DEVICE::kGamepad) {
+						const auto code = e->AsButtonEvent()->GetIDCode();
+						if (code == Pad::K::kStart || code == Pad::K::kBack) {
+							keep.push_back(e);
+						}
+					}
 				}
 				if (keep.empty()) {
 					return RE::BSEventNotifyControl::kContinue;
@@ -455,6 +708,39 @@ namespace skycraft
 				auto& st = State();
 				const bool mcScreenInSkyrimMode = st.skyrimDrives && st.mcScreenOpen;
 				if ((!st.minecraftOwnsPlayer && !mcScreenInSkyrimMode) || Game::SkyrimMenuOpen()) {
+					// SkyCraft+ : controller. In Skyrim mode the right stick click switches back to
+					// Minecraft mode, not Skyrim's camera view.
+					if (a_event && *a_event && !Game::SkyrimMenuOpen()) {
+						bool toggle = false;
+						for (auto* e = *a_event; e; e = e->next) {
+							toggle = toggle || Pad::IsModeToggle(e);
+						}
+						if (toggle) {
+							std::vector<RE::InputEvent*> all, keep;
+							for (auto* e = *a_event; e; e = e->next) {
+								all.push_back(e);
+								if (!Pad::IsModeToggle(e)) {
+									keep.push_back(e);
+								}
+							}
+							if (keep.empty()) {
+								return RE::BSEventNotifyControl::kContinue;
+							}
+							std::vector<RE::InputEvent*> savedNext;
+							for (auto* e : all) {
+								savedNext.push_back(e->next);
+							}
+							for (std::size_t i = 0; i < keep.size(); ++i) {
+								keep[i]->next = i + 1 < keep.size() ? keep[i + 1] : nullptr;
+							}
+							RE::InputEvent* head = keep.front();
+							const auto      result = func(a_this, &head, a_source);
+							for (std::size_t i = 0; i < all.size(); ++i) {
+								all[i]->next = savedNext[i];
+							}
+							return result;
+						}
+					}
 					return func(a_this, a_event, a_source);
 				}
 				// SkyCraft+ : hand ownership. A hand Skyrim holds still attacks, blocks and casts in
@@ -470,7 +756,9 @@ namespace skycraft
 					all.push_back(e);
 					if (e->GetEventType() == RE::INPUT_EVENT_TYPE::kButton) {
 						const auto& name = e->QUserEvent();
-						if ((st.rightHandSkyrim && name == events->rightAttack) || name == events->shout ||
+						// (A controller's shout button, RB, is Minecraft's hotbar.)
+						const bool padShout = padEnabled && e->GetDevice() == RE::INPUT_DEVICE::kGamepad && name == events->shout;
+						if ((st.rightHandSkyrim && name == events->rightAttack) || (name == events->shout && !padShout) ||
 							(st.leftHandSkyrim && name == events->leftAttack && !RightClickToMinecraft(e->AsButtonEvent()))) {
 							keep.push_back(e);
 						}
@@ -510,6 +798,11 @@ namespace skycraft
 			REL::Relocation<std::uintptr_t> playerVtbl{ RE::VTABLE_PlayerControls[0] };
 			PlayerControlsHook::func = playerVtbl.write_vfunc(0x1, PlayerControlsHook::thunk);
 			logger::info("input hooks installed");
+		}
+
+		void PadFrame(float a_delta)
+		{
+			Pad::Frame(a_delta, lookDx, lookDy);
 		}
 
 		void ConsumeLook(float& a_dx, float& a_dy)

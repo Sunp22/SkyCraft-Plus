@@ -150,6 +150,8 @@ namespace skycraft
 		void Install();
 		// Mouse deltas accumulated since the last frame (main thread).
 		void ConsumeLook(float& a_dx, float& a_dy);
+		// SkyCraft+ : controller. Held sticks, once a frame (main thread): movement keys, look, cursor.
+		void PadFrame(float a_delta);
 		// Tells MC to release everything (input focus moved to Skyrim).
 		void ReleaseAll();
 	}
