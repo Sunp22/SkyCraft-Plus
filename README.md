@@ -51,6 +51,12 @@ first, install the zip the same way, and start a **new Minecraft world** to get 
 - Structures are a **work in progress**: they work well enough to explore and loot, but they're
   still rough around the edges where they meet Skyrim's land. Igloos are left out for now.
 
+**Full native controller support**
+- Play Minecraft mode on a controller (Xbox layout), laid out like console Minecraft, with
+  Skyrim's activate, menu (items, magic, map, skills) and shout (LB + RB) on the pad too.
+  Inventories and chests work with the sticks. Clicking the right stick switches modes. See
+  [Controller](#controller).
+
 **And more**
 - A pause-menu **world switcher**: make, delete and switch Minecraft worlds, independent of your
   Skyrim saves.
