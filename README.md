@@ -4,6 +4,10 @@
 release. All credit for SkyCraft itself goes to chasm; this fork adds a lot on top. It isn't an
 official release.
 
+> **Early release, work in progress.** This is SkyCraft+'s first public build. It's playable
+> from start to finish (stronghold, the Ender Dragon, End cities), but it's rough around the
+> edges and has [known bugs](#known-bugs). Back up your Skyrim saves, and expect updates.
+
 **Download:** the latest `SkyCraft-…-plus.zip` from [Releases](../../releases). Same requirements
 as SkyCraft (see [Requirements](#requirements)). Remove the original SkyCraft from your mod manager
 first, install the zip the same way, and start a **new Minecraft world** to get the structures.
@@ -68,6 +72,11 @@ first, install the zip the same way, and start a **new Minecraft world** to get 
 ## Known bugs
 
 We know about these and are working on them:
+
+- Performance: the game gets choppy while a structure builds, and more so when a big cave
+  opens up (the whole cave system around you loads at once). This is the first thing we're
+  working on next.
+- Sand in structures (desert villages and the like) can fall by itself.
 
 - Lava in the Nether and end stone in the End flicker while you turn the camera (they're fine
   while it's still).
