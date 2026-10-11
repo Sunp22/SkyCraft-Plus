@@ -278,8 +278,9 @@ namespace skycraft
 		// mouse, laid out like console Minecraft:
 		//   left stick move (click: sprint), right stick look, RT attack/break, LT use/place,
 		//   A jump, B sneak, X Skyrim activate (G), Y inventory, LB/RB hotbar, LB+RB together Skyrim's
-		//   shout, right stick click: mode switch, D-pad up drop, right Skyrim's inventory, down
-		//   Minecraft's pause menu, left Skyrim's map; Start and Back stay Skyrim's (journal, wait).
+		//   shout, right stick click: mode switch, D-pad up Minecraft camera (F5), right Skyrim's
+		//   menu (items, magic, map, skills), down Minecraft's pause menu, left drop; Start and Back
+		//   stay Skyrim's (journal, wait).
 		// In a Minecraft screen (inventory, chest, crafting) either stick moves the cursor: A clicks,
 		// X right-clicks, Y moves a whole stack (shift-click), B closes, LB/RB scroll.
 		namespace Pad
@@ -287,7 +288,7 @@ namespace skycraft
 			using K = RE::BSWin32GamepadDevice::Key;
 
 			constexpr std::uint16_t kSdlW = 26, kSdlA = 4, kSdlS = 22, kSdlD = 7;
-			constexpr std::uint16_t kSdlSpace = 44, kSdlShift = 225, kSdlCtrl = 224, kSdlQ = 20, kSdlE = 8, kSdlEsc = 41;
+			constexpr std::uint16_t kSdlSpace = 44, kSdlShift = 225, kSdlCtrl = 224, kSdlQ = 20, kSdlE = 8, kSdlEsc = 41, kSdlF5 = 62;
 			constexpr float         kMoveAt = 0.35f;        // stick past this: that way's key down
 			constexpr float         kLookRate = 1200.0f;    // mouse counts a second at full tilt (~180 degrees/s at default sensitivity)
 			constexpr float         kCursorRate = 1.1f;     // screen heights a second at full tilt
@@ -444,12 +445,12 @@ namespace skycraft
 					Scroll(-1);
 					break;
 				case K::kUp:
-					Tap({ false, kSdlQ });
+					Tap({ false, kSdlF5 });
 					break;
 				case K::kRight:
 					Input::ReleaseAll();
 					held.clear();
-					OpenSkyrimMenu(RE::InventoryMenu::MENU_NAME);
+					OpenSkyrimMenu(RE::TweenMenu::MENU_NAME);
 					break;
 				case K::kDown:
 					Input::ReleaseAll();
@@ -457,7 +458,7 @@ namespace skycraft
 					Link::Get().PushInput(proto::kInOpenMenu, 0);
 					break;
 				case K::kLeft:
-					OpenSkyrimMenu(RE::MapMenu::MENU_NAME);
+					Tap({ false, kSdlQ });
 					break;
 				default:
 					break;  // Start, Back: Skyrim's (MenuControlsHook lets them through)
