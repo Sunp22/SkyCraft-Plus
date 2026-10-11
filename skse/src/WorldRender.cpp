@@ -2708,6 +2708,35 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 
 			// Arrows, dropped items (solid), block cracks (blended), the block outline (lines).
 			const auto camMc = SkyToMc(cam);
+
+			// SkyCraft+ : performance. Sections off screen aren't drawn (each was drawn up to six times
+			// a frame, wherever it was): its bounding sphere against the four sides of the view.
+			float sidePlanes[4][4];
+			for (int k = 0; k < 4; ++k) {
+				const int   row = k / 2;
+				const float sign = (k % 2) ? -1.0f : 1.0f;
+				float       len = 0.0f;
+				for (int c = 0; c < 4; ++c) {
+					sidePlanes[k][c] = fc.viewProj[3][c] + sign * fc.viewProj[row][c];
+					len += c < 3 ? sidePlanes[k][c] * sidePlanes[k][c] : 0.0f;
+				}
+				len = std::sqrt(len);
+				for (int c = 0; c < 4; ++c) {
+					sidePlanes[k][c] = len > 1e-6f ? sidePlanes[k][c] / len : 0.0f;
+				}
+			}
+			const float sectionRadius = 14.0f * float(proto::kUnitsPerBlock);
+			auto        onScreen = [&](const auto& a_s) {
+                double centre[3];
+                McToSkyD(a_s.sx * 16.0 + 8.0, a_s.sy * 16.0 + 8.0, a_s.sz * 16.0 + 8.0, centre);
+                const float x = float(centre[0] - cam.x), y = float(centre[1] - cam.y), z = float(centre[2] - cam.z);
+                for (const auto& p : sidePlanes) {
+                    if (p[0] * x + p[1] * y + p[2] * z + p[3] < -sectionRadius) {
+                        return false;
+                    }
+                }
+                return true;
+			};
 			dynVerts.clear();
 			static std::vector<Vertex> cracks;
 			cracks.clear();
@@ -2827,7 +2856,7 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 			a_context->OMSetDepthStencilState(reversed ? depthWriteRev : depthWrite, 0);
 			for (auto& [key, s] : sections) {
 				const double dx = s.sx * 16.0 + 8.0 - camMc.x, dy = s.sy * 16.0 + 8.0 - camMc.y, dz = s.sz * 16.0 + 8.0 - camMc.z;
-				if (dx * dx + dy * dy + dz * dz > 320.0 * 320.0 || !s.opaque) {
+				if (dx * dx + dy * dy + dz * dz > 320.0 * 320.0 || !s.opaque || !onScreen(s)) {
 					continue;
 				}
 				double origin[3];
@@ -2854,7 +2883,8 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 				a_context->RSSetState(rasterCullBack);
 			}
 			for (auto& [key, s] : sections) {
-				if (!s.translucent) {
+				const double dx = s.sx * 16.0 + 8.0 - camMc.x, dy = s.sy * 16.0 + 8.0 - camMc.y, dz = s.sz * 16.0 + 8.0 - camMc.z;
+				if (!s.translucent || dx * dx + dy * dy + dz * dz > 320.0 * 320.0 || !onScreen(s)) {
 					continue;
 				}
 				double origin[3];
@@ -2896,7 +2926,7 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 					a_context->OMSetRenderTargets(0, nullptr, copy);
 					for (auto& [key, s] : sections) {
 						const double dx = s.sx * 16.0 + 8.0 - camMc.x, dy = s.sy * 16.0 + 8.0 - camMc.y, dz = s.sz * 16.0 + 8.0 - camMc.z;
-						if (dx * dx + dy * dy + dz * dz > 320.0 * 320.0 || !s.opaque) {
+						if (dx * dx + dy * dy + dz * dz > 320.0 * 320.0 || !s.opaque || !onScreen(s)) {
 							continue;
 						}
 						double origin[3];
