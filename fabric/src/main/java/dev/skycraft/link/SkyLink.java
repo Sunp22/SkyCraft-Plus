@@ -370,6 +370,7 @@ public final class SkyLink {
 		public float cameraDistance;
 		public float healthFrac;
 		public int dimension; // Proto.DIM_*
+		public int hands; // SkyCraft+ : hand mixing (Proto.MS_HANDS)
 	}
 
 	public static void writeMcState(McState st) {
@@ -416,6 +417,7 @@ public final class SkyLink {
 		s.set(JAVA_FLOAT, b + MS_CAMERA_DISTANCE, st.cameraDistance);
 		s.set(JAVA_FLOAT, b + MS_HEALTH_FRAC, st.healthFrac);
 		s.set(JAVA_INT, b + MS_DIMENSION, st.dimension);
+		s.set(JAVA_INT, b + MS_HANDS, st.hands);
 		INT.setRelease(s, b + MS_SEQ, seq + 2);
 	}
 

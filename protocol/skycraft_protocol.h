@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 32;
+	inline constexpr std::uint32_t kVersion = 33;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -226,8 +226,13 @@ namespace skycraft::proto
 		// SkyCraft+ : the Nether and the End (v26). Where the Minecraft player is: one of Skyrim's
 		// mirror worlds, or a world of Minecraft's own that Skyrim has nothing for (McDimension).
 		std::uint32_t dimension;
+		// SkyCraft+ : hand mixing (v33). Minecraft's hands by arm: bit 0 the right arm holds an item,
+		// bit 1 the left; bits 8-15 and 16-23 count the player's own changes of what the right and
+		// left arm hold (another hotbar slot, the off-hand swap, a move in the inventory).
+		std::uint32_t hands;
+		std::uint32_t handsPad;
 	};
-	static_assert(sizeof(McState) == 0xD0);
+	static_assert(sizeof(McState) == 0xD8);
 	static_assert(sizeof(McState) <= 0x100);
 
 	// ---- overlay triple buffer @0x300 --------------------------------------------------------

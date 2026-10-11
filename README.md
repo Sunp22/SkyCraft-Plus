@@ -22,6 +22,9 @@ first, install the zip the same way, and start a **new Minecraft world** to get 
 - **Mix and match hands:** equip a Skyrim weapon, spell, shield or torch in one hand and keep a
   Minecraft item in the other, like Flames in one hand and a diamond sword in the other.
   Two-handers and bows take both hands.
+- **Choose who wins a hand** (`iHandMix` in `SkyCraft.ini`): the Skyrim item (default), the
+  Minecraft item, or whichever you picked last. With the last one, switching hotbar slot takes
+  the hand back for Minecraft and unequips the Skyrim weapon; equipping it again brings it back.
 - In third person, your Minecraft body holds a matching Minecraft item for your Skyrim weapon.
 - **Skyrim weapons break blocks:** swing at a Minecraft block (or Skyrim's ground) and it wears
   down like it would with a matching Minecraft tool. Skyrim's pickaxe mines stone and ore, the

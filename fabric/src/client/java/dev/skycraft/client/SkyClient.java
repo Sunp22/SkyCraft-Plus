@@ -285,6 +285,40 @@ public final class SkyClient {
 			(float) at.x, (float) at.y, (float) at.z));
 	}
 
+	// SkyCraft+ : hand mixing. What each arm held last frame, and the player's changes counted.
+	private static int lastSlot = -1, rightChanges, leftChanges;
+	private static net.minecraft.world.item.ItemStack lastRight = net.minecraft.world.item.ItemStack.EMPTY, lastLeft = net.minecraft.world.item.ItemStack.EMPTY;
+
+	/**
+	 * SkyCraft+ : hand mixing (McState::hands). Which arms hold a Minecraft item, and a count of the
+	 * player's own changes to each: another hotbar slot, the off-hand swap, a move made in an inventory.
+	 * (Not a pickup filling the empty hand, nor food eaten or blocks placed running out.)
+	 */
+	private static int handsCode(Minecraft minecraft, LocalPlayer player) {
+		boolean rightMain = player.getMainArm() == net.minecraft.world.entity.HumanoidArm.RIGHT;
+		var right = rightMain ? player.getMainHandItem() : player.getOffhandItem();
+		var left = rightMain ? player.getOffhandItem() : player.getMainHandItem();
+		int slot = player.getInventory().getSelectedSlot();
+		boolean rightChanged = !net.minecraft.world.item.ItemStack.isSameItem(right, lastRight);
+		boolean leftChanged = !net.minecraft.world.item.ItemStack.isSameItem(left, lastLeft);
+		boolean swapped = rightChanged && leftChanged && net.minecraft.world.item.ItemStack.isSameItem(right, lastLeft)
+			&& net.minecraft.world.item.ItemStack.isSameItem(left, lastRight);
+		boolean byHand = minecraft.gui.screen() != null || swapped;
+		if (lastSlot >= 0) {
+			boolean mainSlot = slot != lastSlot;
+			if (rightMain && mainSlot || rightChanged && byHand) {
+				rightChanges++;
+			}
+			if (!rightMain && mainSlot || leftChanged && byHand) {
+				leftChanges++;
+			}
+		}
+		lastSlot = slot;
+		lastRight = right.copy();
+		lastLeft = left.copy();
+		return (right.isEmpty() ? 0 : 1) | (left.isEmpty() ? 0 : 2) | (rightChanges & 0xFF) << 8 | (leftChanges & 0xFF) << 16;
+	}
+
 	/**
 	 * SkyCraft+ : Skyrim weapons break blocks. A Skyrim swing (its hit frame) with a block under the
 	 * crosshair: a Minecraft block is worn down by the server, Skyrim's ground mined here as a held
@@ -595,6 +629,7 @@ public final class SkyClient {
 			mc.bobAmount = bob ? entityState.bob : 0.0F;
 			mc.healthFrac = player.getMaxHealth() > 0.0F ? Math.clamp(player.getHealth() / player.getMaxHealth(), 0.0F, 1.0F) : 0.0F;
 			mc.dimension = dimensionCode(minecraft.level.dimension());
+			mc.hands = handsCode(minecraft, player);  // SkyCraft+ : hand mixing
 		}
 		if (minecraft.gui.screen() != null) {
 			flags |= Proto.MC_SCREEN_OPEN;

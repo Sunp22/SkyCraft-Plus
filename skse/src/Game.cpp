@@ -474,6 +474,127 @@ namespace skycraft
 			}
 		}
 
+		// SkyCraft+ : hand mixing. The last spell the player equipped (the same one again changes
+		// nothing in the hand to watch for).
+		struct SpellEquipSink : RE::BSTEventSink<RE::TESEquipEvent>
+		{
+			static SpellEquipSink* Get()
+			{
+				static SpellEquipSink sink;
+				return &sink;
+			}
+			std::atomic<RE::FormID> spell{ 0 };
+			RE::BSEventNotifyControl ProcessEvent(const RE::TESEquipEvent* a_event, RE::BSTEventSource<RE::TESEquipEvent>*) override
+			{
+				if (a_event && a_event->equipped && a_event->actor && a_event->actor->IsPlayerRef()) {
+					if (auto* form = RE::TESForm::LookupByID(a_event->baseObject); form && form->Is(RE::FormType::Spell)) {
+						spell = a_event->baseObject;
+					}
+				}
+				return RE::BSEventNotifyControl::kContinue;
+			}
+		};
+
+		// SkyCraft+ : hand mixing. Takes a weapon, shield or torch out of a hand (a spell stays: it's
+		// only no longer that hand's).
+		void UnequipFromHand(RE::PlayerCharacter* a_player, RE::TESForm* a_held, bool a_left)
+		{
+			auto* object = a_held ? a_held->As<RE::TESBoundObject>() : nullptr;
+			if (!object || a_held->Is(RE::FormType::Spell) || a_held->Is(RE::FormType::Scroll)) {
+				return;
+			}
+			const RE::BGSEquipSlot* slot = nullptr;
+			if (a_held->Is(RE::FormType::Weapon)) {
+				if (auto* defaults = RE::BGSDefaultObjectManager::GetSingleton()) {
+#pragma push_macro("GetObject")
+#undef GetObject  // (Windows' GetObjectA)
+					slot = defaults->GetObject<RE::BGSEquipSlot>(a_left ? RE::DEFAULT_OBJECTS::kLeftHandEquip : RE::DEFAULT_OBJECTS::kRightHandEquip);
+#pragma pop_macro("GetObject")
+				}
+			}
+			RE::ActorEquipManager::GetSingleton()->UnequipObject(a_player, object, nullptr, 1, slot);
+			logger::info("hands: Minecraft took the {} hand: {} unequipped", a_left ? "left" : "right", a_held->GetName());
+		}
+
+		// SkyCraft+ : hand mixing (iHandMix). A hand holding both a Skyrim item and a Minecraft one goes
+		// to Minecraft's (1) or to the last picked (2); a_right and a_left come in as SkyrimHands left them.
+		void MixHands(RE::PlayerCharacter* a_player, bool& a_right, bool& a_left)
+		{
+			const int mode = State().handMix;
+			if (mode == 0) {
+				return;
+			}
+			constexpr RE::FormID kUnarmed = 0x1F4;
+			auto*                rightHeld = a_player->GetEquippedObject(false);
+			auto*                leftHeld = a_player->GetEquippedObject(true);
+			RE::TESForm*         right = rightHeld && rightHeld->GetFormID() != kUnarmed ? rightHeld : nullptr;
+			RE::TESForm*         left = leftHeld && leftHeld->GetFormID() != kUnarmed ? leftHeld : a_player->GetWornArmor(RE::BGSBipedObjectForm::BipedObjectSlot::kShield);
+			auto*                weapon = right ? right->As<RE::TESObjectWEAP>() : nullptr;
+			const bool           bothHands = weapon && (weapon->IsTwoHandedSword() || weapon->IsTwoHandedAxe() || weapon->IsBow() || weapon->IsCrossbow());
+			if (mode == 1) {
+				a_right = a_right && (mc.hands & 1) == 0;
+				a_left = bothHands ? a_right : a_left && (mc.hands & 2) == 0;
+				return;
+			}
+			static bool          started = false;
+			static std::uint64_t lastFrame = 0;
+			static std::uint8_t  rightSeen = 0, leftSeen = 0;
+			static RE::TESForm*  rightWas = nullptr;
+			static RE::TESForm*  leftWas = nullptr;
+			static bool          rightTaken = false, leftTaken = false;
+			static bool          watching = false;
+			if (!watching) {
+				if (auto* events = RE::ScriptEventSourceHolder::GetSingleton()) {
+					events->AddEventSink<RE::TESEquipEvent>(SpellEquipSink::Get());
+					watching = true;
+				}
+			}
+			const auto rightSeq = static_cast<std::uint8_t>(mc.hands >> 8), leftSeq = static_cast<std::uint8_t>(mc.hands >> 16);
+			if (!started || mc.frameCounter < lastFrame) {  // (Minecraft started again: its counts did too)
+				started = true;
+				rightSeen = rightSeq;
+				leftSeen = leftSeq;
+				rightWas = right;
+				leftWas = left;
+				SpellEquipSink::Get()->spell = 0;
+			}
+			lastFrame = mc.frameCounter;
+			// Equipped in Skyrim: that hand is Skyrim's.
+			if (right != rightWas) {
+				rightTaken = rightTaken && !right;
+				rightWas = right;
+			}
+			if (left != leftWas) {
+				leftTaken = leftTaken && !left;
+				leftWas = left;
+			}
+			if (const auto spell = SpellEquipSink::Get()->spell.exchange(0); spell != 0) {
+				rightTaken = rightTaken && !(right && right->GetFormID() == spell);
+				leftTaken = leftTaken && !(left && left->GetFormID() == spell);
+			}
+			// Switched in Minecraft (hotbar slot, off-hand swap): Minecraft's, and the Skyrim item there
+			// is unequipped, so equipping it again brings it back.
+			if (rightSeq != rightSeen) {
+				rightSeen = rightSeq;
+				if (right) {
+					rightTaken = true;
+					UnequipFromHand(a_player, right, false);
+				}
+			}
+			if (leftSeq != leftSeen) {
+				leftSeen = leftSeq;
+				if (bothHands) {
+					rightTaken = true;
+					UnequipFromHand(a_player, right, false);
+				} else if (left) {
+					leftTaken = true;
+					UnequipFromHand(a_player, left, true);
+				}
+			}
+			a_right = a_right && !rightTaken;
+			a_left = bothHands ? a_right : a_left && !leftTaken;
+		}
+
 		// SkyCraft+ : Skyrim weapons break blocks. The weapon's name or model path holds one of these
 		// (any case).
 		bool IsTool(RE::TESObjectWEAP* a_weapon, std::string_view a_word, std::string_view a_other)
@@ -1094,6 +1215,7 @@ namespace skycraft
 			bool rightHand = false, leftHand = false;
 			if (puppet && st.skyrimHandsOption) {
 				SkyrimHands(a_player, rightHand, leftHand);
+				MixHands(a_player, rightHand, leftHand);  // SkyCraft+ : hand mixing
 			}
 			if (rightHand != st.rightHandSkyrim || leftHand != st.leftHandSkyrim) {
 				logger::info("hands: right {}, left {}", rightHand ? "Skyrim's" : "Minecraft's", leftHand ? "Skyrim's" : "Minecraft's");
