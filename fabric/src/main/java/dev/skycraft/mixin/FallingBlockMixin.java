@@ -1,6 +1,7 @@
 package dev.skycraft.mixin;
 
 import dev.skycraft.world.SkyCollision;
+import dev.skycraft.world.SkyStructures;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.RandomSource;
@@ -17,6 +18,11 @@ public abstract class FallingBlockMixin {
 	@Inject(method = "tick", at = @At("HEAD"), cancellable = true)
 	private void skycraft$restOnSkyrim(BlockState state, ServerLevel level, BlockPos pos, RandomSource random, CallbackInfo ci) {
 		if (SkyCollision.supportsFromBelow(pos)) {
+			ci.cancel();
+		} else if (SkyStructures.holdsFall(pos)) {
+			// SkyCraft+ : structure sand. Its ground is laid only once the whole structure is placed:
+			// asked again after that.
+			level.scheduleTick(pos, state.getBlock(), 20);
 			ci.cancel();
 		}
 	}

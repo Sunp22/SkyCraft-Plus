@@ -10,6 +10,7 @@
     "EntityFluidInteractionMixin",
     "EntityPickMixin",
     "EntitySwimMixin",
+    "FallingBlockEntityMixin",
     "FallingBlockMixin",
     "FlowingFluidMixin",
     "GoalUtilsMixin",

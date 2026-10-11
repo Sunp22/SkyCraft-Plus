@@ -488,6 +488,11 @@ public final class SkyStructures {
 		return WRITTEN.contains(pos.asLong());
 	}
 
+	/** SkyCraft+ : structure sand. Sand the structure being placed put here waits for its ground. */
+	public static boolean holdsFall(BlockPos pos) {
+		return pending != null && WRITTEN.contains(pos.asLong());
+	}
+
 	public static void noteWritten(Level level, BlockPos pos) {
 		if (!level.isClientSide()) {
 			WRITTEN.add(pos.asLong());
@@ -584,7 +589,9 @@ public final class SkyStructures {
 				}
 				int lo, hi;
 				if (c[2] == UNDER) {
-					lo = Math.min(top, c[3]) - 1;
+					// SkyCraft+ : structure sand. At least three deep (under a piece standing on the land
+					// it was one: a desert's sand on top of nothing fell, and broke).
+					lo = Math.min(top - 3, c[3] - 1);
 					hi = Math.max(top + 1, c[4]);
 				} else if (c[2] == EDGE) {
 					lo = top - 3;
