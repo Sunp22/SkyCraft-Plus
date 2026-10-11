@@ -269,14 +269,14 @@ A controller (Xbox layout) plays Minecraft mode too, laid out like console Minec
 | RT / LT | Attack, break / use, place | |
 | A | Jump | Click |
 | B | Sneak | Close |
-| X | Drop item | Right-click |
-| Y | Inventory | Move a whole stack |
+| X | Skyrim activate (talk, open, loot) | Right-click |
+| Y | Minecraft inventory | Move a whole stack |
 | LB / RB | Hotbar left / right | Scroll |
-| D-pad | Up: Skyrim activate; right: Minecraft camera; down: Minecraft pause menu; left: Skyrim map | |
+| LB + RB together | Skyrim shout (hold to charge) | |
+| D-pad | Up: drop item; right: Skyrim inventory; down: Minecraft pause menu; left: Skyrim map | |
 | Start / Back | Skyrim journal / wait | |
 
-Movement is on or off (no slow walk yet), and Skyrim's shout has no controller button in
-Minecraft mode (RB is the hotbar); in Skyrim mode the controller is Skyrim's as usual.
+Movement is on or off (no slow walk yet). In Skyrim mode the controller is Skyrim's as usual.
 
 ## Known limitations
 
