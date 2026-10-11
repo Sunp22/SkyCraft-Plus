@@ -38,6 +38,13 @@ import net.fabricmc.fabric.api.attachment.v1.AttachmentType;
 import net.minecraft.server.level.TicketType;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.levelgen.GenerationStep;
+import net.minecraft.world.level.levelgen.structure.BoundingBox;
+import net.minecraft.world.level.levelgen.structure.Structure;
+import net.minecraft.world.level.levelgen.structure.StructureStart;
+import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.portal.TeleportTransition;
@@ -185,11 +192,74 @@ public final class SkyUnderground {
 			Integer near = nearestSaved(level, pos);
 			shift = near != null ? near : lastShift != UNSET ? lastShift : Math.round(VANILLA_SEA - SkyWorld.seaLevel());
 		}
+		Integer whole = structureShift(level, pos, shift);
+		if (whole != null) {
+			shift = whole;
+		}
 		List<Integer> updated = new ArrayList<>(shifts != null && shifts.size() == 256 ? shifts : Collections.nCopies(256, UNSET));
 		updated.set(index, shift);
 		chunk.setAttached(SHIFT, updated);
 		lastShift = shift;
 		return shift;
+	}
+
+	/**
+	 * An underground structure (stronghold, mineshaft, trial chambers, ancient city) comes up whole:
+	 * one shift for all its columns, so its floors stay level and an End portal stays in one piece
+	 * (column by column, Skyrim's sloping land stepped them). Chosen from Skyrim's land at its
+	 * middle the first time any of it is dug, and saved with the world.
+	 */
+	public static final AttachmentType<Map<String, Integer>> STRUCTURE_SHIFTS = AttachmentRegistry.<Map<String, Integer>>builder()
+		.persistent(Codec.unboundedMap(Codec.STRING, Codec.INT))
+		.buildAndRegister(Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "underground_structure_shift"));
+	private static final Map<String, BoundingBox> STRUCTURE_BOXES = new HashMap<>();
+
+	private static @Nullable Integer structureShift(ServerLevel level, BlockPos pos, int fallback) {
+		ServerLevel hidden = level.getServer().getLevel(UNDERGROUND);
+		ChunkAccess here = hidden == null ? null : hidden.getChunkSource().getChunkNow(pos.getX() >> 4, pos.getZ() >> 4);
+		if (here == null) {
+			return null;
+		}
+		for (Map.Entry<Structure, LongSet> entry : here.getAllReferences().entrySet()) {
+			Structure structure = entry.getKey();
+			GenerationStep.Decoration step = structure.step();
+			if (step != GenerationStep.Decoration.STRONGHOLDS && step != GenerationStep.Decoration.UNDERGROUND_STRUCTURES
+				&& step != GenerationStep.Decoration.UNDERGROUND_DECORATION) {
+				continue;
+			}
+			Identifier id = hidden.registryAccess().lookupOrThrow(Registries.STRUCTURE).getKey(structure);
+			for (long ref : entry.getValue()) {
+				String key = id + "@" + ref;
+				String boxKey = hidden.getSeed() + "|" + key;
+				BoundingBox box = STRUCTURE_BOXES.get(boxKey);
+				if (box == null) {
+					ChunkPos start = ChunkPos.unpack(ref);
+					ChunkAccess startChunk = hidden.getChunk(start.x(), start.z(), ChunkStatus.STRUCTURE_STARTS, true);
+					StructureStart found = startChunk == null ? null : startChunk.getStartForStructure(structure);
+					if (found == null || !found.isValid()) {
+						continue;
+					}
+					box = found.getBoundingBox();
+					STRUCTURE_BOXES.put(boxKey, box);
+				}
+				if (pos.getX() < box.minX() || pos.getX() > box.maxX() || pos.getZ() < box.minZ() || pos.getZ() > box.maxZ()) {
+					continue;
+				}
+				Map<String, Integer> saved = level.getAttached(STRUCTURE_SHIFTS);
+				Integer shift = saved == null ? null : saved.get(key);
+				if (shift == null) {
+					BlockPos middle = box.getCenter();
+					double land = SkyGround.smoothed(middle.getX(), middle.getZ());
+					shift = Double.isNaN(land) ? fallback : TOP - (int) Math.floor(land);
+					Map<String, Integer> updated = new HashMap<>(saved != null ? saved : Map.of());
+					updated.put(key, shift);
+					level.setAttached(STRUCTURE_SHIFTS, updated);
+					SkyCraft.LOG.info("SkyCraft: underground: {} at {} comes up level (shift {})", id, middle.toShortString(), shift);
+				}
+				return shift;
+			}
+		}
+		return null;
 	}
 
 	/** The nearest column with a saved shift, within 8 blocks, in loaded chunks. */
