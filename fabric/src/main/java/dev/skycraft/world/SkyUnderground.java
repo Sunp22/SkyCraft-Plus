@@ -43,6 +43,8 @@ import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.StructureStart;
+import net.minecraft.world.level.levelgen.structure.StructurePiece;
+import net.minecraft.world.level.levelgen.structure.structures.StrongholdPieces;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
@@ -211,7 +213,8 @@ public final class SkyUnderground {
 	public static final AttachmentType<Map<String, Integer>> STRUCTURE_SHIFTS = AttachmentRegistry.<Map<String, Integer>>builder()
 		.persistent(Codec.unboundedMap(Codec.STRING, Codec.INT))
 		.buildAndRegister(Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "underground_structure_shift"));
-	private static final Map<String, BoundingBox> STRUCTURE_BOXES = new HashMap<>();
+	private static final Map<String, StructureStart> STRUCTURE_STARTS = new HashMap<>();
+	private static final java.util.Set<String> PORTAL_ROOMS_TOLD = new java.util.HashSet<>();
 	private static final java.util.Set<String> LEVEL_STRUCTURES = java.util.Set.of("stronghold", "mineshaft", "mineshaft_mesa", "trial_chambers", "ancient_city");
 
 	private static @Nullable Integer structureShift(ServerLevel level, BlockPos pos, int fallback) {
@@ -230,17 +233,17 @@ public final class SkyUnderground {
 			for (long ref : entry.getValue()) {
 				String key = id + "@" + ref;
 				String boxKey = hidden.getSeed() + "|" + key;
-				BoundingBox box = STRUCTURE_BOXES.get(boxKey);
-				if (box == null) {
+				StructureStart found = STRUCTURE_STARTS.get(boxKey);
+				if (found == null) {
 					ChunkPos start = ChunkPos.unpack(ref);
 					ChunkAccess startChunk = hidden.getChunk(start.x(), start.z(), ChunkStatus.STRUCTURE_STARTS, true);
-					StructureStart found = startChunk == null ? null : startChunk.getStartForStructure(structure);
+					found = startChunk == null ? null : startChunk.getStartForStructure(structure);
 					if (found == null || !found.isValid()) {
 						continue;
 					}
-					box = found.getBoundingBox();
-					STRUCTURE_BOXES.put(boxKey, box);
+					STRUCTURE_STARTS.put(boxKey, found);
 				}
+				BoundingBox box = found.getBoundingBox();
 				if (pos.getX() < box.minX() || pos.getX() > box.maxX() || pos.getZ() < box.minZ() || pos.getZ() > box.maxZ()) {
 					continue;
 				}
@@ -254,6 +257,15 @@ public final class SkyUnderground {
 					updated.put(key, shift);
 					level.setAttached(STRUCTURE_SHIFTS, updated);
 					SkyCraft.LOG.info("SkyCraft: underground: {} at {} comes up level (shift {})", id, middle.toShortString(), shift);
+				}
+				if (PORTAL_ROOMS_TOLD.add(boxKey)) {
+					// Where its End portal is (here, not in the hidden world), for whoever goes looking.
+					for (StructurePiece piece : found.getPieces()) {
+						if (piece instanceof StrongholdPieces.PortalRoom) {
+							BlockPos room = piece.getBoundingBox().getCenter();
+							SkyCraft.LOG.info("SkyCraft: underground: {}'s End portal room is at {} {} {}", id, room.getX(), room.getY() - shift, room.getZ());
+						}
+					}
 				}
 				return shift;
 			}
