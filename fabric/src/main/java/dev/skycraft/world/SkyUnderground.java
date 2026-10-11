@@ -40,7 +40,6 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
-import net.minecraft.world.level.levelgen.GenerationStep;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.StructureStart;
@@ -213,6 +212,7 @@ public final class SkyUnderground {
 		.persistent(Codec.unboundedMap(Codec.STRING, Codec.INT))
 		.buildAndRegister(Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "underground_structure_shift"));
 	private static final Map<String, BoundingBox> STRUCTURE_BOXES = new HashMap<>();
+	private static final java.util.Set<String> LEVEL_STRUCTURES = java.util.Set.of("stronghold", "mineshaft", "mineshaft_mesa", "trial_chambers", "ancient_city");
 
 	private static @Nullable Integer structureShift(ServerLevel level, BlockPos pos, int fallback) {
 		ServerLevel hidden = level.getServer().getLevel(UNDERGROUND);
@@ -222,12 +222,11 @@ public final class SkyUnderground {
 		}
 		for (Map.Entry<Structure, LongSet> entry : here.getAllReferences().entrySet()) {
 			Structure structure = entry.getKey();
-			GenerationStep.Decoration step = structure.step();
-			if (step != GenerationStep.Decoration.STRONGHOLDS && step != GenerationStep.Decoration.UNDERGROUND_STRUCTURES
-				&& step != GenerationStep.Decoration.UNDERGROUND_DECORATION) {
+			Identifier id = hidden.registryAccess().lookupOrThrow(Registries.STRUCTURE).getKey(structure);
+			// By name: the stronghold's generation step is "surface_structures" (it's buried).
+			if (id == null || !LEVEL_STRUCTURES.contains(id.getPath())) {
 				continue;
 			}
-			Identifier id = hidden.registryAccess().lookupOrThrow(Registries.STRUCTURE).getKey(structure);
 			for (long ref : entry.getValue()) {
 				String key = id + "@" + ref;
 				String boxKey = hidden.getSeed() + "|" + key;
