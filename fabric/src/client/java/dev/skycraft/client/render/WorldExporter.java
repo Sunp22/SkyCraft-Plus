@@ -104,7 +104,9 @@ public final class WorldExporter {
 	/** A block the player just placed or broke: re-mesh ahead of everything else. */
 	public static void markDirtyNow(int sx, int sy, int sz) {
 		synchronized (DIRTY) {
-			DIRTY.addAndMoveToFirst(SectionPos.asLong(sx, sy, sz));
+			long key = SectionPos.asLong(sx, sy, sz);
+			DIRTY.addAndMoveToFirst(key);
+			URGENT.add(key);
 		}
 	}
 
@@ -222,18 +224,66 @@ public final class WorldExporter {
 		// Real meshing is limited per frame.
 		long deadline = System.nanoTime() + 3_000_000L;
 		int meshed = 0;
-		while (meshed < SECTIONS_PER_FRAME && System.nanoTime() < deadline) {
-			long key;
+		long[] order = nearestFirst();
+		for (int i = 0; i < order.length && meshed < SECTIONS_PER_FRAME && System.nanoTime() < deadline; i++) {
+			long key = order[i];
 			synchronized (DIRTY) {
-				if (DIRTY.isEmpty()) {
-					return;
+				if (!DIRTY.remove(key)) {
+					continue;
 				}
-				key = DIRTY.removeFirstLong();
+				URGENT.remove(key);
 			}
 			if (meshSection(level, key)) {
 				meshed++;
 			}
 		}
+	}
+
+	/**
+	 * SkyCraft+ : performance. The dirty sections, most wanted first: what the player just changed,
+	 * then by distance from the camera, those behind it counting as four times as far (a cave or a
+	 * structure opens in front of the player first, rather than in the order it was revealed).
+	 */
+	private static final LongOpenHashSet URGENT = new LongOpenHashSet();
+	private static final int SORT_AT_MOST = 4096;
+
+	private static long[] nearestFirst() {
+		long[] keys;
+		synchronized (DIRTY) {
+			int n = Math.min(DIRTY.size(), SORT_AT_MOST);
+			keys = new long[n];
+			var it = DIRTY.iterator();
+			for (int i = 0; i < n; i++) {
+				keys[i] = it.nextLong();
+			}
+		}
+		Minecraft minecraft = Minecraft.getInstance();
+		if (keys.length <= 1 || minecraft.player == null) {
+			return keys;
+		}
+		var eye = minecraft.player.getEyePosition();
+		var look = minecraft.player.getViewVector(1.0F);
+		long[] packed = new long[keys.length];
+		for (int i = 0; i < keys.length; i++) {
+			long key = keys[i];
+			double dx = SectionPos.x(key) * 16 + 8 - eye.x, dy = SectionPos.y(key) * 16 + 8 - eye.y, dz = SectionPos.z(key) * 16 + 8 - eye.z;
+			double d2 = dx * dx + dy * dy + dz * dz;
+			if (dx * look.x + dy * look.y + dz * look.z < -16.0) {
+				d2 *= 4.0;
+			}
+			boolean urgent;
+			synchronized (DIRTY) {
+				urgent = URGENT.contains(key);
+			}
+			long score = urgent ? 0L : Math.min((long) d2 + 1L, 0x7FFFFFFFL);
+			packed[i] = (score << 32) | i;
+		}
+		java.util.Arrays.sort(packed);
+		long[] order = new long[keys.length];
+		for (int i = 0; i < packed.length; i++) {
+			order[i] = keys[(int) packed[i]];
+		}
+		return order;
 	}
 
 	/** One RenShapeBox: a box of a block's collision shape in sixteenths, rounded outwards. */

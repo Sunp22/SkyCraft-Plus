@@ -52,7 +52,6 @@ public final class SkyDigClient {
 	private static final Long2ObjectOpenHashMap<SkyDig.DugColumn> SEEN = new Long2ObjectOpenHashMap<>();
 	private static final SkyDig.DugColumn NONE = new SkyDig.DugColumn(List.of());
 	private static int seenWorld = Integer.MIN_VALUE;
-	private static int pollTicks;
 
 	/** The Skyrim world the player is in (worldspace or interior cell). */
 	public static int world() {
@@ -141,9 +140,7 @@ public final class SkyDigClient {
 		SkyDig.clientWorld = world;
 		SkyDig.clientDug = (x, y, z) -> SkyDig.isDug(level, world, new BlockPos(x, y, z));
 		reveal(level);
-		if (++pollTicks % 5 == 0) {
-			pollDug(minecraft, level);
-		}
+		pollDug(minecraft, level); // SkyCraft+ : performance: every tick (was every 5th), a cave opens without waiting
 		// Skyrim's geometry around dug cells arrived or changed: their walls are drawn again.
 		SkyCollision.takeChangedRegions(key -> {
 			int rx = BlockPos.getX(key), ry = BlockPos.getY(key), rz = BlockPos.getZ(key);
@@ -261,7 +258,7 @@ public final class SkyDigClient {
 						}
 						if (worldChanged || s.world() == world) {
 							// Its walls, and the walls next door (a dug cell can open one up).
-							WorldExporter.markDirtyNow(cx, s.sectionY(), cz);
+							WorldExporter.markDirty(cx, s.sectionY(), cz); // (nearest first: WorldExporter)
 							WorldExporter.markDirty(cx - 1, s.sectionY(), cz);
 							WorldExporter.markDirty(cx + 1, s.sectionY(), cz);
 							WorldExporter.markDirty(cx, s.sectionY() - 1, cz);
