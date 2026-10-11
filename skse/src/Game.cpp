@@ -967,6 +967,7 @@ namespace skycraft
 				}
 				st.playerUnderLand = under;
 				underLandRecently = under ? 3.0f : std::max(0.0f, underLandRecently - a_delta);
+				DeepHide::PerFrame(a_player, under && (mc.flags & proto::kMcDeepUnderLand) != 0, a_delta);  // SkyCraft+
 			}
 			if (teleportPending && !loading) {
 				++teleportSeq;

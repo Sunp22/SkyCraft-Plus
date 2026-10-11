@@ -44,6 +44,7 @@ public final class SkyClient {
 	private static Vec3 holdPos;
 	private static int sentHands = -1; // SkyCraft+ : multiplayer (the guest's Skyrim hands, as last sent)
 	private static boolean underLand; // SkyCraft+ : the underground (kept while no land is known around)
+	private static boolean deepUnderLand; // SkyCraft+ : performance
 	private static Vec3 unlinkedHold;
 	private static long holdSince;
 	private static long qpcFreq;
@@ -578,11 +579,20 @@ public final class SkyClient {
 			if (under != null) {
 				underLand = under;
 			}
+			// SkyCraft+ : performance. Deep down Skyrim stops drawing its world (in at 24 blocks, out at 20).
+			Boolean deep = dev.skycraft.world.SkyGround.underLoosely(player.getX(), player.getEyeY(), player.getZ(), deepUnderLand ? 20.0 : 24.0);
+			if (deep != null) {
+				deepUnderLand = deep;
+			}
 		} else {
 			underLand = false;
+			deepUnderLand = false;
 		}
 		if (underLand) {
 			flags |= Proto.MC_UNDER_LAND;
+			if (deepUnderLand) {
+				flags |= Proto.MC_DEEP_UNDER_LAND;
+			}
 		}
 		mc.flags = flags;
 		mc.sensitivity = minecraft.options.sensitivity().get().floatValue();

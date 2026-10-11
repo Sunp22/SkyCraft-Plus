@@ -58,6 +58,8 @@ namespace skycraft
 		float                      maxHitHealth{ 10.0f };
 		// SkyCraft+ : the underground. Skyrim's land is more than two blocks above the player (a mine).
 		std::atomic<bool>          playerUnderLand{ false };
+		// SkyCraft+ : performance. Deep down, Skyrim's world isn't drawn ([Worlds] bHideWorldDeep).
+		bool                       hideWorldDeepOption{ true };
 
 		// Look direction in MC degrees; integrated from raw mouse input (main thread).
 		float yaw{ 0.0f };
@@ -225,6 +227,13 @@ namespace skycraft
 		std::uint32_t Generation();
 		// Main thread, every frame: NPCs overlapping solid Minecraft blocks are pushed back out.
 		void PushActorsOut(RE::PlayerCharacter* a_player, float a_delta);
+	}
+
+	// SkyCraft+ : performance. Deep underground Skyrim's objects and distant land aren't drawn.
+	namespace DeepHide
+	{
+		// Main thread, every frame.
+		void PerFrame(RE::PlayerCharacter* a_player, bool a_deep, float a_delta);
 	}
 
 	// SkyCraft+ : Minecraft's structures on Skyrim's map and compass.

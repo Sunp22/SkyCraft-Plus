@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 30;
+	inline constexpr std::uint32_t kVersion = 31;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -170,6 +170,9 @@ namespace skycraft::proto
 		// SkyCraft+ : the underground (v27). The player is under Skyrim's land (a mine): little or nothing
 		// of Skyrim's is on screen, and far down Skyrim may skip drawing its world at all.
 		kMcUnderLand = 1u << 9,
+		// SkyCraft+ : performance (v31). Deep under Skyrim's land (24 blocks and more): none of
+		// Skyrim's land, buildings or distant land can be seen, so Skyrim doesn't draw them.
+		kMcDeepUnderLand = 1u << 10,
 	};
 
 	// SkyCraft+ : McState::dimension. 3 and up are Minecraft's own worlds: Skyrim parks its player in
