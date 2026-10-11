@@ -115,6 +115,29 @@ public final class SkyCombat {
 	/** SkyCraft+ : hand ownership. The host's hands Skyrim holds (set by the client each frame). */
 	public static volatile boolean rightHandSkyrim, leftHandSkyrim;
 
+	/** SkyCraft+ : Skyrim weapons break blocks. What the host's Skyrim hands hold (Proto.HAND_*). */
+	public static volatile int rightHandKind, leftHandKind;
+
+	/**
+	 * SkyCraft+ : Skyrim weapons break blocks. The Minecraft tool the Skyrim weapon in this hand
+	 * mines as (SkyWeaponTools.tool), or empty: Minecraft's hand, or nothing that mines.
+	 */
+	public static net.minecraft.world.item.ItemStack skyrimTool(net.minecraft.world.entity.player.Player player, net.minecraft.world.InteractionHand hand) {
+		if (!(player instanceof net.minecraft.server.level.ServerPlayer sp) || !skyrimHolds(player, hand)) {
+			return net.minecraft.world.item.ItemStack.EMPTY;
+		}
+		var main = player.getMainArm();
+		boolean right = (hand == net.minecraft.world.InteractionHand.MAIN_HAND ? main : main.getOpposite()) == net.minecraft.world.entity.HumanoidArm.RIGHT;
+		int kind;
+		if (dev.skycraft.net.SkyNet.isHost(sp)) {
+			kind = right ? rightHandKind : leftHandKind;
+		} else {
+			int hands = dev.skycraft.net.SkyNet.guestHandsAndKinds(sp);
+			kind = right ? (hands >> 8) & 0xFF : (hands >> 16) & 0xFF;
+		}
+		return SkyWeaponTools.tool(kind);
+	}
+
 	public static boolean skyrimHolds(net.minecraft.world.entity.player.Player player, net.minecraft.world.InteractionHand hand) {
 		if (!(player instanceof net.minecraft.server.level.ServerPlayer sp)) {
 			return false;

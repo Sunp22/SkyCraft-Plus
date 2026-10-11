@@ -64,7 +64,8 @@ public final class SkyHands {
 		net.minecraft.world.item.Item item = switch (kind) {
 			case dev.skycraft.link.Proto.HAND_SWORD -> net.minecraft.world.item.Items.IRON_SWORD;
 			case dev.skycraft.link.Proto.HAND_DAGGER -> net.minecraft.world.item.Items.STONE_SWORD;
-			case dev.skycraft.link.Proto.HAND_WAR_AXE -> net.minecraft.world.item.Items.IRON_AXE;
+			case dev.skycraft.link.Proto.HAND_WAR_AXE, dev.skycraft.link.Proto.HAND_WOOD_AXE -> net.minecraft.world.item.Items.IRON_AXE;
+			case dev.skycraft.link.Proto.HAND_PICKAXE -> net.minecraft.world.item.Items.IRON_PICKAXE;  // SkyCraft+ : v32
 			case dev.skycraft.link.Proto.HAND_MACE, dev.skycraft.link.Proto.HAND_WARHAMMER -> net.minecraft.world.item.Items.MACE;
 			case dev.skycraft.link.Proto.HAND_GREATSWORD -> net.minecraft.world.item.Items.DIAMOND_SWORD;
 			case dev.skycraft.link.Proto.HAND_BATTLEAXE -> net.minecraft.world.item.Items.DIAMOND_AXE;

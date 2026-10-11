@@ -258,7 +258,14 @@ public final class SkyDig {
 		}
 		chunk.setAttached(DUG, column.with(world, pos.getX(), pos.getY(), pos.getZ()));
 		BlockState state = materialState(material);
-		if (!player.isCreative()) {
+		// SkyCraft+ : Skyrim weapons break blocks. A Skyrim weapon in the main hand mines as its
+		// stand-in tool (the hotbar item hidden behind it isn't used, nor worn).
+		ItemStack skyrimTool = dev.skycraft.combat.SkyCombat.skyrimTool(player, net.minecraft.world.InteractionHand.MAIN_HAND);
+		if (!skyrimTool.isEmpty() && !player.isCreative()) {
+			if (dev.skycraft.combat.SkyWeaponTools.correctTool(state, skyrimTool)) {
+				state.getBlock().playerDestroy(level, player, pos, state, null, skyrimTool);
+			}
+		} else if (!player.isCreative()) {
 			ItemStack tool = player.getMainHandItem();
 			ItemStack used = tool.copy();
 			boolean harvest = player.hasCorrectToolForDrops(state);

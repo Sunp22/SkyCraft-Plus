@@ -90,7 +90,7 @@ public final class SkyNet {
 	 * server; a guest's sends it to the host's.
 	 */
 	public record Act(int kind, int code, float a, float b, BlockPos pos, int face, float hx, float hy, float hz) implements CustomPacketPayload {
-		public static final int USE_BLOCK = 0, HEAL = 1, SKYRIM_HIT = 2, SET_HEALTH = 3, HANDS = 4;
+		public static final int USE_BLOCK = 0, HEAL = 1, SKYRIM_HIT = 2, SET_HEALTH = 3, HANDS = 4, BLOCK_HIT = 5;
 		public static final Type<Act> TYPE = new Type<>(Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "act"));
 		public static final StreamCodec<RegistryFriendlyByteBuf, Act> CODEC = StreamCodec.of((buf, act) -> {
 			buf.writeVarInt(act.kind);
@@ -119,6 +119,11 @@ public final class SkyNet {
 	private static final java.util.Map<java.util.UUID, Integer> GUEST_HANDS = new java.util.concurrent.ConcurrentHashMap<>();
 
 	public static int guestHands(ServerPlayer player) {
+		return GUEST_HANDS.getOrDefault(player.getUUID(), 0) & 3;
+	}
+
+	/** SkyCraft+ : Skyrim weapons break blocks. As guestHands, with what they hold (Proto.HAND_*) in bits 8-15 (right) and 16-23 (left). */
+	public static int guestHandsAndKinds(ServerPlayer player) {
 		return GUEST_HANDS.getOrDefault(player.getUUID(), 0);
 	}
 
@@ -150,7 +155,9 @@ public final class SkyNet {
 				}
 			}
 			case Act.SKYRIM_HIT -> SkyCombat.skyrimMelee(player, act.code, Math.max(0.0F, Math.min(act.a, 1000.0F)), Math.max(0.0F, Math.min(act.b, 8.0F)));
-			case Act.HANDS -> GUEST_HANDS.put(player.getUUID(), act.code & 3);
+			case Act.HANDS -> GUEST_HANDS.put(player.getUUID(), act.code & 0xFFFF03);
+			// SkyCraft+ : Skyrim weapons break blocks. The swing landed on this Minecraft block.
+			case Act.BLOCK_HIT -> dev.skycraft.combat.SkyWeaponTools.hit(player, act.pos, (act.code & dev.skycraft.link.Proto.SKYRIM_HIT_LEFT) != 0, (act.code & dev.skycraft.link.Proto.SKYRIM_HIT_POWER) != 0);
 			default -> {
 			}
 		}

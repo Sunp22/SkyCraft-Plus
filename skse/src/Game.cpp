@@ -474,6 +474,21 @@ namespace skycraft
 			}
 		}
 
+		// SkyCraft+ : Skyrim weapons break blocks. The weapon's name or model path holds one of these
+		// (any case).
+		bool IsTool(RE::TESObjectWEAP* a_weapon, std::string_view a_word, std::string_view a_other)
+		{
+			auto has = [&](const char* a_text) {
+				if (!a_text) {
+					return false;
+				}
+				std::string text(a_text);
+				std::ranges::transform(text, text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+				return text.find(a_word) != std::string::npos || text.find(a_other) != std::string::npos;
+			};
+			return has(a_weapon->GetName()) || has(a_weapon->GetModel());
+		}
+
 		// SkyCraft+ : what a Skyrim-held hand holds, for the Minecraft body's stand-in in third person.
 		std::uint8_t HandKind(RE::PlayerCharacter* a_player, bool a_left)
 		{
@@ -498,6 +513,14 @@ namespace skycraft
 			case T::kOneHandDagger:
 				return proto::kHandDagger;
 			case T::kOneHandAxe:
+				// SkyCraft+ : Skyrim weapons break blocks. The pickaxes and the woodcutter's axe are war
+				// axes to Skyrim; known by their name or model.
+				if (IsTool(weapon, "pickaxe", "pick axe")) {
+					return proto::kHandPickaxe;
+				}
+				if (IsTool(weapon, "woodcutter", "woodaxe")) {
+					return proto::kHandWoodAxe;
+				}
 				return proto::kHandWarAxe;
 			case T::kOneHandMace:
 				return proto::kHandMace;

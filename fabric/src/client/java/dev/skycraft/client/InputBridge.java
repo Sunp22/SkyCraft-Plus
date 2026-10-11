@@ -72,7 +72,10 @@ public final class InputBridge {
 			case Proto.IN_USE -> SkyClient.useBlockInView(minecraft);
 			// SkyCraft+ : a Skyrim healing spell or potion heals Minecraft's hearts (one health pool).
 			case Proto.IN_HEAL -> SkyClient.act(minecraft, dev.skycraft.net.SkyNet.Act.simple(dev.skycraft.net.SkyNet.Act.HEAL, 0, a / 10000.0F, 0.0F));
-			case Proto.IN_SKYRIM_HIT -> SkyClient.act(minecraft, dev.skycraft.net.SkyNet.Act.simple(dev.skycraft.net.SkyNet.Act.SKYRIM_HIT, code, a / 100.0F, b / 100.0F));
+			case Proto.IN_SKYRIM_HIT -> {
+				SkyClient.act(minecraft, dev.skycraft.net.SkyNet.Act.simple(dev.skycraft.net.SkyNet.Act.SKYRIM_HIT, code, a / 100.0F, b / 100.0F));
+				SkyClient.skyrimSwingOnBlock(minecraft, code);  // SkyCraft+ : Skyrim weapons break blocks
+			}
 			default -> {
 			}
 		}

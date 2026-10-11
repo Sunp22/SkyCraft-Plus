@@ -63,6 +63,19 @@ public final class SkyDigClient {
 	 * as mining the block it's made of would take. Returns true if it's being mined.
 	 */
 	public static boolean attack(Minecraft minecraft) {
+		return mine(minecraft, null, 1.0F);
+	}
+
+	/**
+	 * SkyCraft+ : Skyrim weapons break blocks. A Skyrim swing landed on Skyrim geometry: as many
+	 * ticks' mining as a swing is worth, with the tool standing in for the weapon.
+	 */
+	public static void weaponHit(Minecraft minecraft, net.minecraft.world.item.ItemStack tool, float worth) {
+		mine(minecraft, tool, worth);
+	}
+
+	/** Mining with the hand's own item (tool null: a tick of the held button) or a Skyrim weapon's stand-in. */
+	private static boolean mine(Minecraft minecraft, net.minecraft.world.item.ItemStack tool, float worth) {
 		if (!(minecraft.hitResult instanceof SkyClip.SkyrimHitResult result) || minecraft.level == null || minecraft.player == null || minecraft.gameMode == null) {
 			return false;
 		}
@@ -84,10 +97,10 @@ public final class SkyDigClient {
 			return false;
 		}
 		// Once a tick (a click and a held button can both land in the same one).
-		if (pos.equals(mining) && miningTick == ticks) {
+		if (tool == null && pos.equals(mining) && miningTick == ticks) {
 			return true;
 		}
-		if (!pos.equals(mining) || ticks - miningTick > 2) {
+		if (!pos.equals(mining) || ticks - miningTick > (tool == null ? 2 : 100)) {  // (swings come a second or so apart)
 			mining = pos;
 			progress = 0.0F;
 			hits = 0;
@@ -95,8 +108,10 @@ public final class SkyDigClient {
 		miningTick = ticks;
 		int material = hit.tri().material == 0 ? DIG_STONE : hit.tri().material;
 		BlockState state = SkyDig.materialState(material);
-		progress += minecraft.player.getAbilities().instabuild ? 1.0F : state.getDestroyProgress(minecraft.player, minecraft.level, pos);
-		if (hits++ % 4 == 0) {
+		progress += minecraft.player.getAbilities().instabuild ? 1.0F
+			: tool == null ? state.getDestroyProgress(minecraft.player, minecraft.level, pos)
+			: dev.skycraft.combat.SkyWeaponTools.progressPerTick(state, minecraft.level, pos, tool) * worth;
+		if (hits++ % 4 == 0 || tool != null) {
 			var sound = state.getSoundType();
 			minecraft.getSoundManager().play(new SimpleSoundInstance(
 				sound.getHitSound(), SoundSource.BLOCKS, (sound.getVolume() + 1.0F) / 8.0F, sound.getPitch() * 0.5F, SoundInstance.createUnseededRandom(), pos

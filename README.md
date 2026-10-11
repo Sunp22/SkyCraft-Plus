@@ -23,6 +23,10 @@ first, install the zip the same way, and start a **new Minecraft world** to get 
   Minecraft item in the other, like Flames in one hand and a diamond sword in the other.
   Two-handers and bows take both hands.
 - In third person, your Minecraft body holds a matching Minecraft item for your Skyrim weapon.
+- **Skyrim weapons break blocks:** swing at a Minecraft block (or Skyrim's ground) and it wears
+  down like it would with a matching Minecraft tool. Skyrim's pickaxe mines stone and ore, the
+  woodcutter's axe and war axes chop wood, and swords and maces work slowly on anything soft.
+  Power attacks count for more. (`skyrimWeaponsBreakBlocks` in `skycraft.properties`.)
 
 **Skyrim combat works on Minecraft mobs**
 - Skyrim melee, spells (Flames, bolts, beams), shouts and arrows hit Minecraft mobs, and fire

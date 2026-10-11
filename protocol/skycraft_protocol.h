@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 31;
+	inline constexpr std::uint32_t kVersion = 32;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -150,6 +150,8 @@ namespace skycraft::proto
 		kHandSpell = 11,
 		kHandShield = 12,
 		kHandTorch = 13,
+		kHandPickaxe = 14,   // SkyCraft+ : v32, tools (one-handed axes that are a pickaxe or a woodcutter's
+		kHandWoodAxe = 15,   // axe): they break Minecraft's blocks as Minecraft's own tools do
 	};
 	static_assert(sizeof(SkyState) == 0x50);
 

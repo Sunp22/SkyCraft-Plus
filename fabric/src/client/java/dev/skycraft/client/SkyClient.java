@@ -166,7 +166,10 @@ public final class SkyClient {
 		SkyCombat.rightHandSkyrim = sky.rightHandSkyrim();
 		SkyCombat.leftHandSkyrim = sky.leftHandSkyrim();
 		// SkyCraft+ : multiplayer. A guest tells the host's server which hands its Skyrim holds.
-		int hands = (sky.rightHandSkyrim() ? 1 : 0) | (sky.leftHandSkyrim() ? 2 : 0);
+		// SkyCraft+ : Skyrim weapons break blocks. And what they hold (the tool each mines as).
+		SkyCombat.rightHandKind = sky.rightHandKind;
+		SkyCombat.leftHandKind = sky.leftHandKind;
+		int hands = (sky.rightHandSkyrim() ? 1 : 0) | (sky.leftHandSkyrim() ? 2 : 0) | (sky.rightHandKind & 0xFF) << 8 | (sky.leftHandKind & 0xFF) << 16;
 		if (hands != sentHands && minecraft.getSingleplayerServer() == null
 			&& net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.canSend(dev.skycraft.net.SkyNet.Act.TYPE)) {
 			sentHands = hands;  // (only once it can go: sent too early, it was dropped and never sent again)
@@ -280,6 +283,32 @@ public final class SkyClient {
 		var at = hit.getLocation();
 		act(minecraft, new dev.skycraft.net.SkyNet.Act(dev.skycraft.net.SkyNet.Act.USE_BLOCK, 0, 0.0F, 0.0F, hit.getBlockPos(), hit.getDirection().get3DDataValue(),
 			(float) at.x, (float) at.y, (float) at.z));
+	}
+
+	/**
+	 * SkyCraft+ : Skyrim weapons break blocks. A Skyrim swing (its hit frame) with a block under the
+	 * crosshair: a Minecraft block is worn down by the server, Skyrim's ground mined here as a held
+	 * button mines it. Shield bashes, spells and bows don't.
+	 */
+	public static void skyrimSwingOnBlock(Minecraft minecraft, int flags) {
+		if ((flags & Proto.SKYRIM_HIT_BASH) != 0 || minecraft.player == null || minecraft.gui.screen() != null) {
+			return;
+		}
+		var sky = sky();
+		var tool = dev.skycraft.combat.SkyWeaponTools.tool((flags & Proto.SKYRIM_HIT_LEFT) != 0 ? sky.leftHandKind : sky.rightHandKind);
+		if (tool.isEmpty()) {
+			return;
+		}
+		if (minecraft.hitResult instanceof dev.skycraft.world.SkyClip.SkyrimHitResult) {
+			if (dev.skycraft.combat.SkyWeaponTools.enabled || minecraft.getSingleplayerServer() == null) {
+				SkyDigClient.weaponHit(minecraft, tool, (flags & Proto.SKYRIM_HIT_POWER) != 0
+					? dev.skycraft.combat.SkyWeaponTools.POWER_SWING_TICKS : dev.skycraft.combat.SkyWeaponTools.SWING_TICKS);
+			}
+		} else if (minecraft.hitResult instanceof BlockHitResult hit && hit.getType() == HitResult.Type.BLOCK) {
+			var at = hit.getLocation();
+			act(minecraft, new dev.skycraft.net.SkyNet.Act(dev.skycraft.net.SkyNet.Act.BLOCK_HIT, flags, 0.0F, 0.0F, hit.getBlockPos(), hit.getDirection().get3DDataValue(),
+				(float) at.x, (float) at.y, (float) at.z));
+		}
 	}
 
 	/**
