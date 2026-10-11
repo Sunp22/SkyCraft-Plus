@@ -126,8 +126,6 @@ namespace skycraft
 
 			State().skyrimHandsOption = ini.GetBoolValue("Controls", "bSkyrimHands", false);
 			logger::info("Skyrim hands (equip Skyrim gear in a Minecraft hand): {}", State().skyrimHandsOption ? "on" : "off");
-			State().handMix = std::clamp(static_cast<int>(ini.GetLongValue("Controls", "iHandMix", 0)), 0, 2);
-			logger::info("hand mixing: {}", State().handMix == 1 ? "Minecraft's item wins" : State().handMix == 2 ? "the last picked wins" : "Skyrim's item wins");
 
 			// SkyCraft+ : the Nether and the End.
 			State().minecraftWorldsOption = ini.GetBoolValue("Worlds", "bMinecraftWorlds", true);

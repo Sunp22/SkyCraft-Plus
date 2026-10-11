@@ -228,7 +228,9 @@ namespace skycraft::proto
 		std::uint32_t dimension;
 		// SkyCraft+ : hand mixing (v33). Minecraft's hands by arm: bit 0 the right arm holds an item,
 		// bit 1 the left; bits 8-15 and 16-23 count the player's own changes of what the right and
-		// left arm hold (another hotbar slot, the off-hand swap, a move in the inventory).
+		// left arm hold (another hotbar slot, the off-hand swap, a move in the inventory); bits 24-25
+		// who wins a hand holding both a Skyrim and a Minecraft item (0 Skyrim's, 1 Minecraft's,
+		// 2 the last picked; the pause menu's "Hands" button).
 		std::uint32_t hands;
 		std::uint32_t handsPad;
 	};

@@ -316,7 +316,7 @@ public final class SkyClient {
 		lastSlot = slot;
 		lastRight = right.copy();
 		lastLeft = left.copy();
-		return (right.isEmpty() ? 0 : 1) | (left.isEmpty() ? 0 : 2) | (rightChanges & 0xFF) << 8 | (leftChanges & 0xFF) << 16;
+		return (right.isEmpty() ? 0 : 1) | (left.isEmpty() ? 0 : 2) | (rightChanges & 0xFF) << 8 | (leftChanges & 0xFF) << 16 | (HandMixToggle.mode & 3) << 24;
 	}
 
 	/**

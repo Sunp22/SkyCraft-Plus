@@ -516,11 +516,12 @@ namespace skycraft
 			logger::info("hands: Minecraft took the {} hand: {} unequipped", a_left ? "left" : "right", a_held->GetName());
 		}
 
-		// SkyCraft+ : hand mixing (iHandMix). A hand holding both a Skyrim item and a Minecraft one goes
-		// to Minecraft's (1) or to the last picked (2); a_right and a_left come in as SkyrimHands left them.
+		// SkyCraft+ : hand mixing (Minecraft pause menu's "Hands" button). A hand holding both a Skyrim
+		// item and a Minecraft one goes to Minecraft's (1) or to the last picked (2); a_right and a_left
+		// come in as SkyrimHands left them.
 		void MixHands(RE::PlayerCharacter* a_player, bool& a_right, bool& a_left)
 		{
-			const int mode = State().handMix;
+			const int mode = static_cast<int>((mc.hands >> 24) & 3);
 			if (mode == 0) {
 				return;
 			}

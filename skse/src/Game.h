@@ -28,8 +28,6 @@ namespace skycraft
 		// with something equipped in Skyrim (weapon, spell, shield, torch) is Skyrim's: Skyrim draws
 		// it and gets its mouse button (left: right hand, right: left hand).
 		std::atomic<bool> skyrimHandsOption{ false };
-		// SkyCraft+ : hand mixing (iHandMix): 0 Skyrim's item wins a hand, 1 Minecraft's, 2 the last picked.
-		std::atomic<int> handMix{ 0 };
 		std::atomic<bool> rightHandSkyrim{ false };
 		std::atomic<bool> leftHandSkyrim{ false };
 		// SkyCraft+ : Minecraft's crosshair is on something used by hand (chest, door, villager...):
