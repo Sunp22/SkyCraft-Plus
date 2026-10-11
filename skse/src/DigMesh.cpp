@@ -52,7 +52,16 @@ namespace skycraft::Dig
 			RE::NiBound bound;
 			float       lo[3];
 			float       hi[3];
+			// SkyCraft+ : performance. The blocks its triangles pass through (a block's margin round
+			// each triangle's box); null: too big to list, every dug block in its box counts. A cave
+			// inside a hill's box changed its dug blocks and re-cut it, though no triangle came near.
+			std::shared_ptr<std::unordered_set<std::uint64_t>> cells;
 		};
+
+		std::uint64_t CellKey(int a_x, int a_y, int a_z)
+		{
+			return (std::uint64_t(std::uint32_t(a_x) & 0x1FFFFF) << 42) | (std::uint64_t(std::uint32_t(a_y) & 0x1FFFFF) << 21) | std::uint64_t(std::uint32_t(a_z) & 0x1FFFFF);
+		}
 		std::unordered_map<RE::BSTriShape*, Tight> tight;
 		std::unordered_set<RE::BSTriShape*>        clones;
 		std::vector<RE::BSGraphics::TriShape*>     owned;  // our renderer data, freed once Skyrim lets go
@@ -382,13 +391,37 @@ namespace skycraft::Dig
 				mc[i * 3 + 2] = float(p.z);
 			}
 			if (vertexCount > 0) {
-				Tight box{ a_geom->worldBound, { mc[0], mc[1], mc[2] }, { mc[0], mc[1], mc[2] } };
+				Tight box{ a_geom->worldBound, { mc[0], mc[1], mc[2] }, { mc[0], mc[1], mc[2] }, nullptr };
 				for (std::uint32_t i = 1; i < vertexCount; ++i) {
 					for (int k = 0; k < 3; ++k) {
 						box.lo[k] = std::min(box.lo[k], mc[i * 3 + k]);
 						box.hi[k] = std::max(box.hi[k], mc[i * 3 + k]);
 					}
 				}
+				auto cells = std::make_shared<std::unordered_set<std::uint64_t>>();
+				for (std::uint32_t t = 0; t < triCount && cells; ++t) {
+					const std::uint16_t idx[3] = { indices[t * 3], indices[t * 3 + 1], indices[t * 3 + 2] };
+					if (idx[0] >= vertexCount || idx[1] >= vertexCount || idx[2] >= vertexCount) {
+						continue;
+					}
+					int lo[3], hi[3];
+					for (int k = 0; k < 3; ++k) {
+						lo[k] = int(std::floor(std::min({ mc[idx[0] * 3 + k], mc[idx[1] * 3 + k], mc[idx[2] * 3 + k] }))) - 1;
+						hi[k] = int(std::floor(std::max({ mc[idx[0] * 3 + k], mc[idx[1] * 3 + k], mc[idx[2] * 3 + k] }))) + 1;
+					}
+					if (std::int64_t(hi[0] - lo[0] + 1) * (hi[1] - lo[1] + 1) * (hi[2] - lo[2] + 1) > 4096 || cells->size() > 200000) {
+						cells.reset();  // a huge triangle (or mesh): no list
+						break;
+					}
+					for (int y = lo[1]; y <= hi[1]; ++y) {
+						for (int z = lo[2]; z <= hi[2]; ++z) {
+							for (int x = lo[0]; x <= hi[0]; ++x) {
+								cells->insert(CellKey(x, y, z));
+							}
+						}
+					}
+				}
+				box.cells = std::move(cells);
 				tight[a_geom] = box;
 			}
 
@@ -586,6 +619,7 @@ namespace skycraft::Dig
 			float lo[3], hi[3];
 			BoundToMc(a_geom->worldBound, lo, hi);
 			// SkyCraft+ : the underground. Its real box once known (see tight).
+			const std::unordered_set<std::uint64_t>* nearCells = nullptr;
 			if (const auto t = tight.find(a_geom); t != tight.end()) {
 				const auto& b = a_geom->worldBound;
 				if (t->second.bound.center == b.center && t->second.bound.radius == b.radius) {
@@ -593,10 +627,12 @@ namespace skycraft::Dig
 						lo[k] = t->second.lo[k] - 0.5f;
 						hi[k] = t->second.hi[k] + 0.5f;
 					}
+					nearCells = t->second.cells.get();
 				} else {
 					tight.erase(t);
 				}
 			}
+			const int reachUp = int(std::ceil(a_up));
 			lo[1] -= a_up;  // reaches down to dug blocks this far below it
 			std::vector<Clip::Cube> cubes;
 			for (int sy = int(std::floor(lo[1])) >> 4; sy <= int(std::floor(hi[1])) >> 4; ++sy) {
@@ -608,7 +644,14 @@ namespace skycraft::Dig
 						}
 						for (const auto& c : bucket->second) {
 							if (hi[0] >= c[0] && lo[0] <= c[0] + 1 && hi[1] >= c[1] && lo[1] <= c[1] + 1 && hi[2] >= c[2] && lo[2] <= c[2] + 1) {
-								cubes.push_back(c);
+								// SkyCraft+ : performance. Only blocks its triangles come near (up to a_up above).
+								bool touches = nearCells == nullptr;
+								for (int dy = 0; dy <= reachUp && !touches; ++dy) {
+									touches = nearCells->contains(CellKey(c[0], c[1] + dy, c[2]));
+								}
+								if (touches) {
+									cubes.push_back(c);
+								}
 							}
 						}
 					}
