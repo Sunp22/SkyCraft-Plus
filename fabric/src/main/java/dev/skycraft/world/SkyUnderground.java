@@ -86,6 +86,16 @@ public final class SkyUnderground {
 	private static it.unimi.dsi.fastutil.longs.LongHeapPriorityQueue OPENING = new it.unimi.dsi.fastutil.longs.LongHeapPriorityQueue(NEAREST);
 	/** Cells next to an opening cave whose part of Skyrim's shape hasn't arrived yet. */
 	private static final LongOpenHashSet WAITING = new LongOpenHashSet();
+	/**
+	 * SkyCraft+ : performance. Cells of an opening cave too far from every player to matter yet: the
+	 * cave stops there and opens on when someone comes near (caveRevealRadius blocks across, half that
+	 * up and down). A whole cave system used to open at once, all of it meshed and drawn unseen.
+	 * Dropped ones (past the cap, or the game closed) are found again by heal() once someone is near.
+	 */
+	private static final LongOpenHashSet FAR = new LongOpenHashSet();
+	private static final int MAX_FAR = 200000;
+	private static int revealRadius = 48;
+	private static double[] players = new double[0];
 	private static int openingWorld;
 	private static int logged;
 
@@ -97,6 +107,7 @@ public final class SkyUnderground {
 			loadSettings();
 			OPENING.clear();
 			WAITING.clear();
+			FAR.clear();
 			FOR_CHUNK.clear(); // SkyCraft+ : world switcher (another world may open in the same session)
 			lastShift = UNSET;
 		});
@@ -122,6 +133,11 @@ public final class SkyUnderground {
 			// keep the default
 		}
 		caveMonsterCap = caves ? cap : 0;
+		try {
+			revealRadius = Math.max(16, Integer.parseInt(p.getProperty("caveRevealRadius", "48").trim()));
+		} catch (NumberFormatException e) {
+			revealRadius = 48;
+		}
 		SkyCraft.LOG.info("SkyCraft: Minecraft's underground under Skyrim {}", enabled ? "on" : "off");
 	}
 
@@ -413,6 +429,7 @@ public final class SkyUnderground {
 		if (world != openingWorld) {
 			OPENING.clear();
 			WAITING.clear();
+			FAR.clear();
 			openingWorld = world;
 		}
 		OPENING.enqueue(pos.asLong());
@@ -501,6 +518,19 @@ public final class SkyUnderground {
 		}
 	}
 
+	/** Within caveRevealRadius of a player across, and half that up or down. */
+	private static boolean nearSomeone(long key) {
+		double x = BlockPos.getX(key) + 0.5, y = BlockPos.getY(key) + 0.5, z = BlockPos.getZ(key) + 0.5;
+		double r = revealRadius, h = revealRadius * 0.5;
+		for (int i = 0; i < players.length; i += 3) {
+			double dx = x - players[i], dz = z - players[i + 2], dy = y - players[i + 1];
+			if (dx * dx + dz * dz <= r * r && Math.abs(dy) <= h) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	private static double distanceToFocus(long key) {
 		double dx = BlockPos.getX(key) + 0.5 - focusX, dy = BlockPos.getY(key) + 0.5 - focusY, dz = BlockPos.getZ(key) + 0.5 - focusZ;
 		return dx * dx + dy * dy + dz * dz;
@@ -552,8 +582,33 @@ public final class SkyUnderground {
 				}
 			}
 		}
+		// SkyCraft+ : performance. Where everyone is: cells out of reach wait in FAR until someone's near.
+		var list = level.players();
+		if (players.length != list.size() * 3) {
+			players = new double[list.size() * 3];
+		}
+		for (int i = 0; i < list.size(); i++) {
+			players[i * 3] = list.get(i).getX();
+			players[i * 3 + 1] = list.get(i).getEyeY();
+			players[i * 3 + 2] = list.get(i).getZ();
+		}
+		if (!FAR.isEmpty() && server.getTickCount() % 10 == 3) {
+			for (long key : FAR.toLongArray()) {
+				if (nearSomeone(key)) {
+					FAR.remove(key);
+					OPENING.enqueue(key);
+				}
+			}
+		}
 		while (!OPENING.isEmpty() && System.nanoTime() < deadline) {
-			BlockPos from = BlockPos.of(OPENING.dequeueLong());
+			long fromKey = OPENING.dequeueLong();
+			if (!nearSomeone(fromKey)) {
+				if (FAR.size() < MAX_FAR) {
+					FAR.add(fromKey);
+				}
+				continue;
+			}
+			BlockPos from = BlockPos.of(fromKey);
 			for (Direction d : Direction.values()) {
 				BlockPos n = from.relative(d);
 				if (!level.isLoaded(n)) {
