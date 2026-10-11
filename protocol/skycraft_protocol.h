@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 33;
+	inline constexpr std::uint32_t kVersion = 34;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -175,6 +175,9 @@ namespace skycraft::proto
 		// SkyCraft+ : performance (v31). Deep under Skyrim's land (24 blocks and more): none of
 		// Skyrim's land, buildings or distant land can be seen, so Skyrim doesn't draw them.
 		kMcDeepUnderLand = 1u << 10,
+		// SkyCraft+ : controller inventory snapping (v34). The screen open has item slots (an
+		// inventory, chest, furnace...): the D-pad and left stick jump slot to slot (kInSlotJump).
+		kMcSlotScreen = 1u << 11,
 	};
 
 	// SkyCraft+ : McState::dimension. 3 and up are Minecraft's own worlds: Skyrim parks its player in
@@ -232,9 +235,12 @@ namespace skycraft::proto
 		// who wins a hand holding both a Skyrim and a Minecraft item (0 Skyrim's, 1 Minecraft's,
 		// 2 the last picked; the pause menu's "Hands" button).
 		std::uint32_t hands;
-		std::uint32_t handsPad;
+		// SkyCraft+ : controller inventory snapping (v34). Minecraft moved the cursor itself (to a slot,
+		// kInSlotJump): cursorSeq counts the moves, cursorX/Y is where it went (overlay pixels).
+		std::uint32_t cursorSeq;
+		std::int32_t  cursorX, cursorY;
 	};
-	static_assert(sizeof(McState) == 0xD8);
+	static_assert(sizeof(McState) == 0xE0);
 	static_assert(sizeof(McState) <= 0x100);
 
 	// ---- overlay triple buffer @0x300 --------------------------------------------------------
@@ -283,6 +289,8 @@ namespace skycraft::proto
 		kInSkyrimHit = 10,   // a Skyrim melee hit landed (its HitFrame): code = SkyrimHitFlags, a = Minecraft damage * 100,
 		                     // b = reach in blocks * 100. Minecraft hits the mob(s) in front of the player
 		kInHeal = 11,        // a Skyrim healing effect healed the player: a = share of max health * 10000
+		kInSlotJump = 12,    // SkyCraft+ : v34. In a screen with slots, the cursor jumps to the next slot that way:
+		                     // a = x step (-1, 0, 1), b = y step (down is +1)
 	};
 
 	enum HurtKind : std::uint16_t

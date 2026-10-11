@@ -66,8 +66,8 @@ first, install the zip the same way, and start a **new Minecraft world** to get 
 **Full native controller support**
 - Play Minecraft mode on a controller (Xbox layout), laid out like console Minecraft, with
   Skyrim's activate, menu (items, magic, map, skills) and shout (LB + RB) on the pad too.
-  Inventories and chests work with the sticks. Clicking the right stick switches modes. See
-  [Controller](#controller).
+  Inventories and chests jump slot to slot like on console. Clicking the right stick switches
+  modes. See [Controller](#controller).
 
 **And more**
 - A pause-menu **world switcher**: make, delete and switch Minecraft worlds, independent of your
@@ -289,8 +289,8 @@ A controller (Xbox layout) plays Minecraft mode too, laid out like console Minec
 
 | Button | Minecraft mode | In a Minecraft screen (inventory, chest) |
 |---|---|---|
-| Left stick | Move (click: sprint) | Cursor |
-| Right stick | Look (click: switch Minecraft/Skyrim mode) | Cursor |
+| Left stick | Move (click: sprint) | Jump slot to slot (menus: cursor) |
+| Right stick | Look (click: switch Minecraft/Skyrim mode) | Free cursor (buttons, tabs, recipe book) |
 | RT / LT | Attack, break / use, place | |
 | A | Jump | Click |
 | B | Sneak | Close |
@@ -298,10 +298,11 @@ A controller (Xbox layout) plays Minecraft mode too, laid out like console Minec
 | Y | Minecraft inventory | Move a whole stack |
 | LB / RB | Hotbar left / right | Scroll |
 | LB + RB together | Skyrim shout (hold to charge) | |
-| D-pad | Up: Minecraft camera; right: Skyrim menu (items, magic, map, skills); down: Minecraft pause menu; left: drop item | |
+| D-pad | Up: Minecraft camera; right: Skyrim menu (items, magic, map, skills); down: Minecraft pause menu; left: drop item | Jump slot to slot |
 | Start / Back | Skyrim journal / wait | |
 
 Movement is on or off (no slow walk yet). In Skyrim mode the controller is Skyrim's as usual.
+`bControllerSlots = 0` in `SkyCraft.ini` turns slot jumping off (both sticks move a free cursor).
 
 ## Known limitations
 

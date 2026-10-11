@@ -8,7 +8,7 @@ public final class Proto {
 	}
 
 	public static final int MAGIC = 0x43594B53;
-	public static final int VERSION = 33;
+	public static final int VERSION = 34;
 	// A second client on the same PC (multiplayer testing) talks to its own stand-in Skyrim:
 	// -Dskycraft.link=Local\SkyCraft_guest (see tools/fake_guest.py).
 	public static final String MAPPING_NAME = System.getProperty("skycraft.link", "Local\\SkyCraft_v1");
@@ -50,6 +50,7 @@ public final class Proto {
 	public static final int IN_USE = 9;
 	public static final int IN_SKYRIM_HIT = 10;
 	public static final int IN_HEAL = 11;
+	public static final int IN_SLOT_JUMP = 12; // SkyCraft+ : v34, a, b = x, y step to the next slot
 	public static final int SKYRIM_HIT_POWER = 1, SKYRIM_HIT_BASH = 1 << 1, SKYRIM_HIT_LEFT = 1 << 2;
 	public static final int HURT_MELEE = 0;
 	public static final int HURT_PROJECTILE = 1;
@@ -216,6 +217,7 @@ public final class Proto {
 	public static final long MS_HEALTH_FRAC = 0xC8;
 	public static final long MS_DIMENSION = 0xCC; // SkyCraft+ : v26
 	public static final long MS_HANDS = 0xD0; // SkyCraft+ : v33, hand mixing (see McState::hands)
+	public static final long MS_CURSOR_SEQ = 0xD4, MS_CURSOR_X = 0xD8, MS_CURSOR_Y = 0xDC; // SkyCraft+ : v34, controller inventory snapping
 
 	public static final int MC_IN_WORLD = 1;
 	public static final int MC_SCREEN_OPEN = 1 << 1;
@@ -228,6 +230,7 @@ public final class Proto {
 	public static final int MC_USE_TARGET = 1 << 8;
 	public static final int MC_UNDER_LAND = 1 << 9; // SkyCraft+ : v27
 	public static final int MC_DEEP_UNDER_LAND = 1 << 10; // SkyCraft+ : v31, 24 blocks and more under
+	public static final int MC_SLOT_SCREEN = 1 << 11; // SkyCraft+ : v34, a screen with item slots
 
 	// SkyCraft+ : McState dimension (v26). 3 and up: Minecraft's own worlds, Skyrim parks its player.
 	public static final int DIM_TAMRIEL = 0;

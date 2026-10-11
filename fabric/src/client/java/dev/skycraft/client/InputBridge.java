@@ -56,6 +56,7 @@ public final class InputBridge {
 				cursorY = b;
 				minecraft.mouseHandler.onMove(handle, a, b, dx, dy);
 			}
+			case Proto.IN_SLOT_JUMP -> slotJump(minecraft, handle, a, b);  // SkyCraft+ : controller inventory snapping
 			case Proto.IN_TEXT -> {
 				if (minecraft.gui.screen() != null) {
 					minecraft.keyboardHandler.textInput(handle, new String(Character.toChars(a)));
@@ -79,6 +80,64 @@ public final class InputBridge {
 			default -> {
 			}
 		}
+	}
+
+	/** SkyCraft+ : controller inventory snapping. Where Minecraft last put the cursor itself (McState). */
+	public static volatile int jumpSeq, jumpX, jumpY;
+
+	/**
+	 * SkyCraft+ : controller inventory snapping. The cursor jumps to the nearest slot that way
+	 * (dx, dy each -1, 0 or 1; down is +1), the nearer in line the better; off any slot, to the slot
+	 * nearest it. Skyrim's cursor follows (McState::cursorSeq).
+	 */
+	private static void slotJump(Minecraft minecraft, long handle, int dx, int dy) {
+		if (!(minecraft.gui.screen() instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<?> screen)) {
+			return;
+		}
+		var pos = (dev.skycraft.client.mixin.ContainerScreenAccessor) screen;
+		double scale = (double) minecraft.getWindow().getScreenWidth() / minecraft.getWindow().getGuiScaledWidth();
+		double gx = cursorX / scale, gy = cursorY / scale;
+		net.minecraft.world.inventory.Slot here = null;
+		for (var slot : screen.getMenu().slots) {
+			int sx = pos.skycraft$leftPos() + slot.x, sy = pos.skycraft$topPos() + slot.y;
+			if (slot.isActive() && gx >= sx - 1 && gx < sx + 17 && gy >= sy - 1 && gy < sy + 17) {
+				here = slot;
+			}
+		}
+		net.minecraft.world.inventory.Slot best = null;
+		double bestScore = Double.MAX_VALUE;
+		for (var slot : screen.getMenu().slots) {
+			if (!slot.isActive() || slot == here) {
+				continue;
+			}
+			double cx = pos.skycraft$leftPos() + slot.x + 8 - gx, cy = pos.skycraft$topPos() + slot.y + 8 - gy;
+			double score;
+			if (here == null) {
+				score = cx * cx + cy * cy;
+			} else {
+				double along = cx * dx + cy * dy;  // how far that way
+				double across = Math.abs(cx * dy - cy * dx);  // how far off the line
+				if (along < 4.0) {
+					continue;
+				}
+				score = along + across * 3.0;
+			}
+			if (score < bestScore) {
+				bestScore = score;
+				best = slot;
+			}
+		}
+		if (best == null) {
+			return;
+		}
+		double x = (pos.skycraft$leftPos() + best.x + 8) * scale, y = (pos.skycraft$topPos() + best.y + 8) * scale;
+		double mx = x - cursorX, my = y - cursorY;
+		cursorX = x;
+		cursorY = y;
+		minecraft.mouseHandler.onMove(handle, x, y, mx, my);
+		jumpX = (int) Math.round(x);
+		jumpY = (int) Math.round(y);
+		jumpSeq++;
 	}
 
 	/** Skyrim hit the player: apply it as Minecraft damage on the integrated server (or the host's). */

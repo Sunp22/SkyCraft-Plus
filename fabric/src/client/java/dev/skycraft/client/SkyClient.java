@@ -633,6 +633,13 @@ public final class SkyClient {
 		}
 		if (minecraft.gui.screen() != null) {
 			flags |= Proto.MC_SCREEN_OPEN;
+			// SkyCraft+ : controller inventory snapping. A screen with slots: the pad jumps between them.
+			if (minecraft.gui.screen() instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<?>) {
+				flags |= Proto.MC_SLOT_SCREEN;
+			}
+			mc.cursorSeq = InputBridge.jumpSeq;
+			mc.cursorX = InputBridge.jumpX;
+			mc.cursorY = InputBridge.jumpY;
 		} else if (player != null && SkyHands.usableTargetInView(minecraft)) {
 			flags |= Proto.MC_USE_TARGET;
 		}

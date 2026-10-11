@@ -1034,6 +1034,16 @@ namespace skycraft
 				st.cursorY = st.viewportH / 2;
 			}
 			st.mcScreenOpen = screenOpen;
+			// SkyCraft+ : controller inventory snapping. A screen with slots (the pad jumps between them),
+			// and the cursor follows where Minecraft put it.
+			st.mcSlotScreen = screenOpen && (mc.flags & proto::kMcSlotScreen);
+			if (static std::uint32_t cursorSeen = 0; haveMc && mc.cursorSeq != cursorSeen) {
+				cursorSeen = mc.cursorSeq;
+				if (screenOpen) {
+					st.cursorX = mc.cursorX;
+					st.cursorY = mc.cursorY;
+				}
+			}
 			st.mcUseTarget = haveMc && (mc.flags & proto::kMcUseTarget);
 			if (haveMc && mc.healthFrac > 0.0f) {
 				st.mcHealthFrac = mc.healthFrac;

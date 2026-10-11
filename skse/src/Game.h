@@ -15,6 +15,8 @@ namespace skycraft
 		std::atomic<bool> minecraftOwnsPlayer{ false };
 		// A Minecraft GUI screen (inventory, chat, ...) is open: mouse moves MC's cursor.
 		std::atomic<bool> mcScreenOpen{ false };
+		// SkyCraft+ : controller inventory snapping. The screen open has item slots.
+		std::atomic<bool> mcSlotScreen{ false };
 		// A Skyrim menu (journal, dialogue, console, loading, ...) owns input.
 		std::atomic<bool> skyrimMenuOpen{ false };
 		// MC reports its player is in a world (overlay should be drawn).

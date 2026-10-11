@@ -52,6 +52,9 @@ namespace skycraft
 		std::uint32_t modeToggleKey = 0;
 		// SkyCraft+ : controller. bController: a gamepad plays Minecraft mode too (see Pad below).
 		bool padEnabled = true;
+		// SkyCraft+ : controller inventory snapping. bControllerSlots: in a screen with item slots the
+		// D-pad and left stick jump slot to slot.
+		bool padSlots = true;
 
 		// "Tab", "I", "F1", "0x0F" -> DirectInput scan code, or 0 if unknown.
 		std::uint32_t DikFromName(std::string a_name)
@@ -165,6 +168,8 @@ namespace skycraft
 
 			padEnabled = ini.GetBoolValue("Controls", "bController", true);
 			logger::info("controller in Minecraft mode: {}", padEnabled ? "on (right stick click switches modes)" : "off");
+			padSlots = ini.GetBoolValue("Controls", "bControllerSlots", true);
+			logger::info("controller in Minecraft's inventories: {}", padSlots ? "jumps slot to slot (left stick, D-pad)" : "a free cursor");
 
 			const std::string toggle = ini.GetValue("Controls", "sModeToggleKey", "");
 			if (!toggle.empty()) {
@@ -283,7 +288,8 @@ namespace skycraft
 		//   menu (items, magic, map, skills), down Minecraft's pause menu, left drop; Start and Back
 		//   stay Skyrim's (journal, wait).
 		// In a Minecraft screen (inventory, chest, crafting) either stick moves the cursor: A clicks,
-		// X right-clicks, Y moves a whole stack (shift-click), B closes, LB/RB scroll.
+		// X right-clicks, Y moves a whole stack (shift-click), B closes, LB/RB scroll. SkyCraft+ : in
+		// one with item slots the D-pad and left stick jump slot to slot; the right stick stays a cursor.
 		namespace Pad
 		{
 			using K = RE::BSWin32GamepadDevice::Key;
@@ -297,6 +303,10 @@ namespace skycraft
 			float        left[2]{}, right[2]{};
 			std::uint8_t moveHeld = 0;  // W A S D
 			float        cursorRestX = 0.0f, cursorRestY = 0.0f;
+			// SkyCraft+ : controller inventory snapping. The left stick's jump between slots.
+			constexpr float kJumpAt = 0.5f, kJumpFirst = 0.35f, kJumpRepeat = 0.12f;
+			int             jumpDir = 0;
+			float           jumpWait = 0.0f;
 			bool         wasRouting = false;
 
 			struct Held
@@ -408,6 +418,17 @@ namespace skycraft
 					case K::kRightShoulder:
 						Scroll(-1);
 						break;
+					// SkyCraft+ : controller inventory snapping. The D-pad jumps slot to slot.
+					case K::kUp:
+					case K::kDown:
+					case K::kLeft:
+					case K::kRight:
+						if (st.mcSlotScreen && padSlots) {
+							const int dx = code == K::kLeft ? -1 : code == K::kRight ? 1 : 0;
+							const int dy = code == K::kUp ? -1 : code == K::kDown ? 1 : 0;
+							Link::Get().PushInput(proto::kInSlotJump, 0, dx, dy);
+						}
+						break;
 					default:
 						break;
 					}
@@ -512,7 +533,31 @@ namespace skycraft
 					a_lookDx += Curve(right[0]) * kLookRate * a_delta;
 					a_lookDy -= Curve(right[1]) * kLookRate * a_delta * 0.75f;
 				} else {
-					const float vx = std::clamp(left[0] + right[0], -1.0f, 1.0f), vy = std::clamp(left[1] + right[1], -1.0f, 1.0f);
+					// SkyCraft+ : controller inventory snapping. In a screen with slots the left stick jumps
+					// slot to slot (held: again after a moment, then steadily); the right one stays a cursor
+					// (buttons, tabs, the recipe book).
+					const bool slots = st.mcSlotScreen && padSlots;
+					if (slots) {
+						int dx = 0, dy = 0;
+						if (std::max(std::abs(left[0]), std::abs(left[1])) > kJumpAt) {
+							if (std::abs(left[0]) >= std::abs(left[1])) {
+								dx = left[0] > 0.0f ? 1 : -1;
+							} else {
+								dy = left[1] > 0.0f ? -1 : 1;  // (stick up is +y, the screen's up is -y)
+							}
+						}
+						if (dx == 0 && dy == 0) {
+							jumpDir = 0;
+						} else if (const int dir = (dx + 2) * 4 + (dy + 2); dir != jumpDir) {
+							jumpDir = dir;
+							jumpWait = kJumpFirst;
+							Link::Get().PushInput(proto::kInSlotJump, 0, dx, dy);
+						} else if ((jumpWait -= a_delta) <= 0.0f) {
+							jumpWait = kJumpRepeat;
+							Link::Get().PushInput(proto::kInSlotJump, 0, dx, dy);
+						}
+					}
+					const float vx = std::clamp((slots ? 0.0f : left[0]) + right[0], -1.0f, 1.0f), vy = std::clamp((slots ? 0.0f : left[1]) + right[1], -1.0f, 1.0f);
 					if (vx != 0.0f || vy != 0.0f) {
 						const float speed = kCursorRate * static_cast<float>(st.viewportH.load());
 						cursorRestX += Curve(vx) * speed * a_delta;
