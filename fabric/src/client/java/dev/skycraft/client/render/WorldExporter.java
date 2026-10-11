@@ -285,10 +285,16 @@ public final class WorldExporter {
 		int shapeCount = 0;
 		MESH.cardinal = level.cardinalLighting();
 		boolean underground = level.dimension() == net.minecraft.world.level.Level.OVERWORLD && dev.skycraft.world.SkyUnderground.enabled();
-		for (int c = 0; c < 256; c++) {
-			double land = underground ? dev.skycraft.world.SkyGround.lowestAround(sx * 16 + (c & 15) + 0.5, sz * 16 + (c >> 4) + 0.5) : Double.NaN;
-			MESH.skyCut[c] = Double.isNaN(land) ? Float.NEGATIVE_INFINITY : (float) (land - 3.0 - sy * 16);
+		for (int c = 0; c < 324; c++) {
+			int cx = c % 18 - 1, cz = c / 18 - 1;
+			double land = underground ? dev.skycraft.world.SkyGround.lowestAround(sx * 16 + cx + 0.5, sz * 16 + cz + 0.5) : Double.NaN;
+			if (cx >= 0 && cx < 16 && cz >= 0 && cz < 16) {
+				MESH.skyCut[cx + 16 * cz] = Double.isNaN(land) ? Float.NEGATIVE_INFINITY : (float) (land - 3.0 - sy * 16);
+			}
+			MESH.rockBelow[c] = Double.isNaN(land) ? Float.NEGATIVE_INFINITY : (float) (land - dev.skycraft.world.SkyUnderground.DEEP - sy * 16);
 		}
+		MESH.rockDug = underground ? dev.skycraft.world.SkyDig.clientDug : null;
+		MESH.rockOrigin = SectionPos.of(sx, sy, sz).origin();
 		if (!empty) {
 			BlockPos origin = SectionPos.of(sx, sy, sz).origin();
 			BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
@@ -690,6 +696,9 @@ public final class WorldExporter {
 		// ---- block quads (BlockQuadOutput) ----
 		@Override
 		public void put(float x, float y, float z, BakedQuad quad, QuadInstance instance) {
+			if (this.rockDug != null && this.intoRock((int) x, (int) y, (int) z, quad)) {
+				return;
+			}
 			this.ensure(6 * Proto.REN_VERTEX_BYTES);
 			TextureAtlasSprite sprite = quad.materialInfo().sprite();
 			boolean translucent = quad.materialInfo().layer().translucent();
@@ -719,6 +728,35 @@ public final class WorldExporter {
 		 * reveals them, and sky light poured in for a moment (a flash); and no sky reaches there.
 		 */
 		final float[] skyCut = new float[256];
+
+		/**
+		 * SkyCraft+ : performance. Deep under Skyrim's land a cell not dug yet is solid rock (it's only
+		 * air here until the underground is revealed into it), so a block's face against it is never
+		 * seen: left out. Without this every revealed cave was a closed shell drawn from outside too.
+		 * Per column of the section and the ring round it (18 x 18), the section-relative height
+		 * under which a cell counts as deep; and the dug cells (null: not in the underground's world).
+		 */
+		final float[] rockBelow = new float[324];
+		dev.skycraft.world.SkyDig.@org.jspecify.annotations.Nullable DugLookup rockDug;
+		BlockPos rockOrigin = BlockPos.ZERO;
+
+		private boolean intoRock(int x, int y, int z, BakedQuad quad) {
+			Direction d = quad.direction();
+			// Only a face lying on the block's side (what a whole block next to it would hide).
+			float side = d.getAxisDirection() == Direction.AxisDirection.POSITIVE ? 1.0F : 0.0F;
+			for (int k = 0; k < 4; k++) {
+				var p = quad.position(k);
+				float along = d.getAxis() == Direction.Axis.X ? p.x() : d.getAxis() == Direction.Axis.Y ? p.y() : p.z();
+				if (Math.abs(along - side) > 1.0E-4F) {
+					return false;
+				}
+			}
+			int nx = x + d.getStepX(), ny = y + d.getStepY(), nz = z + d.getStepZ();
+			if (ny + 0.5F > this.rockBelow[(nx + 1) + 18 * (nz + 1)]) {
+				return false;
+			}
+			return !this.rockDug.isDug(this.rockOrigin.getX() + nx, this.rockOrigin.getY() + ny, this.rockOrigin.getZ() + nz);
+		}
 		float fluidGround;
 		int fluidBaseY;
 
