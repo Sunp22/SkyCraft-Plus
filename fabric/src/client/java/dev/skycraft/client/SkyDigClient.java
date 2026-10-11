@@ -250,8 +250,15 @@ public final class SkyDigClient {
 					continue;
 				}
 				SEEN.put(key, column);
-				for (SkyDig.DugColumn c : new SkyDig.DugColumn[] { column, previous == null ? NONE : previous }) {
+				SkyDig.DugColumn before = previous == null ? NONE : previous;
+				for (SkyDig.DugColumn c : new SkyDig.DugColumn[] { column, before }) {
+					SkyDig.DugColumn other = c == column ? before : column;
 					for (SkyDig.DugSection s : c.sections()) {
+						// SkyCraft+ : performance. Only the sections whose dug cells changed (the whole column
+						// comes again each time any of it changes: a cave opening re-meshed it top to bottom).
+						if (!worldChanged && previous != null && java.util.Arrays.equals(s.bits(), other.bits(s.world(), s.sectionY()))) {
+							continue;
+						}
 						if (worldChanged || s.world() == world) {
 							// Its walls, and the walls next door (a dug cell can open one up).
 							WorldExporter.markDirtyNow(cx, s.sectionY(), cz);
