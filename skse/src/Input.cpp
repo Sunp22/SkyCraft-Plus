@@ -277,9 +277,9 @@ namespace skycraft
 		// become the keys, mouse buttons, wheel and look Minecraft already gets from the keyboard and
 		// mouse, laid out like console Minecraft:
 		//   left stick move (click: sprint), right stick look, RT attack/break, LT use/place,
-		//   A jump, B sneak, X drop, Y inventory, LB/RB hotbar, right stick click: mode switch,
-		//   D-pad up Skyrim activate (G), right Minecraft camera (F5), down Minecraft's pause menu,
-		//   left Skyrim's map; Start and Back stay Skyrim's (journal, wait).
+		//   A jump, B sneak, X Skyrim activate (G), Y inventory, LB/RB hotbar, LB+RB together Skyrim's
+		//   shout, right stick click: mode switch, D-pad up drop, right Skyrim's inventory, down
+		//   Minecraft's pause menu, left Skyrim's map; Start and Back stay Skyrim's (journal, wait).
 		// In a Minecraft screen (inventory, chest, crafting) either stick moves the cursor: A clicks,
 		// X right-clicks, Y moves a whole stack (shift-click), B closes, LB/RB scroll.
 		namespace Pad
@@ -287,7 +287,7 @@ namespace skycraft
 			using K = RE::BSWin32GamepadDevice::Key;
 
 			constexpr std::uint16_t kSdlW = 26, kSdlA = 4, kSdlS = 22, kSdlD = 7;
-			constexpr std::uint16_t kSdlSpace = 44, kSdlShift = 225, kSdlCtrl = 224, kSdlQ = 20, kSdlE = 8, kSdlEsc = 41, kSdlF5 = 62;
+			constexpr std::uint16_t kSdlSpace = 44, kSdlShift = 225, kSdlCtrl = 224, kSdlQ = 20, kSdlE = 8, kSdlEsc = 41;
 			constexpr float         kMoveAt = 0.35f;        // stick past this: that way's key down
 			constexpr float         kLookRate = 1200.0f;    // mouse counts a second at full tilt (~180 degrees/s at default sensitivity)
 			constexpr float         kCursorRate = 1.1f;     // screen heights a second at full tilt
@@ -327,11 +327,44 @@ namespace skycraft
 				Link::Get().PushInput(proto::kInScroll, 0, a_notches * 120);
 			}
 
-			void OpenMap()
+			void OpenSkyrimMenu(const RE::BSFixedString& a_menu)
 			{
 				if (auto* queue = RE::UIMessageQueue::GetSingleton()) {
-					queue->AddMessage(RE::MapMenu::MENU_NAME, RE::UI_MESSAGE_TYPE::kShow, nullptr);
+					queue->AddMessage(a_menu, RE::UI_MESSAGE_TYPE::kShow, nullptr);
 				}
+			}
+
+			// LB and RB together shout in Skyrim: whichever went down second goes to Skyrim as its
+			// Shout (held to charge, let go to shout) until it's let go. Each one still steps the
+			// hotbar when pressed, one each way, so the hotbar ends where it was.
+			std::uint32_t shoulders = 0;    // LB, RB down (as PlayerControls saw them)
+			std::uint32_t shoutButton = 0;  // the one shouting, or 0
+
+			bool IsShoutChord(RE::InputEvent* a_event)
+			{
+				if (a_event->GetEventType() != RE::INPUT_EVENT_TYPE::kButton || a_event->GetDevice() != RE::INPUT_DEVICE::kGamepad) {
+					return false;
+				}
+				auto*      button = a_event->AsButtonEvent();
+				const auto code = button->GetIDCode();
+				if (code != K::kLeftShoulder && code != K::kRightShoulder) {
+					return false;
+				}
+				if (button->IsDown()) {
+					if (!shoutButton && (shoulders & ~code & (K::kLeftShoulder | K::kRightShoulder))) {
+						shoutButton = code;
+						logger::info("controller: LB+RB, shouting");
+					}
+					shoulders |= code;
+				}
+				const bool shout = shoutButton == code;
+				if (button->IsUp()) {
+					shoulders &= ~code;
+					if (shout) {
+						shoutButton = 0;
+					}
+				}
+				return shout;
 			}
 
 			float Curve(float a_v)
@@ -386,7 +419,7 @@ namespace skycraft
 					Hold(code, { false, kSdlShift });
 					break;
 				case K::kX:
-					Tap({ false, kSdlQ });
+					ActivateSkyrimTarget();
 					break;
 				case K::kY:
 					Tap({ false, kSdlE });
@@ -411,10 +444,12 @@ namespace skycraft
 					Scroll(-1);
 					break;
 				case K::kUp:
-					ActivateSkyrimTarget();
+					Tap({ false, kSdlQ });
 					break;
 				case K::kRight:
-					Tap({ false, kSdlF5 });
+					Input::ReleaseAll();
+					held.clear();
+					OpenSkyrimMenu(RE::InventoryMenu::MENU_NAME);
 					break;
 				case K::kDown:
 					Input::ReleaseAll();
@@ -422,7 +457,7 @@ namespace skycraft
 					Link::Get().PushInput(proto::kInOpenMenu, 0);
 					break;
 				case K::kLeft:
-					OpenMap();
+					OpenSkyrimMenu(RE::MapMenu::MENU_NAME);
 					break;
 				default:
 					break;  // Start, Back: Skyrim's (MenuControlsHook lets them through)
@@ -444,6 +479,7 @@ namespace skycraft
 				auto&      st = State();
 				const bool routing = padEnabled && (st.puppeting || (st.skyrimDrives && st.mcScreenOpen)) && !Game::SkyrimMenuOpen();
 				if (!routing) {
+					shoulders = shoutButton = 0;
 					if (wasRouting) {
 						// Into Skyrim's hands or a menu: let go of everything held.
 						for (int k = 0; k < 4; ++k) {
@@ -462,6 +498,9 @@ namespace skycraft
 					return;
 				}
 				wasRouting = true;
+				if (st.mcScreenOpen) {
+					shoulders = shoutButton = 0;  // PlayerControls doesn't see the shoulders meanwhile
+				}
 				std::uint8_t want = 0;
 				if (!st.mcScreenOpen) {
 					want |= left[1] > kMoveAt ? 1 : 0;
@@ -752,13 +791,21 @@ namespace skycraft
 				}
 				std::vector<RE::InputEvent*> keep;
 				std::vector<RE::InputEvent*> all;
+				std::vector<std::pair<RE::ButtonEvent*, RE::BSFixedString>> renamed;  // LB+RB: told to Skyrim as its Shout
 				for (auto* e = *a_event; e; e = e->next) {
 					all.push_back(e);
 					if (e->GetEventType() == RE::INPUT_EVENT_TYPE::kButton) {
 						const auto& name = e->QUserEvent();
-						// (A controller's shout button, RB, is Minecraft's hotbar.)
-						const bool padShout = padEnabled && e->GetDevice() == RE::INPUT_DEVICE::kGamepad && name == events->shout;
-						if ((st.rightHandSkyrim && name == events->rightAttack) || (name == events->shout && !padShout) ||
+						// (A controller's shout button, RB, is Minecraft's hotbar; LB and RB together shout.)
+						const bool pad = padEnabled && e->GetDevice() == RE::INPUT_DEVICE::kGamepad;
+						if (pad && Pad::IsShoutChord(e)) {
+							auto* button = e->AsButtonEvent();
+							renamed.emplace_back(button, button->userEvent);
+							button->userEvent = events->shout;
+							keep.push_back(e);
+							continue;
+						}
+						if ((st.rightHandSkyrim && name == events->rightAttack) || (name == events->shout && !pad) ||
 							(st.leftHandSkyrim && name == events->leftAttack && !RightClickToMinecraft(e->AsButtonEvent()))) {
 							keep.push_back(e);
 						}
@@ -778,6 +825,9 @@ namespace skycraft
 				const auto      result = func(a_this, &head, a_source);
 				for (std::size_t i = 0; i < all.size(); ++i) {
 					all[i]->next = savedNext[i];
+				}
+				for (auto& [button, name] : renamed) {
+					button->userEvent = name;
 				}
 				return result;
 			}
