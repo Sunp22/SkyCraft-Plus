@@ -17,7 +17,8 @@ first, install the zip the same way, and start a **new Minecraft world** to get 
 **Switch between Skyrim and Minecraft**
 - **K** swaps between Minecraft mode and full Skyrim mode: Skyrim's movement, body, HUD, weapons,
   magic and shouts. Your blocks stay, and health carries over.
-- **Tab / I / P** open Skyrim's skills menu, inventory and magic while playing as Minecraft.
+- **Tab / I / P** open Skyrim's skills menu, inventory and magic while playing as Minecraft,
+  and **Z** shouts.
 - **Mix and match hands:** equip a Skyrim weapon, spell, shield or torch in one hand and keep a
   Minecraft item in the other, like Flames in one hand and a diamond sword in the other.
   Two-handers and bows take both hands.
@@ -145,7 +146,8 @@ shared memory. Minecraft runs hidden in the background, and Skyrim draws everyth
   scenes hand control to Skyrim until they finish.
 - **Skyrim's menus and Skyrim mode:** Tab, I and P open Skyrim's menu, inventory and magic. **K**
   switches to Skyrim mode (Skyrim's own movement, body, HUD, weapons, magic and shouts) and back;
-  your blocks stay, and health carries across as a share.
+  your blocks stay, and health carries across as a share. Shouts work in Minecraft mode too (Z,
+  or LB + RB on a controller).
 - **Mix and match hands:** equip a Skyrim weapon, spell, shield or torch in one hand (Skyrim's
   inventory or magic menu) and that hand is Skyrim's: Flames in one hand, a diamond sword in the
   other. Two-handers and bows take both. In third person your Minecraft body holds a Minecraft
@@ -263,6 +265,7 @@ Minecraft has priority. These keys still go to Skyrim:
 | **Esc** | Skyrim menu (or closes an open Minecraft screen) |
 | **J** / **M** | Skyrim journal / map |
 | **Tab** / **I** / **P** | Skyrim menu (skills, level up) / inventory / magic (`sSkyrimMenuKeys` in `SkyCraft.ini`) |
+| **Z** | Skyrim shout (Skyrim's own Shout key; hold to charge) |
 | **K** | Switch between Minecraft mode and Skyrim mode: Skyrim's own movement, body, HUD, weapons and magic (`sModeToggleKey`) |
 | **H** | Skyrim wait |
 | **F9** | Skyrim quickload (save from the Esc menu) |
@@ -309,12 +312,11 @@ Movement is on or off (no slow walk yet). In Skyrim mode the controller is Skyri
 
 - Skyrim's opening (cart ride and Helgen) may leave you stuck. Use
   [Alternate Start](https://www.nexusmods.com/skyrimspecialedition/mods/272) or a save made after Helgen.
-- Skyrim shouts can't be used while Minecraft drives the player (switch to Skyrim mode with K).
-  Skyrim's inventory, magic and perks open with Tab, I and P; Skyrim and Minecraft inventories
-  stay separate.
+- Skyrim and Minecraft inventories stay separate: Skyrim's items, magic and perks are in
+  Skyrim's menus (Tab, I, P), Minecraft's in Minecraft's (E).
 - Minecraft hits only reach NPCs, not Skyrim objects such as the web around Arvel in Bleak Falls
-  Barrow. Press K for Skyrim mode, deal with the object with Skyrim's own weapons or magic, and
-  press K again.
+  Barrow. Equip a Skyrim weapon or spell in one hand, or press K for Skyrim mode, deal with the
+  object with Skyrim's own weapons or magic, and press K again.
 - Sign text is drawn in Minecraft's plain font: letters outside it show as `?`.
 - Mobs and dropped items stay behind when you leave an interior (each interior's blocks are kept).
 - Skyrim enemies in the Nether and the End leave a sack with their loot instead of a body (bodies
