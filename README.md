@@ -273,7 +273,7 @@ A controller (Xbox layout) plays Minecraft mode too, laid out like console Minec
 | Y | Minecraft inventory | Move a whole stack |
 | LB / RB | Hotbar left / right | Scroll |
 | LB + RB together | Skyrim shout (hold to charge) | |
-| D-pad | Up: drop item; right: Skyrim inventory; down: Minecraft pause menu; left: Skyrim map | |
+| D-pad | Up: Minecraft camera; right: Skyrim menu (items, magic, map, skills); down: Minecraft pause menu; left: drop item | |
 | Start / Back | Skyrim journal / wait | |
 
 Movement is on or off (no slow walk yet). In Skyrim mode the controller is Skyrim's as usual.
