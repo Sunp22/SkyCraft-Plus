@@ -436,6 +436,16 @@ public final class SkyStructures {
 					chunks.add(new ChunkPos(cx, cz));
 				}
 			}
+			// SkyCraft+ : performance. The chunks nearest a player first: the side being walked up to
+			// is finished before the far one.
+			var near = level.getNearestPlayer(at.getX() + 0.5, at.getY() + 0.5, at.getZ() + 0.5, -1.0, false);
+			if (near != null) {
+				double px = near.getX(), pz = near.getZ();
+				chunks.sort(java.util.Comparator.comparingDouble(c -> {
+					double dx = c.getMiddleBlockX() - px, dz = c.getMiddleBlockZ() - pz;
+					return dx * dx + dz * dz;
+				}));
+			}
 			pending = new Pending(site, start, ground, box, chunks, t0);
 		} catch (RuntimeException e) {
 			SkyCraft.LOG.warn("SkyCraft: couldn't build {} ({})", site.name(), site.structure(), e);
@@ -671,6 +681,12 @@ public final class SkyStructures {
 		// Placed: then the ground round it (a few columns a tick too).
 		if (padColumns == null) {
 			padColumns = padPlan(job);
+			// SkyCraft+ : performance. Nearest a player first, as the chunks.
+			var near = level.getNearestPlayer(job.box().getCenter().getX(), job.box().getCenter().getY(), job.box().getCenter().getZ(), -1.0, false);
+			if (near != null) {
+				double px = near.getX(), pz = near.getZ();
+				padColumns.sort(java.util.Comparator.comparingDouble(c -> (c[0] - px) * (c[0] - px) + (c[1] - pz) * (c[1] - pz)));
+			}
 			padNext = 0;
 		}
 		if (!pad(level, m, job, deadline)) {
