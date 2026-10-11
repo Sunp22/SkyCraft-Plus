@@ -215,6 +215,8 @@ public final class SkyUnderground {
 		.buildAndRegister(Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "underground_structure_shift"));
 	private static final Map<String, StructureStart> STRUCTURE_STARTS = new HashMap<>();
 	private static final java.util.Set<String> PORTAL_ROOMS_TOLD = new java.util.HashSet<>();
+	private static final int STRUCTURE_CLEARANCE = (int) DEEP + 6; // blocks of ground over a structure's top, at least
+	private static final int STRUCTURE_EXTRA_DEPTH = 12;
 	private static final java.util.Set<String> LEVEL_STRUCTURES = java.util.Set.of("stronghold", "mineshaft", "mineshaft_mesa", "trial_chambers", "ancient_city");
 
 	private static @Nullable Integer structureShift(ServerLevel level, BlockPos pos, int fallback) {
@@ -252,11 +254,20 @@ public final class SkyUnderground {
 				if (shift == null) {
 					BlockPos middle = box.getCenter();
 					double land = SkyGround.smoothed(middle.getX(), middle.getZ());
-					shift = Double.isNaN(land) ? fallback : TOP - (int) Math.floor(land);
+					// A little deeper than the caves round it, as Skyrim's land over all of it may not be known yet.
+					shift = (Double.isNaN(land) ? fallback : TOP - (int) Math.floor(land)) + STRUCTURE_EXTRA_DEPTH;
+					// Its top well under the lowest of Skyrim's land over it (and a little round it):
+					// nearer than DEEP, Skyrim's own ground is drawn instead, and filled half the End
+					// portal room with dirt under a dip in the land.
+					double lowest = SkyGround.lowestIn(box.minX() - 24, box.minZ() - 24, box.maxX() + 24, box.maxZ() + 24);
+					if (!Double.isNaN(lowest)) {
+						shift = Math.max(shift, box.maxY() - (int) Math.floor(lowest) + STRUCTURE_CLEARANCE);
+					}
 					Map<String, Integer> updated = new HashMap<>(saved != null ? saved : Map.of());
 					updated.put(key, shift);
 					level.setAttached(STRUCTURE_SHIFTS, updated);
-					SkyCraft.LOG.info("SkyCraft: underground: {} at {} comes up level (shift {})", id, middle.toShortString(), shift);
+					SkyCraft.LOG.info("SkyCraft: underground: {} at {} comes up level (shift {}, top {} under Skyrim's lowest land over it)", id, middle.toShortString(), shift,
+						Double.isNaN(lowest) ? "?" : String.valueOf((int) Math.floor(lowest) - (box.maxY() - shift)));
 				}
 				if (PORTAL_ROOMS_TOLD.add(boxKey)) {
 					// Where its End portal is (here, not in the hidden world), for whoever goes looking.
