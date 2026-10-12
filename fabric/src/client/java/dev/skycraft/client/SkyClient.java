@@ -30,6 +30,7 @@ public final class SkyClient {
 	private static final SkyLink.SkyState sky = new SkyLink.SkyState();
 	private static final java.util.List<SkyLink.Shot> GUEST_SHOTS = new java.util.ArrayList<>();
 	private static long shotsSentAt;
+	private static long intoAskedAt;  // SkyCraft+ : interiors in multiplayer
 	private static final SkyLink.McState mc = new SkyLink.McState();
 	private static volatile boolean linked;
 	private static boolean tookOver;
@@ -159,6 +160,15 @@ public final class SkyClient {
 			teleportAck = sky.teleportSeq;
 			teleportPending = false;
 			holdPos = new Vec3(sky.x, sky.y, sky.z);
+		}
+		// SkyCraft+ : interiors in multiplayer. A guest's request to change dimension sent too early
+		// (just joined) is lost: while its Skyrim is in another kind of world than its Minecraft, ask again.
+		if (minecraft.getSingleplayerServer() == null && sky.inGame() && !sky.loading() && minecraft.level != null && System.nanoTime() - intoAskedAt > 2_000_000_000L) {
+			var want = dimensionFor(sky);
+			if (want != minecraft.level.dimension() && dimensionCode(want) <= Proto.DIM_WORLDSPACES && dimensionCode(minecraft.level.dimension()) <= Proto.DIM_WORLDSPACES) {
+				intoAskedAt = System.nanoTime();
+				requestTeleport(minecraft, sky.x, sky.y, sky.z, sky.yaw, sky.pitch);
+			}
 		}
 
 		dev.skycraft.world.SkyWorld.update(sky.inGame() && !sky.loading(), sky.gameHour, sky.placeFlags, sky.seaLevel);
@@ -572,6 +582,15 @@ public final class SkyClient {
 					sp.resetFallDistance();
 				}
 			});
+		} else if (minecraft.level != null && dimension != minecraft.level.dimension() && dimensionCode(dimension) <= Proto.DIM_WORLDSPACES
+			&& dimensionCode(minecraft.level.dimension()) <= Proto.DIM_WORLDSPACES) {
+			// SkyCraft+ : interiors in multiplayer. A guest's own Skyrim went into an interior (or
+			// another worldspace, or back out): the host's server moves its Minecraft player there,
+			// so players in the same interior see each other (it stayed in the overworld before).
+			act(minecraft, new dev.skycraft.net.SkyNet.Act(dev.skycraft.net.SkyNet.Act.INTO, dimensionCode(dimension), yaw, pitch,
+				net.minecraft.core.BlockPos.ZERO, 0, (float) x, (float) y, (float) z));
+			intoAskedAt = System.nanoTime();
+			SkyCraft.LOG.info("SkyCraft: asked the server to go into {}", dimension.identifier());
 		}
 		SkyCraft.LOG.info("SkyCraft: teleported to {} {} {}", x, y, z);
 	}

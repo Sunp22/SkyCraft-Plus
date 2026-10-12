@@ -12,6 +12,7 @@ import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerPlayer;
 
 /**
@@ -90,7 +91,7 @@ public final class SkyNet {
 	 * server; a guest's sends it to the host's.
 	 */
 	public record Act(int kind, int code, float a, float b, BlockPos pos, int face, float hx, float hy, float hz) implements CustomPacketPayload {
-		public static final int USE_BLOCK = 0, HEAL = 1, SKYRIM_HIT = 2, SET_HEALTH = 3, HANDS = 4, BLOCK_HIT = 5;
+		public static final int USE_BLOCK = 0, HEAL = 1, SKYRIM_HIT = 2, SET_HEALTH = 3, HANDS = 4, BLOCK_HIT = 5, INTO = 6;
 		public static final Type<Act> TYPE = new Type<>(Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "act"));
 		public static final StreamCodec<RegistryFriendlyByteBuf, Act> CODEC = StreamCodec.of((buf, act) -> {
 			buf.writeVarInt(act.kind);
@@ -115,6 +116,36 @@ public final class SkyNet {
 		}
 	}
 
+
+	/** SkyCraft+ : interiors in multiplayer. Skyrim's own kinds of world only (Tamriel, interiors, other worldspaces): never into or out of the Nether or the End. */
+	private static void into(ServerPlayer player, int dimension, double x, double y, double z, float yaw, float pitch) {
+		var server = player.level().getServer();
+		var target = server == null ? null : server.getLevel(skyrimDimension(dimension));
+		if (target == null || skyrimDimension(player.level().dimension()) == null || target == player.level() || !Double.isFinite(x + y + z)) {
+			return;
+		}
+		player.teleportTo(target, x, y, z, java.util.Set.of(), yaw, pitch, true);
+		player.resetFallDistance();
+		SkyCraft.LOG.info("SkyCraft: {} into {}", player.getName().getString(), target.dimension().identifier());
+	}
+
+	private static @org.jspecify.annotations.Nullable ResourceKey<net.minecraft.world.level.Level> skyrimDimension(int code) {
+		return switch (code) {
+			case dev.skycraft.link.Proto.DIM_TAMRIEL -> net.minecraft.world.level.Level.OVERWORLD;
+			case dev.skycraft.link.Proto.DIM_INTERIORS -> dev.skycraft.world.SkyInteriors.INTERIORS;
+			case dev.skycraft.link.Proto.DIM_WORLDSPACES -> WORLDSPACES;
+			default -> null;
+		};
+	}
+
+	private static @org.jspecify.annotations.Nullable Integer skyrimDimension(net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> dimension) {
+		return dimension == net.minecraft.world.level.Level.OVERWORLD ? Integer.valueOf(dev.skycraft.link.Proto.DIM_TAMRIEL)
+			: dimension == dev.skycraft.world.SkyInteriors.INTERIORS ? Integer.valueOf(dev.skycraft.link.Proto.DIM_INTERIORS)
+			: dimension == WORLDSPACES ? Integer.valueOf(dev.skycraft.link.Proto.DIM_WORLDSPACES) : null;
+	}
+
+	private static final ResourceKey<net.minecraft.world.level.Level> WORLDSPACES = ResourceKey.create(net.minecraft.core.registries.Registries.DIMENSION,
+		Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "worldspaces"));
 	/** SkyCraft+ : multiplayer. Which hands each guest's Skyrim holds (bit 1: right, 2: left). */
 	private static final java.util.Map<java.util.UUID, Integer> GUEST_HANDS = new java.util.concurrent.ConcurrentHashMap<>();
 
@@ -208,6 +239,9 @@ public final class SkyNet {
 			case Act.HANDS -> GUEST_HANDS.put(player.getUUID(), act.code & 0xFFFF03);
 			// SkyCraft+ : Skyrim weapons break blocks. The swing landed on this Minecraft block.
 			case Act.BLOCK_HIT -> dev.skycraft.combat.SkyWeaponTools.hit(player, act.pos, (act.code & dev.skycraft.link.Proto.SKYRIM_HIT_LEFT) != 0, (act.code & dev.skycraft.link.Proto.SKYRIM_HIT_POWER) != 0);
+			// SkyCraft+ : interiors in multiplayer. The guest's Skyrim went into an interior, another
+			// worldspace or back out: its Minecraft player goes to that dimension, as the host's does.
+			case Act.INTO -> into(player, act.code, act.hx, act.hy, act.hz, act.a, act.b);
 			default -> {
 			}
 		}
