@@ -322,6 +322,26 @@ namespace skycraft
 					cz += pushZ;
 					moved = true;
 				}
+				// SkyCraft+ : companions walk through builds (found 2026-10-11). What a follower near
+				// blocks gets, every 3 s, for the next test.
+				if (actor->IsPlayerTeammate()) {
+					static std::unordered_map<RE::FormID, float> teammateLog;
+					static int                                   teammateLines = 0;
+					float&                                       next = teammateLog[actor->GetFormID()];
+					next -= a_delta;
+					int walls = 0;
+					for (int bx = int(std::floor(mc.x - 1.0)); bx <= int(std::floor(mc.x + 1.0)); ++bx) {
+						for (int bz = int(std::floor(mc.z - 1.0)); bz <= int(std::floor(mc.z + 1.0)); ++bz) {
+							walls += ColumnBlocked(bx, bz, y0, y1) ? 1 : 0;
+						}
+					}
+					if (walls > 0 && next <= 0.0f && teammateLines < 60) {
+						next = 3.0f;
+						++teammateLines;
+						logger::info("companion {} at ({:.2f}, {:.2f}, {:.2f}), feet {:.2f}, radius {:.2f}, height {:.2f}: {} block columns round it, pushed {}, lifted {}, step {:.2f}",
+							actor->GetDisplayFullName(), mc.x, mc.y, mc.z, feetY, r, h, walls, moved, lifted, stepTop > -1.0e8 ? stepTop : 0.0);
+					}
+				}
 				auto& detour = detours[actor->GetFormID()];
 				detour.time -= a_delta;
 				if (moved) {
