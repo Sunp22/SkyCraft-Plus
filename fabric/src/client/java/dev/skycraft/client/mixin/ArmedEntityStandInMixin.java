@@ -15,18 +15,21 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
  * The player's body in third person (drawn in Skyrim) holds a Minecraft stand-in for a Skyrim
- * weapon, shield or torch in a Skyrim-held hand, rather than nothing (SkyHands.standIn).
+ * weapon, shield or torch in a Skyrim-held hand, rather than nothing (SkyHands.standIn); other
+ * players' bodies too.
  */
 @Mixin(ArmedEntityRenderState.class)
 public abstract class ArmedEntityStandInMixin {
 	@Inject(method = "extractArmedEntityRenderState", at = @At("TAIL"), require = 0)  // (cosmetic: never worth a crash)
 	private static void skycraft$skyrimHandStandIn(LivingEntity entity, ArmedEntityRenderState state, ItemModelResolver itemModelResolver, float partialTicks,
 		CallbackInfo ci) {
-		if (entity != Minecraft.getInstance().player) {
+		boolean self = entity == Minecraft.getInstance().player;
+		if (!self && !(entity instanceof net.minecraft.world.entity.player.Player)) {
 			return;
 		}
 		for (HumanoidArm arm : HumanoidArm.values()) {
-			var stack = SkyHands.standIn(arm);
+			// SkyCraft+ : held items in multiplayer. Other players' too, from what the server says their Skyrim holds.
+			var stack = self ? SkyHands.standIn(arm) : SkyHands.standIn(entity, arm);
 			if (stack.isEmpty()) {
 				continue;
 			}

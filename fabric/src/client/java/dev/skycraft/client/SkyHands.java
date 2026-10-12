@@ -60,7 +60,34 @@ public final class SkyHands {
 			return net.minecraft.world.item.ItemStack.EMPTY;
 		}
 		var sky = SkyClient.sky();
-		int kind = arm == HumanoidArm.RIGHT ? sky.rightHandKind : sky.leftHandKind;
+		return standInFor(arm == HumanoidArm.RIGHT ? sky.rightHandKind : sky.leftHandKind);
+	}
+
+	/** SkyCraft+ : held items in multiplayer. Other players' Skyrim hands, by entity id (SkyNet.HandsOf). */
+	private static final java.util.Map<Integer, Integer> OTHERS = new java.util.concurrent.ConcurrentHashMap<>();
+
+	public static void otherPlayerHands(int entityId, int hands) {
+		if (hands == 0) {
+			OTHERS.remove(entityId);
+		} else {
+			OTHERS.put(entityId, hands);
+		}
+	}
+
+	public static void forgetOtherPlayers() {
+		OTHERS.clear();
+	}
+
+	/** As standIn, for another player: what their body holds in an arm their Skyrim holds. */
+	public static net.minecraft.world.item.ItemStack standIn(net.minecraft.world.entity.Entity player, HumanoidArm arm) {
+		Integer hands = OTHERS.get(player.getId());
+		if (hands == null || (hands & (arm == HumanoidArm.RIGHT ? 1 : 2)) == 0) {
+			return net.minecraft.world.item.ItemStack.EMPTY;
+		}
+		return standInFor(arm == HumanoidArm.RIGHT ? hands >> 8 & 0xFF : hands >> 16 & 0xFF);
+	}
+
+	private static net.minecraft.world.item.ItemStack standInFor(int kind) {
 		net.minecraft.world.item.Item item = switch (kind) {
 			case dev.skycraft.link.Proto.HAND_SWORD -> net.minecraft.world.item.Items.IRON_SWORD;
 			case dev.skycraft.link.Proto.HAND_DAGGER -> net.minecraft.world.item.Items.STONE_SWORD;

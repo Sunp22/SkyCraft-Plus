@@ -127,6 +127,56 @@ public final class SkyNet {
 		return GUEST_HANDS.getOrDefault(player.getUUID(), 0);
 	}
 
+	/**
+	 * SkyCraft+ : held items in multiplayer. Server -> every player: which hands a player's Skyrim
+	 * holds and with what (as guestHandsAndKinds), so their body holds its Minecraft stand-in on
+	 * everyone's screen, not only on their own.
+	 */
+	public record HandsOf(int entityId, int hands) implements CustomPacketPayload {
+		public static final Type<HandsOf> TYPE = new Type<>(Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "hands_of"));
+		public static final StreamCodec<RegistryFriendlyByteBuf, HandsOf> CODEC = StreamCodec.composite(
+			ByteBufCodecs.VAR_INT, HandsOf::entityId, ByteBufCodecs.INT, HandsOf::hands, HandsOf::new);
+
+		@Override
+		public Type<? extends CustomPacketPayload> type() {
+			return TYPE;
+		}
+	}
+
+	private static final java.util.Map<java.util.UUID, Integer> SENT_HANDS = new java.util.HashMap<>();
+
+	/** A player's Skyrim hands and what they hold: the host's are read here directly, a guest's came in an Act. */
+	private static int handsOf(ServerPlayer player) {
+		if (isHost(player)) {
+			return (SkyCombat.rightHandSkyrim ? 1 : 0) | (SkyCombat.leftHandSkyrim ? 2 : 0) | (SkyCombat.rightHandKind & 0xFF) << 8
+				| (SkyCombat.leftHandKind & 0xFF) << 16;
+		}
+		return guestHandsAndKinds(player);
+	}
+
+	/** Sends each player's hands to everyone when they change, and all of them now and then (for players who just joined). */
+	private static void sendHands(net.minecraft.server.MinecraftServer server) {
+		var players = server.getPlayerList().getPlayers();
+		if (players.size() < 2) {
+			SENT_HANDS.clear();
+			return;
+		}
+		boolean all = server.getTickCount() % 40 == 0;
+		for (ServerPlayer player : players) {
+			int hands = handsOf(player);
+			Integer sent = SENT_HANDS.put(player.getUUID(), hands);
+			if (!all && sent != null && sent == hands) {
+				continue;
+			}
+			var payload = new HandsOf(player.getId(), hands);
+			for (ServerPlayer to : players) {
+				if (to != player && ServerPlayNetworking.canSend(to, HandsOf.TYPE)) {
+					ServerPlayNetworking.send(to, payload);
+				}
+			}
+		}
+	}
+
 	/** Carries out a player's Skyrim action on the server thread (amounts kept sane: a guest's client sent them). */
 	public static void apply(ServerPlayer player, Act act) {
 		switch (act.kind) {
@@ -213,7 +263,10 @@ public final class SkyNet {
 			ServerPlayer player = context.player();
 			context.server().execute(() -> apply(player, payload));
 		});
-		net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> GUEST_HANDS.remove(handler.player.getUUID()));
+		net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+			GUEST_HANDS.remove(handler.player.getUUID());
+			server.execute(() -> SENT_HANDS.remove(handler.player.getUUID()));
+		});
 		PayloadTypeRegistry.serverboundPlay().register(Hurt.TYPE, Hurt.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(DigOpen.TYPE, DigOpen.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(DigReveal.TYPE, DigReveal.CODEC);
@@ -227,6 +280,13 @@ public final class SkyNet {
 			context.server().execute(() -> SkyDig.reveal(player, payload.world(), payload.cells(), materials));
 		});
 		PayloadTypeRegistry.clientboundPlay().register(Died.TYPE, Died.CODEC);
+		// SkyCraft+ : held items in multiplayer.
+		PayloadTypeRegistry.clientboundPlay().register(HandsOf.TYPE, HandsOf.CODEC);
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(server -> {
+			if (server.getTickCount() % 5 == 0) {
+				sendHands(server);
+			}
+		});
 		ServerPlayNetworking.registerGlobalReceiver(Hurt.TYPE, (payload, context) -> {
 			ServerPlayer player = context.player();
 			// A hit's worth of damage, whatever the guest's client claims (friends only, but still).
