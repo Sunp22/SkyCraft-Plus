@@ -60,8 +60,8 @@ namespace skycraft
 		float                      maxHitHealth{ 10.0f };
 		// SkyCraft+ : balancing. A Minecraft hit on a Skyrim actor is worth this much Skyrim damage per point,
 		// plus the second per level of the actor ([Combat] fMinecraftDamage, fMinecraftDamagePerLevel; upstream: 5, 0.25).
-		float                      mcDamageBase{ 3.5f };
-		float                      mcDamagePerLevel{ 0.175f };
+		float                      mcDamageBase{ 2.5f };
+		float                      mcDamagePerLevel{ 0.125f };
 		// SkyCraft+ : balancing. Skyrim weapons' hits on Minecraft's mobs are multiplied by this ([Combat] fSkyrimWeaponsVsMinecraft).
 		float                      skyrimVsMinecraft{ 1.5f };
 		// SkyCraft+ : the underground. Skyrim's land is more than two blocks above the player (a mine).
