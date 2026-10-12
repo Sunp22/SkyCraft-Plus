@@ -831,6 +831,22 @@ namespace skycraft::Dig
 			return false;
 		}
 
+		// SkyCraft+ : the stutter over dug caves. Meshes the last scan found to cut (nearest at the
+		// back) and the dug blocks it found them by; cut a few milliseconds' worth a frame.
+		std::vector<std::pair<RE::NiPointer<RE::BSTriShape>, float>> pending;
+		Buckets                                                      pendingBuckets;
+
+		void CutPending(std::chrono::steady_clock::time_point a_until)
+		{
+			while (!pending.empty() && std::chrono::steady_clock::now() < a_until) {
+				auto [geom, up] = std::move(pending.back());
+				pending.pop_back();
+				if (geom && geom->parent) {
+					Process(geom.get(), pendingBuckets, up);
+				}
+			}
+		}
+
 		void Scan(RE::PlayerCharacter* a_player)
 		{
 			LoadAreas();
@@ -875,12 +891,15 @@ namespace skycraft::Dig
 			for (const auto& entry : cuts) {
 				cutMeshes.push_back(entry.second.original);
 			}
+			// SkyCraft+ : the stutter over dug caves. Not cut here but queued (CutPending), after the walk.
+			pending.clear();
 			for (const auto& geom : cutMeshes) {
 				if (geom && seen.insert(geom.get()).second) {
-					Process(geom.get(), buckets, cuts.contains(geom.get()) ? cuts[geom.get()].up : 0.0f);
+					pending.emplace_back(geom, cuts.contains(geom.get()) ? cuts[geom.get()].up : 0.0f);
 				}
 			}
 			if (dug.empty()) {
+				pendingBuckets = std::move(buckets);
 				return;
 			}
 
@@ -1005,12 +1024,21 @@ namespace skycraft::Dig
 					}
 				}
 			}
-			// Now cut what was found (nothing is being walked any more).
-			for (auto& [geom, up] : found) {
-				if (geom && geom->parent) {
-					Process(geom.get(), buckets, up);
-				}
+			// Now cut what was found (nothing is being walked any more), a few milliseconds' worth a
+			// frame, nearest first (SkyCraft+ : the stutter over dug caves: flying low over dug ground
+			// loads many meshes at once, and cutting them all in one frame took up to 70 ms).
+			for (auto& entry : found) {
+				pending.push_back(std::move(entry));
 			}
+			auto away = [&](const std::pair<RE::NiPointer<RE::BSTriShape>, float>& a_e) {
+				if (!a_e.first) {
+					return 0.0;
+				}
+				const auto c = SkyToMc(a_e.first->worldBound.center);
+				return (c.x - here.x) * (c.x - here.x) + (c.y - here.y) * (c.y - here.y) + (c.z - here.z) * (c.z - here.z);
+			};
+			std::ranges::sort(pending, [&](const auto& a_a, const auto& a_b) { return away(a_a) > away(a_b); });  // nearest last: taken first
+			pendingBuckets = std::move(buckets);
 			found.clear();
 			static int logged = 0;
 			if (logged < 5 && (landSeen || objectsSeen)) {
@@ -1067,6 +1095,10 @@ namespace skycraft::Dig
 			}
 			scanSoon = false;
 			scanTimer = kRescanSeconds;
+		}
+		// SkyCraft+ : the stutter over dug caves.
+		if (!pending.empty()) {
+			CutPending(std::chrono::steady_clock::now() + std::chrono::milliseconds(3));
 		}
 	}
 
