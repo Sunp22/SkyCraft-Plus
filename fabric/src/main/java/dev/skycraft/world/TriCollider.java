@@ -81,6 +81,14 @@ public final class TriCollider {
 		double floorWalk = floor(tris, x, y, z, true, walkUp);
 		double floorAny = floor(tris, x, y, z, false, EPS);
 		double floor = Math.max(floorWalk, floorAny);
+		// SkyCraft+ : falling through mountains. On the ground, steep surfaces count as walls only
+		// from the step height up, and as ground only right at the feet, so walking into a rock face
+		// of about 45-60 degrees put the feet inside it, a bit deeper each step, until the player
+		// fell through the mountain. A surface right over the feet within a step is stepped onto,
+		// as Minecraft steps onto a block (steeper faces keep the feet off them, so they stay walls).
+		if (wasOnGround) {
+			floor = Math.max(floor, centre(tris, x, y, z, step));
+		}
 		double targetY = y + dy;
 		double outY;
 		if (targetY <= floor) {
@@ -111,6 +119,22 @@ public final class TriCollider {
 				if (!Double.isNaN(h) && h <= limit && h > best) {
 					best = h;
 				}
+			}
+		}
+		return best;
+	}
+
+	/** SkyCraft+ : falling through mountains. Highest surface right under the centre of the feet, at most {@code maxAbove} above them (or -inf). */
+	private static double centre(List<SkyTri> tris, double x, double y, double z, double maxAbove) {
+		double best = Double.NEGATIVE_INFINITY;
+		double limit = y + maxAbove;
+		for (SkyTri t : tris) {
+			if (t.minY > limit) {
+				continue;
+			}
+			double h = t.heightAt(x, z);
+			if (!Double.isNaN(h) && h <= limit && h > best) {
+				best = h;
 			}
 		}
 		return best;
