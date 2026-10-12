@@ -409,7 +409,8 @@ namespace skycraft
 			if (!actor || actor->IsDead()) {
 				return;
 			}
-			const float scale = 5.0f + 0.25f * static_cast<float>(actor->GetLevel());
+			// SkyCraft+ : balancing. Was 5 + 0.25 per level: Minecraft swords hit far harder than Skyrim's.
+			const float scale = State().mcDamageBase + State().mcDamagePerLevel * static_cast<float>(actor->GetLevel());
 			const float damage = a_ev.a * scale;
 			const bool  crit = (a_ev.flags & proto::kHitCritical) != 0;
 			const bool  projectile = (a_ev.flags & proto::kHitProjectile) != 0;
@@ -1062,6 +1063,10 @@ namespace skycraft
 				}
 				if (power) {
 					damage *= 2.0f;
+				}
+				// SkyCraft+ : balancing. Skyrim's weapons do extra to Minecraft's mobs (bashes stay pushes).
+				if (!bash) {
+					damage *= st.skyrimVsMinecraft;
 				}
 				const float          reach = 3.0f * (weapon ? std::clamp(weapon->weaponData.reach, 0.5f, 2.0f) : 0.8f);
 				const std::uint16_t flags = (power ? proto::kSkyrimHitPower : 0) | (bash ? proto::kSkyrimHitBash : 0) | (left ? proto::kSkyrimHitLeft : 0);

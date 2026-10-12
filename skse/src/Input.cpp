@@ -162,6 +162,11 @@ namespace skycraft
 			State().blocksBeforeEffects = ini.GetBoolValue("Worlds", "bBlocksBeforeEffects", true);
 			State().hideWorldDeepOption = ini.GetBoolValue("Worlds", "bHideWorldDeep", true);
 			State().maxHitHealth = static_cast<float>(ini.GetDoubleValue("Combat", "fMaxHitHealth", 10.0));
+			State().mcDamageBase = std::max(0.0f, static_cast<float>(ini.GetDoubleValue("Combat", "fMinecraftDamage", 3.5)));
+			State().mcDamagePerLevel = std::max(0.0f, static_cast<float>(ini.GetDoubleValue("Combat", "fMinecraftDamagePerLevel", 0.175)));
+			State().skyrimVsMinecraft = std::max(0.0f, static_cast<float>(ini.GetDoubleValue("Combat", "fSkyrimWeaponsVsMinecraft", 1.5)));
+			logger::info("damage: Minecraft hits on Skyrim's actors x({:.2f} + {:.3f} per level), Skyrim weapons on Minecraft's mobs x{:.2f}", State().mcDamageBase,
+				State().mcDamagePerLevel, State().skyrimVsMinecraft);
 			logger::info("Minecraft's structures on Skyrim's map: {}", State().structureMarkersOption ? "on" : "off");
 			logger::info("Skyrim enemies in the Nether and the End: {} ({} and {} kinds, up to {}, about every {:.0f} s)",
 				State().skyrimEnemiesOption ? "on" : "off", State().netherEnemies.size(), State().endEnemies.size(), State().enemyCap, State().enemySeconds);

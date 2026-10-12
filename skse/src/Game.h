@@ -58,6 +58,12 @@ namespace skycraft
 		bool                       blocksBeforeEffects{ true };
 		// SkyCraft+ : most of Minecraft's health one Skyrim hit may take ([Combat] fMaxHitHealth; 0: no cap).
 		float                      maxHitHealth{ 10.0f };
+		// SkyCraft+ : balancing. A Minecraft hit on a Skyrim actor is worth this much Skyrim damage per point,
+		// plus the second per level of the actor ([Combat] fMinecraftDamage, fMinecraftDamagePerLevel; upstream: 5, 0.25).
+		float                      mcDamageBase{ 3.5f };
+		float                      mcDamagePerLevel{ 0.175f };
+		// SkyCraft+ : balancing. Skyrim weapons' hits on Minecraft's mobs are multiplied by this ([Combat] fSkyrimWeaponsVsMinecraft).
+		float                      skyrimVsMinecraft{ 1.5f };
 		// SkyCraft+ : the underground. Skyrim's land is more than two blocks above the player (a mine).
 		std::atomic<bool>          playerUnderLand{ false };
 		// SkyCraft+ : performance. Deep down, Skyrim's world isn't drawn ([Worlds] bHideWorldDeep).
