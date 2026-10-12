@@ -1251,13 +1251,28 @@ namespace skycraft
 					_mm_store_ps(v, velocity.quad);
 					rising = v[2];
 				}
-				const bool stuck = Dig::PlayerOnBlock() && rising <= 0.1f && a_player->GetGraphVariableBool("bInJumpState", jumping) && jumping;
+				// SkyCraft+ : the falling animation on blocks (Known bugs). Rising up to Havok's own
+				// "taking off" speed still counts as standing (settling onto a block plane pushes up a
+				// little), and a jump state lasting a second with no landing says why, now and then.
+				const bool onBlock = Dig::PlayerOnBlock();
+				const bool inJump = a_player->GetGraphVariableBool("bInJumpState", jumping) && jumping;
+				const bool stuck = onBlock && rising <= 0.3f && inJump;
 				stuckInJump = stuck ? stuckInJump + a_delta : 0.0f;
-				if (stuckInJump > 0.4f) {
+				static float longJump = 0.0f;
+				static int   whyLogged = 0;
+				longJump = inJump ? longJump + a_delta : 0.0f;
+				if (longJump > 1.0f && !stuck) {
+					longJump = -4.0f;  // (again in 5 s at most)
+					if (whyLogged++ < 20) {
+						logger::info("dig: in a jump or fall animation for a second: on a Minecraft block {}, rising {:.2f}, Havok state {}, in the air {}", onBlock, rising,
+							a_player->GetCharController() ? static_cast<int>(a_player->GetCharController()->context.currentState) : -1, a_player->IsInMidair());
+					}
+				}
+				if (stuckInJump > 0.25f) {
 					stuckInJump = 0.0f;
 					a_player->NotifyAnimationGraph("JumpLand");
 					static int logged = 0;
-					if (logged++ < 5) {
+					if (logged++ < 20) {
 						logger::info("dig: standing on a Minecraft block in a jump or fall animation: landed");
 					}
 				}
