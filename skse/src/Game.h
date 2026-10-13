@@ -64,6 +64,8 @@ namespace skycraft
 		float                      mcDamagePerLevel{ 0.125f };
 		// SkyCraft+ : balancing. Skyrim weapons' hits on Minecraft's mobs are multiplied by this ([Combat] fSkyrimWeaponsVsMinecraft).
 		float                      skyrimVsMinecraft{ 1.5f };
+		// SkyCraft+ : Minecraft's attacks break Skyrim's breakable objects, spider webs and the like ([Combat] bMinecraftHitsObjects).
+		bool                       minecraftHitsObjects{ true };
 		// SkyCraft+ : the underground. Skyrim's land is more than two blocks above the player (a mine).
 		std::atomic<bool>          playerUnderLand{ false };
 		// SkyCraft+ : performance. Deep down, Skyrim's world isn't drawn ([Worlds] bHideWorldDeep).
@@ -182,6 +184,9 @@ namespace skycraft
 		// SkyCraft+ : main thread, every frame: keeps watching the player's melee HitFrames, so
 		// Skyrim weapons hit Minecraft's mobs too.
 		void WatchPlayerHits(RE::PlayerCharacter* a_player, float a_delta);
+		// SkyCraft+ : Minecraft hits on Skyrim objects. Any thread: Minecraft's attack was pressed
+		// (left click, RT); the next PerFrame hits the breakable Skyrim object in front, if any.
+		void MinecraftSwing();
 	}
 
 	namespace SkyrimShots

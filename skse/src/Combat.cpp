@@ -929,9 +929,74 @@ namespace skycraft
 			logger::info("combat hooks installed");
 		}
 
+		// SkyCraft+ : Minecraft hits on Skyrim objects. Minecraft never sees Skyrim's breakable things
+		// (spider webs and the like), so they couldn't be broken outside Skyrim mode: a Minecraft
+		// attack also damages the nearest one in front of the camera within reach.
+		std::atomic<bool> swingPending{ false };
+
+		void HitSkyrimObject(RE::PlayerCharacter* a_player)
+		{
+			proto::McState mc{};
+			auto*          tes = RE::TES::GetSingleton();
+			if (!tes || !Link::Get().ReadMcState(mc)) {
+				return;
+			}
+			// Minecraft's eye and look, as Skyrim positions (two points along the look).
+			const double yaw = mc.yaw * (kPi / 180.0), pitch = mc.pitch * (kPi / 180.0);
+			const double lx = -std::sin(yaw) * std::cos(pitch), ly = -std::sin(pitch), lz = std::cos(yaw) * std::cos(pitch);
+			const RE::NiPoint3 eye = McToSky(mc.eyeX, mc.eyeY, mc.eyeZ);
+			RE::NiPoint3       dir = McToSky(mc.eyeX + lx, mc.eyeY + ly, mc.eyeZ + lz) - eye;
+			if (dir.Length() < 1e-3f) {
+				return;
+			}
+			dir /= dir.Length();
+			constexpr float kReach = 4.5f * float(proto::kUnitsPerBlock);
+			RE::TESObjectREFR* best = nullptr;
+			float              bestAlong = std::numeric_limits<float>::max();
+			tes->ForEachReferenceInRange(a_player, kReach + 400.0f, [&](RE::TESObjectREFR* a_ref) {
+				if (!a_ref || a_ref == a_player || a_ref->IsDisabled() || a_ref->IsDeleted() || !a_ref->Is3DLoaded() || a_ref->As<RE::Actor>()) {
+					return RE::BSContainer::ForEachResult::kContinue;
+				}
+				auto* base = a_ref->GetBaseObject();
+				auto* destructible = base ? skyrim_cast<RE::BGSDestructibleObjectForm*>(base) : nullptr;
+				auto* root3D = a_ref->Get3D();
+				if (!destructible || !destructible->data || destructible->data->numStages <= 0 || !root3D) {
+					return RE::BSContainer::ForEachResult::kContinue;
+				}
+				const auto& bound = root3D->worldBound;
+				const RE::NiPoint3 to = bound.center - eye;
+				const float        along = to.Dot(dir);
+				const RE::NiPoint3 side = to - dir * along;
+				const float        radius = std::max(bound.radius, 20.0f);
+				if (along < -radius || along - radius > kReach || side.Length() > radius * 0.8f + 15.0f || along >= bestAlong) {
+					return RE::BSContainer::ForEachResult::kContinue;
+				}
+				best = a_ref;
+				bestAlong = along;
+				return RE::BSContainer::ForEachResult::kContinue;
+			});
+			if (!best) {
+				return;
+			}
+			best->DamageObject(25.0f, false);
+			static int logged = 0;
+			if (logged++ < 20) {
+				logger::info("Minecraft hit Skyrim's {:08X} ({}): object damaged", best->GetFormID(), best->GetDisplayFullName());
+			}
+		}
+
+		void MinecraftSwing()
+		{
+			swingPending = true;
+		}
+
 		void PerFrame(RE::PlayerCharacter* a_player, bool a_puppeting, float a_delta)
 		{
 			auto& link = Link::Get();
+			// SkyCraft+ : Minecraft hits on Skyrim objects.
+			if (swingPending.exchange(false) && a_puppeting && !State().parked && State().minecraftHitsObjects) {
+				HitSkyrimObject(a_player);
+			}
 			if (!a_puppeting) {
 				if (essentialSet) {
 					SetEssential(a_player, false);

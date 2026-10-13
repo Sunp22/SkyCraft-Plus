@@ -165,6 +165,7 @@ namespace skycraft
 			State().mcDamageBase = std::max(0.0f, static_cast<float>(ini.GetDoubleValue("Combat", "fMinecraftDamage", 2.5)));
 			State().mcDamagePerLevel = std::max(0.0f, static_cast<float>(ini.GetDoubleValue("Combat", "fMinecraftDamagePerLevel", 0.125)));
 			State().skyrimVsMinecraft = std::max(0.0f, static_cast<float>(ini.GetDoubleValue("Combat", "fSkyrimWeaponsVsMinecraft", 1.5)));
+			State().minecraftHitsObjects = ini.GetBoolValue("Combat", "bMinecraftHitsObjects", true);
 			logger::info("damage: Minecraft hits on Skyrim's actors x({:.2f} + {:.3f} per level), Skyrim weapons on Minecraft's mobs x{:.2f}", State().mcDamageBase,
 				State().mcDamagePerLevel, State().skyrimVsMinecraft);
 			logger::info("Minecraft's structures on Skyrim's map: {}", State().structureMarkersOption ? "on" : "off");
@@ -325,6 +326,9 @@ namespace skycraft
 			void Send(const Held& a_what, bool a_down)
 			{
 				Link::Get().PushInput(a_what.mouse ? proto::kInMouseButton : proto::kInKey, a_what.code, a_down ? 1 : 0);
+				if (a_what.mouse && a_what.code == 1 && a_down && !State().mcScreenOpen) {
+					Combat::MinecraftSwing();  // SkyCraft+ : Minecraft hits on Skyrim objects (RT)
+				}
 			}
 
 			void Hold(std::uint32_t a_button, Held a_what)
@@ -714,6 +718,9 @@ namespace skycraft
 								const std::uint16_t sdlButton = code < 8 ? kButtons[code] : std::uint16_t(0);
 								if (sdlButton) {
 									link.PushInput(proto::kInMouseButton, sdlButton, down ? 1 : 0);
+									if (sdlButton == 1 && down && !st.mcScreenOpen) {
+										Combat::MinecraftSwing();  // SkyCraft+ : Minecraft hits on Skyrim objects
+									}
 								}
 							}
 							break;
