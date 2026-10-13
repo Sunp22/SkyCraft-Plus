@@ -234,9 +234,17 @@ namespace skycraft::MapMarkers
 		}
 		timer = 5.0f;
 		auto* ws = a_player->GetWorldspace();
+		auto* cell = a_player->GetParentCell();
 		auto* ui = RE::UI::GetSingleton();
-		if (!ws || ws->GetFormID() != kTamriel || !a_player->GetParentCell() || !a_player->Is3DLoaded() || !ui ||
-			ui->IsMenuOpen(RE::LoadingMenu::MENU_NAME) || State().parked) {
+		// SkyCraft+ : markers after a load in a walled city. A save doesn't keep our markers' map data,
+		// so they're put back after each load; that waited for Tamriel itself, and a game loaded in
+		// Whiterun (its own worldspace) had none on the map until the player went outside. Tamriel, a
+		// worldspace inside it, or an interior will do.
+		bool inTamriel = cell && cell->IsInteriorCell();
+		for (auto* w = ws; w && !inTamriel; w = w->parentWorld) {
+			inTamriel = w->GetFormID() == kTamriel;
+		}
+		if (!inTamriel || !cell || !a_player->Is3DLoaded() || !ui || ui->IsMenuOpen(RE::LoadingMenu::MENU_NAME) || State().parked) {
 			return;
 		}
 		const auto       file = File();
