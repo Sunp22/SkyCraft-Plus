@@ -61,7 +61,8 @@ public final class SkyHold {
 
 	/** True if this mob should stay where it is this tick (LivingEntityHoldMixin). */
 	public static boolean hold(LivingEntity entity) {
-		if (!enabled || entity instanceof Player || !SkyCollision.active()) {
+		// (Not active(): right after a change of place Skyrim's ground is empty, just when it's needed.)
+		if (!enabled || entity instanceof Player || !SkyCollision.linked()) {
 			return false;
 		}
 		Level level = entity.level();

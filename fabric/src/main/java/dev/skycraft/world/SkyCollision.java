@@ -213,6 +213,11 @@ public final class SkyCollision {
 		return KNOWN_REGIONS.size();
 	}
 
+	/** SkyCraft+ : mobs held where Skyrim's ground is unknown. Skyrim has sent its world this session (even if just cleared). */
+	public static boolean linked() {
+		return epoch != -1;
+	}
+
 	/** Skyrim is describing its world around the player (false in a plain Minecraft world). */
 	public static boolean active() {
 		return !KNOWN_REGIONS.isEmpty();
