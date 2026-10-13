@@ -92,7 +92,7 @@ final class AvatarExporter implements SubmitNodeCollector {
 	private static final int UV_RAW = 0, UV_BLOCK_ATLAS = 1, UV_ITEM_ATLAS = 2;
 	private static final Direction[] FACES_AND_NONE = { null, Direction.DOWN, Direction.UP, Direction.NORTH, Direction.SOUTH, Direction.WEST, Direction.EAST };
 	private static final double SCENE_RANGE = 64.0;
-	private static final int SCENE_MAX_ENTITIES = 48;
+	private static final int SCENE_MAX_ENTITIES = 128;  // SkyCraft+ : many mobs (was 48)
 	private static final double FAR_SCENE_RANGE = 192.0; // SkyCraft+ : bosses and ghasts
 	private static final double BLOCK_ENTITY_RANGE = 48.0;
 	private static final int SCENE_MAX_BLOCK_ENTITIES = 256;
@@ -299,15 +299,33 @@ final class AvatarExporter implements SubmitNodeCollector {
 		dispatcher.prepare(camera, minecraft.crosshairPickEntity);
 		CameraRenderState cameraState = minecraft.gameRenderer.gameRenderState().levelRenderState.cameraRenderState;
 		PoseStack pose = new PoseStack();
-		int entities = 0;
+		// SkyCraft+ : many mobs. The nearest ones (those behind the camera counting as twice as far)
+		// are the ones drawn, up to the limit: taken in Minecraft's own order, past about 45 mobs new
+		// ones were invisible however close (and solid).
+		var look = camera.forwardVector();
+		List<Entity> wanted = new ArrayList<>();
 		for (Entity e : level.entitiesForRendering()) {
+			boolean big = e instanceof EnderDragon || e instanceof EndCrystal || e instanceof WitherBoss || e instanceof Ghast || e instanceof HappyGhast;
+			double range = big ? FAR_SCENE_RANGE : SCENE_RANGE;
+			if (e == player || e instanceof ItemEntity || e instanceof AbstractArrow || e instanceof ItemSupplier || e instanceof SkyrimActorEntity
+				|| e.distanceToSqr(cam) > range * range) {
+				continue;
+			}
+			wanted.add(e);
+		}
+		java.util.function.ToDoubleFunction<Entity> away = e -> {
+			double dx = e.getX() - cam.x, dy = e.getY() - cam.y, dz = e.getZ() - cam.z;
+			double d2 = dx * dx + dy * dy + dz * dz;
+			return dx * look.x() + dy * look.y() + dz * look.z() < -2.0 ? d2 * 4.0 : d2;
+		};
+		wanted.sort(java.util.Comparator.comparingDouble(away));
+		int entities = 0;
+		for (Entity e : wanted) {
 			// SkyCraft+ : the Nether and the End. The big ones that fight from afar (the Ender Dragon
 			// and its crystals, the Wither, ghasts) are drawn as far as Minecraft tracks them, and
 			// don't count against the limit.
 			boolean big = e instanceof EnderDragon || e instanceof EndCrystal || e instanceof WitherBoss || e instanceof Ghast || e instanceof HappyGhast;
-			double range = big ? FAR_SCENE_RANGE : SCENE_RANGE;
-			if (e == player || e instanceof ItemEntity || e instanceof AbstractArrow || e instanceof ItemSupplier || e instanceof SkyrimActorEntity
-				|| e.distanceToSqr(cam) > range * range || (!big && entities >= SCENE_MAX_ENTITIES)) {
+			if (!big && entities >= SCENE_MAX_ENTITIES) {
 				continue;
 			}
 			if (!big) {
