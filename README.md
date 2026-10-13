@@ -37,6 +37,9 @@ first, install the zip the same way, and start a **new Minecraft world** to get 
   sets them alight.
 - Skyrim healing spells and potions heal your Minecraft hearts.
 - Opening Skyrim's menus pauses Minecraft too.
+- Balanced: Minecraft weapons hit Skyrim's enemies about half as hard as in SkyCraft, and Skyrim
+  weapons hit Minecraft's mobs harder (`[Combat]` in `SkyCraft.ini`).
+- Minecraft weapons break Skyrim's spider webs and other breakable things.
 
 **A living Minecraft world inside Skyrim**
 - Minecraft follows Skyrim's day and night and its weather.
@@ -53,7 +56,7 @@ first, install the zip the same way, and start a **new Minecraft world** to get 
   (`bHideWorldDeep` in `SkyCraft.ini`).
 
 **The Nether and the End**
-- Build portals and go; you come back out where you went in.
+- Build portals and go; you come back out where you went in, even in Whiterun, a house or a cave.
 - Fight the Ender Dragon, with Skyrim's weapons and magic if you like.
 - Skyrim enemies (Dremora, atronachs, vampires, skeletons, Dwarven machines) turn up in the
   Nether and among the End cities, and leave their loot when killed.
@@ -76,25 +79,22 @@ first, install the zip the same way, and start a **new Minecraft world** to get 
 **And more**
 - A pause-menu **world switcher**: make, delete and switch Minecraft worlds, independent of your
   Skyrim saves.
-- Each Skyrim interior keeps its own builds.
+- Each Skyrim interior keeps its own builds, animals and dropped items.
 - Sign text and name tags show in Skyrim.
-- Multiplayer guests get more of the Skyrim side too (not tested yet: reports welcome).
+- Multiplayer: you see the Minecraft stand-in for each other's Skyrim weapons, and each other
+  inside interiors. Skyrim's own world (NPCs, quests) stays separate for each player.
 - Everything new can be turned off in `SkyCraft.ini` and `skycraft.properties`.
 
 ## Known bugs
 
 We know about these and are working on them:
 
-- Lava in the Nether and end stone in the End flicker while you turn the camera (they're fine
-  while it's still).
 - Lighting a Nether portal can leave fire on the frame. Put out, the portal looks lit except
   that one spot and doesn't work: break a frame block and light it again.
 - Structures (beta) can sit oddly where they meet Skyrim's land: seams, slopes, bits of Skyrim
   showing through.
-- In Skyrim mode, third person, your body can play the falling animation while standing on
-  Minecraft blocks.
 - Mobs sometimes take odd routes over Skyrim's curved ground.
-- A little stutter flying low over ground where caves were dug out.
+- Two players in different interiors at the same time share the host's builds there.
 
 Made with the help of an AI coding assistant (Claude) and play-tested in game. Bug reports and
 ideas are welcome in [Issues](../../issues).
@@ -321,19 +321,15 @@ Movement is on or off (no slow walk yet). In Skyrim mode the controller is Skyri
   [Alternate Start](https://www.nexusmods.com/skyrimspecialedition/mods/272) or a save made after Helgen.
 - Skyrim and Minecraft inventories stay separate: Skyrim's items, magic and perks are in
   Skyrim's menus (Tab, I, P), Minecraft's in Minecraft's (E).
-- Minecraft hits only reach NPCs, not Skyrim objects such as the web around Arvel in Bleak Falls
-  Barrow. Equip a Skyrim weapon or spell in one hand, or press K for Skyrim mode, deal with the
-  object with Skyrim's own weapons or magic, and press K again.
 - Sign text is drawn in Minecraft's plain font: letters outside it show as `?`.
-- Mobs and dropped items stay behind when you leave an interior (each interior's blocks are kept).
 - Skyrim enemies in the Nether and the End leave a sack with their loot instead of a body (bodies
   fell through Minecraft's blocks).
 - Skyrim has few big flat places away from its mountains, so few villages fit.
   `structuresOffMountains=false` in Minecraft's `config\skycraft.properties` allows more, on
   mountainsides.
 - Multiplayer syncs only the Minecraft world. Each player has their own Skyrim, and guests
-  can't hit their own Skyrim NPCs yet. Guests' Skyrim-mode use of blocks, Skyrim hands and
-  Skyrim magic on mobs are built but untested.
+  can't hit their own Skyrim NPCs yet. Guests' Skyrim magic on mobs works; their Skyrim-mode
+  use of blocks is built but untested.
 - Mods that also take over the camera (Improved Camera SE, SmoothCam, True Directional Movement)
   will conflict.
 
