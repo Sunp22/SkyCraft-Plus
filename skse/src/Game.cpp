@@ -412,6 +412,16 @@ namespace skycraft
 			if (a_player->IsInKillMove()) {
 				return "kill move";
 			}
+			// SkyCraft+ : Skyrim's opening. Its scenes (the cart ride, the walk to the block, the
+			// execution) turn the player's movement off and place them; Minecraft turned the controls
+			// back on (EnsureControlsEnabled) and walked the player out of the scene, which then got
+			// stuck. While Unbound (MQ101) runs with movement off, Skyrim has the player.
+			if (auto* controls = RE::ControlMap::GetSingleton(); controls && !controls->IsMovementControlsEnabled()) {
+				static auto* opening = RE::TESForm::LookupByID<RE::TESQuest>(0x3372B);
+				if (opening && opening->IsRunning()) {
+					return "Skyrim's opening";
+				}
+			}
 			// PlayerCharacter::SetAIDriven (AE 40586) sets bit 3 of this byte (decompiled, 1.7.104).
 			if (REL::Module::IsAE() && (reinterpret_cast<const std::uint8_t*>(a_player)[0xBEA] & 8) != 0) {
 				return "scripted scene";
