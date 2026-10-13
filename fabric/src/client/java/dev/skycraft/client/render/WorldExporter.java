@@ -115,19 +115,45 @@ public final class WorldExporter {
 		if (level == null || minecraft.player == null || !SkyLink.active()) {
 			return;
 		}
+		// SkyCraft+ : performance. Slow frames say where the time went (a hitch flying up to a
+		// structure while it loads; the next test tells which part).
+		long t0 = System.nanoTime();
+		long gap = lastFrameAt == 0L ? 0L : t0 - lastFrameAt;
+		lastFrameAt = t0;
+		int dirtyBefore;
+		synchronized (DIRTY) {
+			dirtyBefore = DIRTY.size();
+		}
+		boolean resent = false;
 		if (sentGeneration != SkyLink.generation() || sentLevel != level || atlas == null || atlas.stale(minecraft)) {
 			resendEverything(minecraft, level);
+			resent = true;
 		}
+		long t1 = System.nanoTime();
+		int meshedBefore = meshedTotal;
 		meshDirtySections(level);
+		long t2 = System.nanoTime();
 		forgetFar(minecraft);
 		// Animated textures (water, lava, fire, ...): the frame for this game tick.
 		atlas.animate(level.getGameTime(), region -> {
 			ByteBuffer header = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN).putInt(region.x()).putInt(region.y()).putInt(region.w()).putInt(region.h()).flip();
 			return SkyLink.tryWriteRender(Proto.REN_ATLAS_REGION, header, region.pixels());
 		});
+		long t3 = System.nanoTime();
 		exportEntities(minecraft, level, partialTick);
 		AvatarExporter.frame(minecraft, atlas, partialTick);
+		long t4 = System.nanoTime();
+		if ((gap > 150_000_000L || t4 - t0 > 40_000_000L) && slowLogged < 200 && t0 - slowLoggedAt > 1_000_000_000L && gap < 5_000_000_000L) {
+			slowLogged++;
+			slowLoggedAt = t0;
+			SkyCraft.LOG.info("SkyCraft: slow frame: {} ms since the last (ours: {} ms resend{}, {} ms meshing {} sections of {} waiting, {} ms forget/animate, {} ms entities)",
+				gap / 1_000_000L, (t1 - t0) / 1_000_000L, resent ? "" : " (none)", (t2 - t1) / 1_000_000L, meshedTotal - meshedBefore, dirtyBefore,
+				(t3 - t2) / 1_000_000L, (t4 - t3) / 1_000_000L);
+		}
 	}
+
+	private static long lastFrameAt, slowLoggedAt;
+	private static int slowLogged, meshedTotal;
 
 	// SkyCraft+ : the Nether and the End. Skyrim keeps every section it has been sent (the mirror
 	// world's builds are few, and seen from afar); a world of Minecraft's own is terrain everywhere,
@@ -234,6 +260,7 @@ public final class WorldExporter {
 				URGENT.remove(key);
 			}
 			if (meshSection(level, key)) {
+				meshedTotal++;
 				meshed++;
 			}
 		}

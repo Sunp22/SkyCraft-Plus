@@ -31,6 +31,18 @@ public final class SkyCraft implements ModInitializer {
 		dev.skycraft.world.SkyMinecraftWorlds.init();
 		dev.skycraft.world.SkyStructures.init();
 		dev.skycraft.world.SkyInteriors.init();
+		// SkyCraft+ : performance. A slow server tick says so (a hitch flying up to a structure while it
+		// loads: which side it's on, for the next test).
+		final long[] tickStart = { 0L, 0L, 0L };  // start, last logged, lines
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.START_SERVER_TICK.register(server -> tickStart[0] = System.nanoTime());
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(server -> {
+			long now = System.nanoTime(), ms = (now - tickStart[0]) / 1_000_000L;
+			if (ms > 150 && tickStart[2] < 200 && now - tickStart[1] > 1_000_000_000L) {
+				tickStart[1] = now;
+				tickStart[2]++;
+				LOG.info("SkyCraft: slow server tick: {} ms", ms);
+			}
+		});
 		ServerLifecycleEvents.SERVER_STARTED.register(SkyCraft::configureServer);
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
 			giveStarterKit(handler.getPlayer());
