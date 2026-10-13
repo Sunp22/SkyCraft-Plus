@@ -156,7 +156,7 @@ public final class SkyInteriors {
 		try {
 			int out = current;
 			int saved = 0;
-			if (out != 0 && !TOUCHED.isEmpty()) {
+			if (out != 0) {  // (SkyCraft+ : entities too, builds or not)
 				saved = saveAndClear(level, out);
 				if (saved < 0) {
 					return;  // couldn't save: nothing cleared, try again later
@@ -214,8 +214,33 @@ public final class SkyInteriors {
 				}
 			}
 		}
+		// SkyCraft+ : interiors' animals, items and the like. Every entity in the dimension (but
+		// players and Skyrim's NPC stand-ins) belongs to the interior left: saved with its builds.
+		ListTag entities = new ListTag();
+		List<net.minecraft.world.entity.Entity> leaving = new ArrayList<>();
+		for (net.minecraft.world.entity.Entity e : level.getAllEntities()) {
+			if (e == null || !e.isAlive() || e.getVehicle() != null || e instanceof net.minecraft.world.entity.player.Player
+				|| e instanceof dev.skycraft.combat.SkyrimActorEntity || e.getSelfAndPassengers().anyMatch(p -> p instanceof net.minecraft.world.entity.player.Player)) {
+				continue;
+			}
+			var out = net.minecraft.world.level.storage.TagValueOutput.createWithContext(net.minecraft.util.ProblemReporter.DISCARDING, level.registryAccess());
+			if (e.saveAsPassenger(out)) {
+				entities.add(out.buildResult());
+				leaving.add(e);
+			}
+		}
+		if (blocks.isEmpty() && entities.isEmpty()) {
+			try {
+				Files.deleteIfExists(fileFor(interior));  // (all broken or gone: nothing to bring back)
+			} catch (IOException e) {
+				SkyCraft.LOG.warn("SkyCraft: couldn't clear interior {}'s saved builds", Integer.toHexString(interior), e);
+				return -1;
+			}
+			return 0;
+		}
 		CompoundTag root = new CompoundTag();
 		root.put("blocks", blocks);
+		root.put("entities", entities);
 		try {
 			Files.createDirectories(folder);
 			Path file = fileFor(interior);
@@ -230,6 +255,12 @@ public final class SkyInteriors {
 		for (BlockPos pos : clear) {
 			level.removeBlockEntity(pos);  // (a chest's contents went with it into the file, not onto the floor)
 			level.setBlock(pos, Blocks.AIR.defaultBlockState(), flags, 0);
+		}
+		for (net.minecraft.world.entity.Entity e : leaving) {
+			e.getSelfAndPassengers().toList().forEach(p -> p.discard());
+		}
+		if (!leaving.isEmpty()) {
+			SkyCraft.LOG.info("SkyCraft: interior {}: {} animals, items and the like put away with its builds", Integer.toHexString(interior), leaving.size());
 		}
 		return clear.size();
 	}
@@ -265,6 +296,21 @@ public final class SkyInteriors {
 				}
 			}
 			count++;
+		}
+		// SkyCraft+ : interiors' animals, items and the like, back where they were.
+		int brought = 0;
+		for (Tag t : root.getListOrEmpty("entities")) {
+			if (!(t instanceof CompoundTag tag)) {
+				continue;
+			}
+			var entity = net.minecraft.world.entity.EntityType.loadEntityRecursive(tag, level,
+				new net.minecraft.world.entity.EntitySpawnRequest(net.minecraft.world.entity.EntitySpawnReason.LOAD, false), e -> e);
+			if (entity != null && level.tryAddFreshEntityWithPassengers(entity)) {
+				brought++;
+			}
+		}
+		if (brought > 0) {
+			SkyCraft.LOG.info("SkyCraft: interior {}: {} animals, items and the like brought back", Integer.toHexString(interior), brought);
 		}
 		return count;
 	}
