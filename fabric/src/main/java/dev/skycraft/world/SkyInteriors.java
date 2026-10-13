@@ -96,11 +96,48 @@ public final class SkyInteriors {
 		} catch (IOException | RuntimeException e) {
 			SkyCraft.LOG.warn("SkyCraft: couldn't read {}", state, e);
 		}
+		// SkyCraft+ : the interior's animals and items still to put back when the game closed.
+		WAITING.clear();
+		CHECK.clear();
+		waitingFor = 0;
+		Path waitingFile = folder.resolve("waiting.dat");
+		try {
+			if (Files.exists(waitingFile)) {
+				CompoundTag waiting = NbtIo.readCompressed(waitingFile, NbtAccounter.unlimitedHeap());
+				if (waiting.getIntOr("interior", 0) == current && current != 0) {
+					for (Tag t : waiting.getListOrEmpty("entities")) {
+						if (t instanceof CompoundTag tag) {
+							WAITING.add(tag);
+						}
+					}
+					waitingFor = current;
+				}
+			}
+		} catch (IOException | RuntimeException e) {
+			SkyCraft.LOG.warn("SkyCraft: couldn't read {}", waitingFile, e);
+		}
 	}
 
 	private static void saveState() {
 		if (folder == null) {
 			return;
+		}
+		// SkyCraft+ : entities still waiting to be put back keep for next time.
+		Path waitingFile = folder.resolve("waiting.dat");
+		try {
+			if (!WAITING.isEmpty() && waitingFor == current && current != 0) {
+				Files.createDirectories(folder);
+				CompoundTag waiting = new CompoundTag();
+				waiting.putInt("interior", current);
+				ListTag list = new ListTag();
+				list.addAll(WAITING);
+				waiting.put("entities", list);
+				NbtIo.writeCompressed(waiting, waitingFile);
+			} else {
+				Files.deleteIfExists(waitingFile);
+			}
+		} catch (IOException e) {
+			SkyCraft.LOG.warn("SkyCraft: couldn't save the interior's animals and items still to put back", e);
 		}
 		List<String> lines = new ArrayList<>();
 		lines.add(Integer.toHexString(current));
@@ -125,6 +162,9 @@ public final class SkyInteriors {
 	}
 
 	private static void tick(MinecraftServer server) {
+		if (enabled) {
+			bringEntitiesBack(server);
+		}
 		if (!enabled || server.getTickCount() % 10 != 3 || !SkyWorld.valid() || !SkyWorld.interior()) {
 			return;
 		}
@@ -229,6 +269,11 @@ public final class SkyInteriors {
 				leaving.add(e);
 			}
 		}
+		// Not put back yet (their chunk never loaded): they go back in the file as they were.
+		if (waitingFor == interior) {
+			entities.addAll(WAITING);
+		}
+		WAITING.clear();
 		if (blocks.isEmpty() && entities.isEmpty()) {
 			try {
 				Files.deleteIfExists(fileFor(interior));  // (all broken or gone: nothing to bring back)
@@ -260,7 +305,8 @@ public final class SkyInteriors {
 			e.getSelfAndPassengers().toList().forEach(p -> p.discard());
 		}
 		if (!leaving.isEmpty()) {
-			SkyCraft.LOG.info("SkyCraft: interior {}: {} animals, items and the like put away with its builds", Integer.toHexString(interior), leaving.size());
+			SkyCraft.LOG.info("SkyCraft: interior {}: {} animals, items and the like put away with its builds ({})", Integer.toHexString(interior), leaving.size(),
+				leaving.stream().limit(8).map(e -> e.getName().getString() + " at " + e.blockPosition().toShortString()).collect(java.util.stream.Collectors.joining(", ")));
 		}
 		return clear.size();
 	}
@@ -297,22 +343,60 @@ public final class SkyInteriors {
 			}
 			count++;
 		}
-		// SkyCraft+ : interiors' animals, items and the like, back where they were.
-		int brought = 0;
+		// SkyCraft+ : interiors' animals, items and the like, back where they were once their chunk's
+		// entities are loaded (bringEntitiesBack): added the moment the player came in, a pig was lost.
 		for (Tag t : root.getListOrEmpty("entities")) {
-			if (!(t instanceof CompoundTag tag)) {
-				continue;
-			}
-			var entity = net.minecraft.world.entity.EntityType.loadEntityRecursive(tag, level,
-				new net.minecraft.world.entity.EntitySpawnRequest(net.minecraft.world.entity.EntitySpawnReason.LOAD, false), e -> e);
-			if (entity != null && level.tryAddFreshEntityWithPassengers(entity)) {
-				brought++;
+			if (t instanceof CompoundTag tag) {
+				WAITING.add(tag);
 			}
 		}
-		if (brought > 0) {
-			SkyCraft.LOG.info("SkyCraft: interior {}: {} animals, items and the like brought back", Integer.toHexString(interior), brought);
-		}
+		waitingFor = interior;
 		return count;
+	}
+
+	/** SkyCraft+ : saved entities of the current interior not put back yet, and checks on those put back. */
+	private static final List<CompoundTag> WAITING = new ArrayList<>();
+	private static int waitingFor;
+	private static final List<java.util.UUID> CHECK = new ArrayList<>();
+	private static int checkAt;
+
+	private static void bringEntitiesBack(MinecraftServer server) {
+		ServerLevel level = server.getLevel(INTERIORS);
+		if (level == null) {
+			return;
+		}
+		if (!WAITING.isEmpty() && waitingFor == current) {
+			int brought = 0;
+			for (var it = WAITING.iterator(); it.hasNext();) {
+				CompoundTag tag = it.next();
+				var pos = tag.getListOrEmpty("Pos");
+				BlockPos at = BlockPos.containing(pos.getDoubleOr(0, 0.0), pos.getDoubleOr(1, 0.0), pos.getDoubleOr(2, 0.0));
+				if (!level.areEntitiesLoaded(ChunkPos.pack(at.getX() >> 4, at.getZ() >> 4))) {
+					continue;
+				}
+				it.remove();
+				var entity = net.minecraft.world.entity.EntityType.loadEntityRecursive(tag, level,
+					new net.minecraft.world.entity.EntitySpawnRequest(net.minecraft.world.entity.EntitySpawnReason.LOAD, false), e -> e);
+				if (entity != null && level.tryAddFreshEntityWithPassengers(entity)) {
+					brought++;
+					CHECK.add(entity.getUUID());
+					SkyCraft.LOG.info("SkyCraft: interior {}: {} brought back at {}", Integer.toHexString(current), entity.getName().getString(), at.toShortString());
+				} else {
+					SkyCraft.LOG.warn("SkyCraft: interior {}: couldn't bring back {} at {}", Integer.toHexString(current), tag.getStringOr("id", "?"), at.toShortString());
+				}
+			}
+			if (brought > 0) {
+				checkAt = server.getTickCount() + 100;
+			}
+		}
+		if (!CHECK.isEmpty() && server.getTickCount() >= checkAt) {
+			for (var uuid : CHECK) {
+				var e = level.getEntity(uuid);
+				SkyCraft.LOG.info("SkyCraft: 5 s later: {}", e == null ? "gone (" + uuid + ")"
+					: e.getName().getString() + " at " + e.blockPosition().toShortString() + (e.isRemoved() ? ", removed" : ""));
+			}
+			CHECK.clear();
+		}
 	}
 
 	/** While builds are being put away or back, their own block changes aren't noted. */
