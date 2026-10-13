@@ -36,7 +36,8 @@ public abstract class NetherPortalBlockMixin {
 		if (currentLevel.dimension() != Level.NETHER || !(entity instanceof ServerPlayer player)) {
 			return;
 		}
-		ServerLevel overworld = currentLevel.getServer().getLevel(Level.OVERWORLD);
+		// SkyCraft+ : back into the same place: the open world, or the interior (or worldspace) the portal was built in.
+		ServerLevel overworld = SkyMinecraftWorlds.leftLevel(player);
 		BlockPos portal = overworld == null ? null : SkyMinecraftWorlds.portalLeftBy(player, overworld);
 		if (portal == null) {
 			TeleportTransition there = overworld == null ? null : SkyMinecraftWorlds.whereTheyLeft(player, overworld);

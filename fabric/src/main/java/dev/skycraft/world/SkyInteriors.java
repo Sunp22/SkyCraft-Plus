@@ -55,6 +55,8 @@ public final class SkyInteriors {
 	private static final LongOpenHashSet TOUCHED = new LongOpenHashSet();
 	private static @Nullable Path folder;
 	private static boolean swapping;
+	/** SkyCraft+ : back into the same place. No swapping before this server tick (see tick). */
+	private static int awayUntil;
 
 	private SkyInteriors() {
 	}
@@ -78,6 +80,7 @@ public final class SkyInteriors {
 		enabled = Boolean.parseBoolean(p.getProperty("separateInteriors", "true").trim());
 		folder = server.getWorldPath(LevelResource.ROOT).resolve("skycraft-interiors");
 		current = 0;
+		awayUntil = 0;
 		TOUCHED.clear();
 		Path state = folder.resolve("current.txt");
 		try {
@@ -127,6 +130,17 @@ public final class SkyInteriors {
 		}
 		ServerLevel interiors = server.getLevel(INTERIORS);
 		if (interiors == null) {
+			return;
+		}
+		// SkyCraft+ : back into the same place. In the Nether or the End, Skyrim's player waits in an
+		// empty interior cell: not an interior to swap to (that put away a portal built in an interior).
+		// (Nor for a while after: Skyrim takes some seconds to come back out of it.)
+		for (var player : server.getPlayerList().getPlayers()) {
+			if (dev.skycraft.net.SkyNet.isHost(player) && SkyDig.minecraftsOwnWorld(player.level())) {
+				awayUntil = server.getTickCount() + 20 * 15;
+			}
+		}
+		if (server.getTickCount() < awayUntil) {
 			return;
 		}
 		int world = SkyDig.worldFor(interiors);

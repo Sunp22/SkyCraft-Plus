@@ -38,8 +38,31 @@ public final class SkyMinecraftWorlds {
 		.copyOnDeath()
 		.buildAndRegister(Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "left_open_world_at"));
 
-	/** Each player's last position in the open world (the portal they step into). */
+	/**
+	 * SkyCraft+ : back into the same place. Which of Skyrim's dimensions they left (the open world,
+	 * interiors, other worldspaces): a portal built in an interior leads back into it.
+	 */
+	public static final AttachmentType<Identifier> LEFT_FROM = AttachmentRegistry.<Identifier>builder()
+		.persistent(Identifier.CODEC)
+		.copyOnDeath()
+		.buildAndRegister(Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "left_skyrim_from"));
+
+	/** Each player's last position in Skyrim's worlds (the portal they step into), and which dimension. */
 	private static final Map<UUID, BlockPos> LAST = new HashMap<>();
+	private static final Map<UUID, net.minecraft.resources.ResourceKey<Level>> LAST_DIMENSION = new HashMap<>();
+
+	/** Skyrim's own worlds: the open world, interiors, other worldspaces. */
+	public static boolean skyrimsWorld(net.minecraft.resources.ResourceKey<Level> dimension) {
+		return dimension == Level.OVERWORLD || dimension == SkyInteriors.INTERIORS || dimension.identifier().equals(Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "worldspaces"));
+	}
+
+	/** The dimension the player left Skyrim's worlds from (the open world if not known). */
+	public static @Nullable ServerLevel leftLevel(ServerPlayer player) {
+		var server = player.level().getServer();
+		Identifier from = player.getAttached(LEFT_FROM);
+		ServerLevel level = from == null ? null : server.getLevel(net.minecraft.resources.ResourceKey.create(net.minecraft.core.registries.Registries.DIMENSION, from));
+		return level != null ? level : server.overworld();
+	}
 	/**
 	 * Set (server thread) while a loaded save sends the player into the Nether or the End: not a portal,
 	 * so the portal they last left by stays the way back. (Taken for one, the way back became the other
@@ -51,19 +74,25 @@ public final class SkyMinecraftWorlds {
 	}
 
 	public static void init() {
-		net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTED.register(server -> LAST.clear());
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+			LAST.clear();
+			LAST_DIMENSION.clear();
+		});
 		ServerTickEvents.END_SERVER_TICK.register(server -> {
 			for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-				if (player.level().dimension() == Level.OVERWORLD) {
+				if (skyrimsWorld(player.level().dimension())) {
 					LAST.put(player.getUUID(), player.blockPosition());
+					LAST_DIMENSION.put(player.getUUID(), player.level().dimension());
 				}
 			}
 		});
 		ServerEntityLevelChangeEvents.AFTER_PLAYER_CHANGE_LEVEL.register((player, origin, destination) -> {
 			BlockPos at = LAST.get(player.getUUID());
-			if (origin.dimension() == Level.OVERWORLD && SkyDig.minecraftsOwnWorld(destination) && at != null && !sentBySave) {
+			if (skyrimsWorld(origin.dimension()) && origin.dimension() == LAST_DIMENSION.get(player.getUUID()) && SkyDig.minecraftsOwnWorld(destination) && at != null
+				&& !sentBySave) {
 				player.setAttached(LEFT_AT, at);
-				SkyCraft.LOG.info("SkyCraft: left the open world at {} for {}", at.toShortString(), destination.dimension().identifier());
+				player.setAttached(LEFT_FROM, origin.dimension().identifier());
+				SkyCraft.LOG.info("SkyCraft: left {} at {} for {}", origin.dimension().identifier(), at.toShortString(), destination.dimension().identifier());
 			}
 		});
 	}
@@ -83,13 +112,14 @@ public final class SkyMinecraftWorlds {
 			return null;
 		}
 		BlockPos at = player.getAttached(LEFT_AT);
-		ServerLevel overworld = player.level().getServer().overworld();
-		if (at == null || overworld == null) {
+		ServerLevel back = leftLevel(player);  // SkyCraft+ : back into the same place
+		if (at == null || back == null) {
 			return null;
 		}
-		Vec3 spot = safeSpot(overworld, at);
-		SkyCraft.LOG.info("SkyCraft: back from {} to the portal at {} ({})", player.level().dimension().identifier(), at.toShortString(), spot);
-		return new TeleportTransition(overworld, spot, Vec3.ZERO, player.getYRot(), 0.0F, vanilla.postTeleportTransition());
+		Vec3 spot = safeSpot(back, at);
+		SkyCraft.LOG.info("SkyCraft: back from {} to the portal at {} in {} ({})", player.level().dimension().identifier(), at.toShortString(),
+			back.dimension().identifier(), spot);
+		return new TeleportTransition(back, spot, Vec3.ZERO, player.getYRot(), 0.0F, vanilla.postTeleportTransition());
 	}
 
 	/** The Nether portal the player left the open world by, if it's still there (NetherPortalBlockMixin). */

@@ -851,12 +851,16 @@ namespace skycraft
 			// still reported while the open world loaded, and taken for where it came out (Skyrim's
 			// player went to the Nether's coordinates, in the air). It has to have moved from there.
 			static double awayX = 0.0, awayZ = 0.0;
+			// SkyCraft+ : back into the same place. Where Skyrim's player was when it went to wait: a
+			// walled city's worldspace (Whiterun...), another worldspace, or an interior.
+			static RE::FormID   leftWorld = 0, leftCell = 0;
+			static RE::NiPoint3 leftPos;
 			static float  sinceBack = 0.0f;
 			if (world >= proto::kDimNether) {
 				awayX = mc.x, awayZ = mc.z;
 				sinceBack = 0.0f;
 			}
-			if (!parked || world != proto::kDimTamriel) {
+			if (!parked || world > proto::kDimWorldspaces) {
 				settled = -1.0f;
 			}
 			retry -= a_delta;
@@ -929,12 +933,25 @@ namespace skycraft
 					lighting->directional = end ? RE::Color(120, 110, 140, 0) : RE::Color(140, 80, 60, 0);
 					lighting->lightingTemplateInheritanceFlags.reset();
 				}
+				{
+					auto* from = a_player->GetParentCell();
+					auto* ws = a_player->GetWorldspace();
+					if (from == waiting) {
+						from = nullptr, ws = nullptr;  // (already waiting: keep what was noted)
+					}
+					leftCell = from && from->IsInteriorCell() ? from->GetFormID() : (from ? 0 : leftCell);
+					leftWorld = ws ? ws->GetFormID() : (from ? 0 : leftWorld);
+					if (from) {
+						leftPos = a_player->GetPosition();
+					}
+					logger::info("left from {} {:08X}", leftCell ? "interior" : "worldspace", leftCell ? leftCell : leftWorld);
+				}
 				a_player->CenterOnCell(waiting);
 				retry = 5.0f;
 				toldStuck = false;
 				return parked;
 			}
-			if (parked && world == proto::kDimTamriel) {
+			if (parked && world <= proto::kDimWorldspaces) {
 				sinceBack += a_delta;
 				const double adx = mc.x - awayX, adz = mc.z - awayZ;
 				if (adx * adx + adz * adz < 4.0 && sinceBack < 20.0f) {
@@ -957,21 +974,46 @@ namespace skycraft
 				// Out of a portal into the open world: Skyrim's player goes where Minecraft's came out.
 				// Moved like a reference to an editor location: the position in Tamriel, anchored on
 				// one of its persistent references (any will do).
-				auto*            tamriel = RE::TESForm::LookupByID<RE::TESWorldSpace>(0x3C);
+				// SkyCraft+ : back into the same place. Into the worldspace or interior it went to wait
+				// from, if Minecraft's player came back to that kind of place near where it left: out of a
+				// portal built in Whiterun, Tamriel's own (low, no collision) Whiterun was loaded instead
+				// and the player fell through it.
+				const auto    pos = McToSky(mc.x, mc.y, mc.z);
+				RE::TESObjectCELL*  intoCell = nullptr;
+				RE::TESWorldSpace*  into = nullptr;
+				const bool          nearLeft = pos.GetDistance(leftPos) < 400.0f * float(proto::kUnitsPerBlock);
+				if (world == proto::kDimInteriors) {
+					intoCell = leftCell ? RE::TESForm::LookupByID<RE::TESObjectCELL>(leftCell) : nullptr;
+				} else if (auto* ws = leftWorld && !leftCell && nearLeft ? RE::TESForm::LookupByID<RE::TESWorldSpace>(leftWorld) : nullptr) {
+					bool inTamriel = false;
+					for (auto* w = ws; w && !inTamriel; w = w->parentWorld) {
+						inTamriel = w->GetFormID() == 0x3C;
+					}
+					if (inTamriel == (world == proto::kDimTamriel)) {
+						into = ws;
+					}
+				}
+				if (!into && !intoCell && world == proto::kDimTamriel) {
+					into = RE::TESForm::LookupByID<RE::TESWorldSpace>(0x3C);
+				}
 				RE::TESObjectREFR* anchor = nullptr;
-				if (tamriel && tamriel->persistentCell) {
-					tamriel->persistentCell->ForEachReference([&](RE::TESObjectREFR* a_ref) {
-						if (a_ref && a_ref->GetWorldspace() == tamriel) {
+				auto firstRef = [&](RE::TESObjectCELL* a_cell, RE::TESWorldSpace* a_ws) {
+					if (!a_cell) {
+						return;
+					}
+					a_cell->ForEachReference([&](RE::TESObjectREFR* a_ref) {
+						if (a_ref && (!a_ws || a_ref->GetWorldspace() == a_ws)) {
 							anchor = a_ref;
 							return RE::BSContainer::ForEachResult::kStop;
 						}
 						return RE::BSContainer::ForEachResult::kContinue;
 					});
-				}
-				if (!anchor) {
+				};
+				firstRef(intoCell ? intoCell : into ? into->persistentCell : nullptr, into);
+				if (!intoCell && !anchor) {
 					if (!toldStuck) {
 						toldStuck = true;
-						logger::warn("couldn't find Tamriel to go back to; use a door or coc");
+						logger::warn("couldn't find {} to go back to; use a door or coc", into ? "the worldspace" : "the interior");
 						RE::SendHUDMessage::ShowHUDMessage("SkyCraft: couldn't take you back to Skyrim; use the console (coc) to leave.");
 					}
 					retry = 5.0f;
@@ -979,13 +1021,13 @@ namespace skycraft
 				}
 				// (After the End's exit portal or a death, Minecraft brings its player back to the portal
 				// it left by: SkyMinecraftWorlds.)
-				const auto pos = McToSky(mc.x, mc.y, mc.z);
-				logger::info("Minecraft's player is back in the open world: Skyrim's goes to ({:.0f}, {:.0f}, {:.0f})", pos.x, pos.y, pos.z);
+				logger::info("Minecraft's player is back in {} {:08X}: Skyrim's goes to ({:.0f}, {:.0f}, {:.0f})", intoCell ? "interior" : "worldspace",
+					intoCell ? intoCell->GetFormID() : into->GetFormID(), pos.x, pos.y, pos.z);
 				// TESObjectREFR::MoveTo_Impl (SE 56227, AE 56626), private in CommonLib.
 				using MoveToFn = void (*)(RE::TESObjectREFR*, const RE::ObjectRefHandle&, RE::TESObjectCELL*, RE::TESWorldSpace*, const RE::NiPoint3&, const RE::NiPoint3&);
 				static REL::Relocation<MoveToFn> moveTo{ RELOCATION_ID(56227, 56626) };
-				const RE::ObjectRefHandle anchorHandle = anchor->CreateRefHandle();
-				moveTo(a_player, anchorHandle, anchor->GetParentCell(), tamriel, pos, RE::NiPoint3(0.0f, 0.0f, McYawToHeading(mc.yaw)));
+				const RE::ObjectRefHandle anchorHandle = anchor ? anchor->CreateRefHandle() : RE::ObjectRefHandle{};
+				moveTo(a_player, anchorHandle, intoCell ? intoCell : anchor->GetParentCell(), intoCell ? nullptr : into, pos, RE::NiPoint3(0.0f, 0.0f, McYawToHeading(mc.yaw)));
 				returnPin = pos;
 				returnPinTime = 30.0f;
 				retry = 5.0f;
