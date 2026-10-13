@@ -56,6 +56,8 @@ namespace skycraft
 		bool                       structureMarkersOption{ true };
 		// SkyCraft+ : the Nether and the End: Minecraft's blocks drawn before Skyrim's effects ([Worlds] bBlocksBeforeEffects).
 		bool                       blocksBeforeEffects{ true };
+		// SkyCraft+ : the lava flicker. Skyrim's ambient occlusion off in the Nether and the End ([Worlds] bNoAmbientOcclusionAway).
+		bool                       noAmbientOcclusionAway{ true };
 		// SkyCraft+ : most of Minecraft's health one Skyrim hit may take ([Combat] fMaxHitHealth; 0: no cap).
 		float                      maxHitHealth{ 10.0f };
 		// SkyCraft+ : balancing. A Minecraft hit on a Skyrim actor is worth this much Skyrim damage per point,

@@ -3091,6 +3091,31 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 			inFrameDrawn = true;
 		}
 
+		// SkyCraft+ : the lava flicker. In the Nether and the End Skyrim's player waits in an interior
+		// cell, so Skyrim's ambient occlusion runs with its strong interior settings over the blocks
+		// (it sees their depth): a sea of lava or the End's island, flat and seen at a slant, got dark
+		// blotches that crawled as the camera turned. Off while waiting there, back as it was after.
+		void AmbientOcclusionWhileParked(bool a_parked)
+		{
+			static bool saved = false, wasOn = true;
+			auto*       ism = RE::ImageSpaceManager::GetSingleton();
+			auto*       sao = ism ? ism->GetRuntimeData().BSImagespaceShaderISSAOBlurH : nullptr;
+			if (!sao) {
+				return;
+			}
+			const bool off = a_parked && State().noAmbientOcclusionAway;
+			if (off && !saved) {
+				wasOn = sao->enableSAO;
+				sao->enableSAO = false;
+				saved = true;
+				logger::info("Skyrim's ambient occlusion off in Minecraft's world (was {})", wasOn ? "on" : "off");
+			} else if (!off && saved) {
+				sao->enableSAO = wasOn;
+				saved = false;
+				logger::info("Skyrim's ambient occlusion back {}", wasOn ? "on" : "off");
+			}
+		}
+
 		// SkyCraft+ : the Nether and the End. Skyrim's player waits in an empty cell, so nothing of
 		// Skyrim's covers the screen and its picture keeps old frames (smeared by its temporal
 		// anti-aliasing). Once a frame is shown, the next starts from the dimension's fog colour, far
@@ -3098,6 +3123,7 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 		void ClearParked()
 		{
 			auto& st = State();
+			AmbientOcclusionWhileParked(st.parked);  // SkyCraft+ : the lava flicker
 			auto* renderer = RE::BSGraphics::Renderer::GetSingleton();
 			// (Not waiting for the depth probe: it runs only in Skyrim's world, so after loading a save
 			// made in the Nether straight from the main menu it never had, nothing was cleared, and the

@@ -160,6 +160,7 @@ namespace skycraft
 			State().enemySeconds = static_cast<float>(ini.GetDoubleValue("Worlds", "fEnemySeconds", 12.0));
 			State().structureMarkersOption = ini.GetBoolValue("Worlds", "bStructureMarkers", true);
 			State().blocksBeforeEffects = ini.GetBoolValue("Worlds", "bBlocksBeforeEffects", true);
+			State().noAmbientOcclusionAway = ini.GetBoolValue("Worlds", "bNoAmbientOcclusionAway", true);
 			State().hideWorldDeepOption = ini.GetBoolValue("Worlds", "bHideWorldDeep", true);
 			State().maxHitHealth = static_cast<float>(ini.GetDoubleValue("Combat", "fMaxHitHealth", 10.0));
 			State().mcDamageBase = std::max(0.0f, static_cast<float>(ini.GetDoubleValue("Combat", "fMinecraftDamage", 2.5)));
