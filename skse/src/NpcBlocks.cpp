@@ -162,6 +162,39 @@ namespace skycraft
 
 		std::uint32_t Generation() { return solidsGeneration.load(); }
 
+		// SkyCraft+ : companions and stairs. The highest top of a step block's (stair, slab, carpet)
+		// collision boxes in row a_y under the point (a_px, a_pz), within a_margin; -infinity if none.
+		double StepTopAt(std::int32_t a_y, double a_px, double a_pz, double a_margin)
+		{
+			double best = -std::numeric_limits<double>::infinity();
+			std::shared_lock lock(solidsLock);
+			for (int bx = int(std::floor(a_px - a_margin)); bx <= int(std::floor(a_px + a_margin)); ++bx) {
+				for (int bz = int(std::floor(a_pz - a_margin)); bz <= int(std::floor(a_pz + a_margin)); ++bz) {
+					const auto sectionKey = SectionKey(FloorDiv16(bx), FloorDiv16(a_y), FloorDiv16(bz));
+					const auto section = shapes.find(sectionKey);
+					if (section == shapes.end()) {
+						continue;
+					}
+					const int  bit = (bx & 15) + 16 * (bz & 15) + 256 * (a_y & 15);
+					const auto cell = section->second.find(static_cast<std::uint16_t>(bit));
+					if (cell == section->second.end()) {
+						continue;
+					}
+					for (const auto& box : cell->second) {
+						if ((box.cell & proto::kShapeStep) == 0 || (box.cell & proto::kShapePassable) != 0) {
+							break;
+						}
+						const double x0 = bx + box.min[0] / 16.0, x1 = bx + box.max[0] / 16.0;
+						const double z0 = bz + box.min[2] / 16.0, z1 = bz + box.max[2] / 16.0;
+						if (a_px + a_margin >= x0 && a_px - a_margin <= x1 && a_pz + a_margin >= z0 && a_pz - a_margin <= z1) {
+							best = std::max(best, a_y + box.max[1] / 16.0);
+						}
+					}
+				}
+			}
+			return best;
+		}
+
 		void CopySolids(const std::int32_t a_origin[3], const std::int32_t a_size[3], std::uint32_t* a_out, std::uint32_t a_bit)
 		{
 			std::shared_lock lock(solidsLock);
@@ -258,6 +291,23 @@ namespace skycraft
 					double top = mc.y;
 					for (int by = int(std::floor(mc.y)); BlocksBody(mx, by, mz) && by + 1.0 - mc.y <= catchBlocks; ++by) {
 						top = by + 1.0;
+					}
+					// SkyCraft+ : companions and stairs. Steps (stairs, slabs, carpets) weren't counted:
+					// Havok's ramps were to take NPCs up them, and didn't (a companion walked through a
+					// staircase at the ground's height). Up onto a step's top under the actor, at most
+					// 0.6 at a time (a stair's front half, then its back).
+					for (int k = 0; k < 6; ++k) {
+						double best = top;
+						for (int by = int(std::floor(top - 0.01)); by <= int(std::floor(top + 0.6)); ++by) {
+							const double t = StepTopAt(by, mc.x, mc.z, 0.2);
+							if (t > best + 0.02 && t - top <= 0.6) {
+								best = t;
+							}
+						}
+						if (best <= top) {
+							break;
+						}
+						top = best;
 					}
 					if (top - mc.y > 0.02 && !ColumnBlocked(mx, mz, int(top), int(std::floor(top + h - 0.1)))) {
 						feetY = top;
