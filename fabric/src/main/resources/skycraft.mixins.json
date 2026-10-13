@@ -17,6 +17,7 @@
     "ItemMixin",
     "LevelHeightMixin",
     "LevelSetBlockMixin",
+    "LivingEntityHoldMixin",
     "MinecraftServerFlightMixin",
     "MobSunBurnMixin",
     "NetherPortalBlockMixin",
