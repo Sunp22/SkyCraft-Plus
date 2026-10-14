@@ -380,15 +380,37 @@ namespace skycraft
 			if (!a_hide && !hidden) {
 				return;
 			}
-			hidden = a_hide;
 			static constexpr const char* kCrosshair[] = {
 				"_root.HUDMovieBaseInstance.CrosshairInstance",
 				"_root.HUDMovieBaseInstance.CrosshairAlert",
 			};
+			// SkyCraft+ : Skyrim's opening. From the escape off the block on, Skyrim's crosshair showed
+			// over Minecraft's: its HUD shows it again between our frames. Its scripts set the
+			// crosshair's visibility and alpha but not its size, so it's shrunk to nothing as well
+			// (and given back the size it had).
+			static double scales[2][2] = { { 100.0, 100.0 }, { 100.0, 100.0 } };
+			static int    reshown = 0;
+			for (int i = 0; i < 2; ++i) {
+				const std::string path(kCrosshair[i]);
+				RE::GFxValue      value;
+				if (a_hide && !hidden) {
+					for (int axis = 0; axis < 2; ++axis) {
+						if (hud->uiMovie->GetVariable(&value, (path + (axis ? "._yscale" : "._xscale")).c_str()) && value.IsNumber() && value.GetNumber() > 0.0) {
+							scales[i][axis] = value.GetNumber();
+						}
+					}
+				} else if (a_hide && hud->uiMovie->GetVariable(&value, (path + "._visible").c_str()) && value.IsBool() && value.GetBool() && reshown++ < 10) {
+					logger::info("Skyrim's HUD showed its crosshair again ({})", path);
+				}
+			}
+			hidden = a_hide;
 			const RE::GFxValue visible(!a_hide), alpha(a_hide ? 0.0 : 100.0);
-			for (const auto* path : kCrosshair) {
-				hud->uiMovie->SetVariable((std::string(path) + "._visible").c_str(), visible);
-				hud->uiMovie->SetVariable((std::string(path) + "._alpha").c_str(), alpha);
+			for (int i = 0; i < 2; ++i) {
+				const std::string path(kCrosshair[i]);
+				hud->uiMovie->SetVariable((path + "._visible").c_str(), visible);
+				hud->uiMovie->SetVariable((path + "._alpha").c_str(), alpha);
+				hud->uiMovie->SetVariable((path + "._xscale").c_str(), RE::GFxValue(a_hide ? 0.0 : scales[i][0]));
+				hud->uiMovie->SetVariable((path + "._yscale").c_str(), RE::GFxValue(a_hide ? 0.0 : scales[i][1]));
 			}
 			hud->uiMovie->SetVariable("_root.HUDMovieBaseInstance.StealthMeterInstance._visible", RE::GFxValue(!a_hide || a_sneaking));
 		}
