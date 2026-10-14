@@ -55,6 +55,7 @@ namespace skycraft
 		// SkyCraft+ : controller inventory snapping. bControllerSlots: in a screen with item slots the
 		// D-pad and left stick jump slot to slot.
 		bool padSlots = true;
+		bool activateInView = true;  // SkyCraft+ : G with no Skyrim crosshair target
 
 		// "Tab", "I", "F1", "0x0F" -> DirectInput scan code, or 0 if unknown.
 		std::uint32_t DikFromName(std::string a_name)
@@ -177,6 +178,7 @@ namespace skycraft
 			logger::info("controller in Minecraft mode: {}", padEnabled ? "on (right stick click switches modes)" : "off");
 			padSlots = ini.GetBoolValue("Controls", "bControllerSlots", true);
 			logger::info("controller in Minecraft's inventories: {}", padSlots ? "jumps slot to slot (left stick, D-pad)" : "a free cursor");
+			activateInView = ini.GetBoolValue("Controls", "bActivateInView", true);
 
 			const std::string toggle = ini.GetValue("Controls", "sModeToggleKey", "");
 			if (!toggle.empty()) {
@@ -201,6 +203,70 @@ namespace skycraft
 		float lookDx = 0.0f;
 		float lookDy = 0.0f;
 
+		// SkyCraft+ : Skyrim's opening. After the escape from the block Skyrim's crosshair found
+		// nothing (no prompt) even facing Helgen Keep's door, and the way on was shut. With no target
+		// of Skyrim's, G takes the nearest door, NPC, container, activator, furniture, plant or item
+		// along Minecraft's look within reach. Setting: bActivateInView in [Controls].
+		RE::TESObjectREFR* NearestActivatableInView(RE::PlayerCharacter* a_player)
+		{
+			proto::McState mc{};
+			auto*          tes = RE::TES::GetSingleton();
+			if (!tes || !Link::Get().ReadMcState(mc)) {
+				return nullptr;
+			}
+			constexpr double kDeg = 3.14159265358979 / 180.0;
+			const double     yaw = mc.yaw * kDeg, pitch = mc.pitch * kDeg;
+			const double     lx = -std::sin(yaw) * std::cos(pitch), ly = -std::sin(pitch), lz = std::cos(yaw) * std::cos(pitch);
+			const RE::NiPoint3 eye = McToSky(mc.eyeX, mc.eyeY, mc.eyeZ);
+			RE::NiPoint3       dir = McToSky(mc.eyeX + lx, mc.eyeY + ly, mc.eyeZ + lz) - eye;
+			if (dir.Length() < 1e-3f) {
+				return nullptr;
+			}
+			dir /= dir.Length();
+			constexpr float    kReach = 3.0f * float(proto::kUnitsPerBlock);
+			RE::TESObjectREFR* best = nullptr;
+			float              bestAlong = std::numeric_limits<float>::max();
+			tes->ForEachReferenceInRange(a_player, kReach + 400.0f, [&](RE::TESObjectREFR* a_ref) {
+				if (!a_ref || a_ref == a_player || a_ref->IsDisabled() || a_ref->IsDeleted() || !a_ref->Is3DLoaded()) {
+					return RE::BSContainer::ForEachResult::kContinue;
+				}
+				auto* base = a_ref->GetBaseObject();
+				if (!base) {
+					return RE::BSContainer::ForEachResult::kContinue;
+				}
+				switch (base->GetFormType()) {
+				case RE::FormType::Door:
+				case RE::FormType::Container:
+				case RE::FormType::Activator:
+				case RE::FormType::TalkingActivator:
+				case RE::FormType::Furniture:
+				case RE::FormType::Flora:
+				case RE::FormType::NPC:
+					break;
+				default:
+					if (!base->IsInventoryObject()) {
+						return RE::BSContainer::ForEachResult::kContinue;
+					}
+				}
+				auto* root3D = a_ref->Get3D();
+				if (!root3D) {
+					return RE::BSContainer::ForEachResult::kContinue;
+				}
+				const auto&        bound = root3D->worldBound;
+				const RE::NiPoint3 to = bound.center - eye;
+				const float        along = to.Dot(dir);
+				const RE::NiPoint3 side = to - dir * along;
+				const float        radius = std::max(bound.radius, 20.0f);
+				if (along < -radius || along - radius > kReach || side.Length() > radius * 0.8f + 15.0f || along >= bestAlong) {
+					return RE::BSContainer::ForEachResult::kContinue;
+				}
+				best = a_ref;
+				bestAlong = along;
+				return RE::BSContainer::ForEachResult::kContinue;
+			});
+			return best;
+		}
+
 		// G on something Skyrim can activate (door, NPC, container, item, furniture) activates it in
 		// Skyrim. Furniture (chairs, beds, crafting stations, pull-bar levers) hands the player to
 		// Skyrim while it's used (Game.cpp, SkyrimTakeover).
@@ -213,6 +279,11 @@ namespace skycraft
 			}
 			auto target = pick->GetActiveTarget().get();
 			if (!target || target.get() == player) {
+				if (auto* inView = activateInView ? NearestActivatableInView(player) : nullptr) {
+					inView->ActivateRef(player, 0, nullptr, 0, false);
+					logger::info("activated {:08X} ({}): in view, Skyrim's crosshair had no target", inView->GetFormID(), inView->GetDisplayFullName());
+					return;
+				}
 				logger::info("G: nothing to activate under the crosshair");
 				return;
 			}
