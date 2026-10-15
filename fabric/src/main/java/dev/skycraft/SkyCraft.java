@@ -24,6 +24,7 @@ public final class SkyCraft implements ModInitializer {
 		SkyCombat.init();
 		dev.skycraft.combat.SkyWeaponTools.init();
 		dev.skycraft.net.SkyNet.init();
+		dev.skycraft.net.SkyShortcuts.init(); // SkyCraft+ : Skyrim shortcuts
 		dev.skycraft.world.SkyDig.init();
 		dev.skycraft.world.SkySpawner.init();
 		dev.skycraft.combat.SkyMagic.init();

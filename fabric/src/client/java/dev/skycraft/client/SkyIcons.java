@@ -14,7 +14,7 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.item.alchemy.PotionContents;
 
 /**
- * Minecraft stand-ins for Skyrim's things in SkyItemsScreen (Skyrim has no 2D icons; its menu
+ * Minecraft stand-ins for Skyrim's things in SkyInventoryPanels (Skyrim has no 2D icons; its menu
  * spins the 3D model): the weapon or armour piece of the nearest Minecraft material, potions
  * coloured by what they restore, a spell school's own item. Enchanted things shimmer.
  */

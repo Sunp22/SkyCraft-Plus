@@ -20,6 +20,8 @@
     "MinecraftMixin",
     "MinecraftPauseMixin",
     "MinecraftUseMixin",
+    "MinecraftShortcutUseMixin",
+    "GuiGraphicsShortcutMixin",
     "MultiPlayerGameModeMixin",
     "RenderSetupAccessor",
     "RenderTypeAccessor",

@@ -38,7 +38,9 @@
     "StrongholdPlacementMixin",
     "WalkNodeEvaluatorMixin",
     "WorldOptionsMixin",
-    "SmithingMixin"
+    "SmithingMixin",
+    "SlotShortcutMixin",
+    "LivingEntityShortcutMixin"
   ],
   "injectors": { "defaultRequire": 1 }
 }
