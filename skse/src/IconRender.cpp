@@ -30,6 +30,7 @@ namespace skycraft::IconRender
 			ID3D11ShaderResourceView*     srv = nullptr;  // our reference
 			RE::NiPointer<RE::NiTexture>  texture;        // keeps a texture we loaded ourselves
 			bool                          alphaTest = false;
+			bool                          full = true;  // float positions (else halves)
 		};
 
 		struct Model
@@ -97,6 +98,7 @@ namespace skycraft::IconRender
 			bool             busy = false;
 			int              stage = 0;  // 1: trial views drawn, 2: final drawn
 			int              waited = 0;
+			int              refits = 0;
 			Model            model;
 			View             final;
 			ID3D11Texture2D* stagingA = nullptr;
@@ -348,51 +350,100 @@ float4 PSMain(VO i, bool front : SV_IsFrontFace) : SV_Target {
 				return;
 			}
 			auto& data = geom->GetGeometryRuntimeData();
-			auto* rd = data.rendererData;
 			auto* property = data.shaderProperty.get();
-			if (data.skinInstance || !rd || !rd->vertexBuffer || !rd->indexBuffer || !property ||
-				std::strcmp(property->GetRTTI()->GetName(), "BSLightingShaderProperty") != 0) {
+			if (!property || std::strcmp(property->GetRTTI()->GetName(), "BSLightingShaderProperty") != 0) {
 				return;
 			}
-			const std::uint64_t raw = reinterpret_cast<const std::uint64_t&>(rd->vertexDesc);
-			const UINT          stride = UINT(raw & 0xF) * 4;
-			const auto          flags = rd->vertexDesc.GetFlags();
-			using V = RE::BSGraphics::Vertex;
-			if (stride == 0 || !(flags & V::VF_VERTEX) || (flags & (V::VF_SKINNED | V::VF_INSTANCEDATA | V::VF_EYEDATA))) {
-				return;
-			}
-			Part part;
-			part.keep = RE::NiPointer<RE::BSTriShape>(static_cast<RE::BSTriShape*>(geom));
-			part.vb = reinterpret_cast<ID3D11Buffer*>(rd->vertexBuffer);
-			part.ib = reinterpret_cast<ID3D11Buffer*>(rd->indexBuffer);
-			part.desc = raw;
-			part.stride = stride;
-			part.indexCount = UINT(static_cast<RE::BSTriShape*>(geom)->GetTrishapeRuntimeData().triangleCount) * 3;
-			const auto& r = world.rotate;
-			for (int row = 0; row < 3; ++row) {
-				for (int col = 0; col < 3; ++col) {
-					part.world[row * 4 + col] = r.entry[row][col] * world.scale;
+			// What to draw: the shape's own buffers, or a skinned shape's (a bow's string, a book's pages)
+			// partitions, drawn as they rest.
+			struct Source
+			{
+				RE::BSGraphics::TriShape* rd;
+				std::uint64_t             desc;
+				UINT                      triangles;
+			};
+			std::vector<Source> sources;
+			if (auto* skin = data.skinInstance.get()) {
+				if (auto* partition = skin->skinPartition.get()) {
+					for (std::uint32_t i = 0; i < partition->numPartitions; ++i) {
+						auto& part = partition->partitions[i];
+						sources.push_back({ part.buffData, reinterpret_cast<const std::uint64_t&>(part.vertexDesc), part.triangles });
+					}
 				}
+			} else if (data.rendererData) {
+				sources.push_back({ data.rendererData, reinterpret_cast<const std::uint64_t&>(data.rendererData->vertexDesc),
+					UINT(static_cast<RE::BSTriShape*>(geom)->GetTrishapeRuntimeData().triangleCount) });
 			}
-			part.world[3] = world.translate.x;
-			part.world[7] = world.translate.y;
-			part.world[11] = world.translate.z;
+			RE::NiPointer<RE::NiTexture> loaded;
+			ID3D11ShaderResourceView*    srv = nullptr;
 			if (auto* material = static_cast<RE::BSLightingShaderMaterialBase*>(property->material)) {
-				part.srv = ViewOf(material->diffuseTexture.get());
-				if (!part.srv && material->textureSet) {
+				srv = ViewOf(material->diffuseTexture.get());
+				if (!srv && material->textureSet) {
 					const char* path = material->textureSet->GetTexturePath(RE::BSTextureSet::Texture::kDiffuse);
 					if (path && *path) {
-						RE::BSShaderManager::GetTexture(path, true, part.texture, false);
-						part.srv = ViewOf(part.texture.get());
+						RE::BSShaderManager::GetTexture(path, true, loaded, false);
+						srv = ViewOf(loaded.get());
 					}
 				}
 			}
-			if (auto* alpha = data.alphaProperty.get()) {
-				part.alphaTest = alpha->GetAlphaTesting() || alpha->GetAlphaBlending();
+			bool added = false;
+			for (const auto& source : sources) {
+				const auto&   desc = reinterpret_cast<const RE::BSGraphics::VertexDesc&>(source.desc);
+				const UINT    stride = UINT(source.desc & 0xF) * 4;
+				const auto    flags = desc.GetFlags();
+				using V = RE::BSGraphics::Vertex;
+				if (!source.rd || !source.rd->vertexBuffer || !source.rd->indexBuffer || stride == 0 || source.triangles == 0 || !(flags & V::VF_VERTEX) ||
+					(flags & (V::VF_INSTANCEDATA | V::VF_EYEDATA))) {
+					continue;
+				}
+				// Positions are floats (16 bytes) or halves (8): told by the room before the next part of
+				// the vertex (the full-precision flag isn't reliable; see DigMesh's SpansOf).
+				UINT positionBytes = stride;
+				for (int attr = 1; attr < V::VA_COUNT; ++attr) {
+					if (flags & (1u << attr)) {
+						const UINT offset = desc.GetAttributeOffset(V::Attribute(attr));
+						if (offset > 0) {
+							positionBytes = std::min(positionBytes, offset);
+						}
+					}
+				}
+				Part part;
+				part.keep = RE::NiPointer<RE::BSTriShape>(static_cast<RE::BSTriShape*>(geom));
+				part.vb = reinterpret_cast<ID3D11Buffer*>(source.rd->vertexBuffer);
+				part.ib = reinterpret_cast<ID3D11Buffer*>(source.rd->indexBuffer);
+				part.desc = source.desc;
+				part.stride = stride;
+				part.full = positionBytes >= 12;
+				part.indexCount = source.triangles * 3;
+				const auto& r = world.rotate;
+				for (int row = 0; row < 3; ++row) {
+					for (int col = 0; col < 3; ++col) {
+						part.world[row * 4 + col] = r.entry[row][col] * world.scale;
+					}
+				}
+				part.world[3] = world.translate.x;
+				part.world[7] = world.translate.y;
+				part.world[11] = world.translate.z;
+				if (srv) {
+					srv->AddRef();
+					part.srv = srv;
+				}
+				part.texture = loaded;
+				if (auto* alpha = data.alphaProperty.get()) {
+					part.alphaTest = alpha->GetAlphaTesting() || alpha->GetAlphaBlending();
+				}
+				a_model.parts.push_back(std::move(part));
+				added = true;
 			}
-			const auto& bound = geom->GetModelData().modelBound;
-			a_bounds.push_back({ world * bound.center, bound.radius * world.scale });
-			a_model.parts.push_back(std::move(part));
+			if (srv) {
+				srv->Release();
+			}
+			if (added) {
+				const auto& bound = geom->GetModelData().modelBound;
+				a_bounds.push_back({ world * bound.center, bound.radius * world.scale });
+			} else if (logged++ < 40) {
+				logger::info("icons: {}: shape {} left out ({} sources, skinned {})", a_model.name, geom->name.c_str(), sources.size(), data.skinInstance != nullptr);
+			}
 		}
 
 		bool Load(Model& a_model, const char* a_path)
@@ -539,18 +590,18 @@ float4 PSMain(VO i, bool front : SV_IsFrontFace) : SV_Target {
 			return true;
 		}
 
-		ID3D11InputLayout* LayoutFor(ID3D11Device* a_device, std::uint64_t a_desc)
+		ID3D11InputLayout* LayoutFor(ID3D11Device* a_device, std::uint64_t a_desc, bool a_full)
 		{
 			const auto&   desc = reinterpret_cast<const RE::BSGraphics::VertexDesc&>(a_desc);
 			const auto    flags = desc.GetFlags();
 			using V = RE::BSGraphics::Vertex;
 			// Only what the layout depends on: flags and offsets.
-			const std::uint64_t key = (std::uint64_t(flags) << 32) | (desc.GetAttributeOffset(V::VA_TEXCOORD0) << 16) | (desc.GetAttributeOffset(V::VA_NORMAL) << 8) |
+			const std::uint64_t key = (std::uint64_t(a_full) << 63) | (std::uint64_t(flags) << 32) | (desc.GetAttributeOffset(V::VA_TEXCOORD0) << 16) | (desc.GetAttributeOffset(V::VA_NORMAL) << 8) |
 			                          desc.GetAttributeOffset(V::VA_COLOR);
 			if (const auto it = layouts.find(key); it != layouts.end()) {
 				return it->second;
 			}
-			const bool               full = (flags & V::VF_FULLPREC) != 0;
+			const bool               full = a_full;
 			D3D11_INPUT_ELEMENT_DESC elements[4] = {
 				{ "POSITION", 0, full ? DXGI_FORMAT_R32G32B32_FLOAT : DXGI_FORMAT_R16G16B16A16_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 				{ "TEXCOORD", 0, DXGI_FORMAT_R16G16_FLOAT, 0, (flags & V::VF_UV) ? desc.GetAttributeOffset(V::VA_TEXCOORD0) : 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
@@ -584,7 +635,7 @@ float4 PSMain(VO i, bool front : SV_IsFrontFace) : SV_Target {
 				using V = RE::BSGraphics::Vertex;
 				const auto& desc = reinterpret_cast<const RE::BSGraphics::VertexDesc&>(part.desc);
 				const auto  flags = desc.GetFlags();
-				auto*       layout = LayoutFor(a_device, part.desc);
+				auto*       layout = LayoutFor(a_device, part.desc, part.full);
 				if (!layout) {
 					continue;
 				}
@@ -633,6 +684,69 @@ float4 PSMain(VO i, bool front : SV_IsFrontFace) : SV_Target {
 				break;
 			}
 			return v;
+		}
+
+		// From the trial views, where the model really is: re-centred and resized if it ran off their
+		// edges or filled only a little of them (its stored bounds can be off). True: draw them again.
+		bool Refit(Model& a_model, const std::uint8_t* a_pixels, UINT a_pitch)
+		{
+			const float R = a_model.radius;
+			float       lo[3]{ 1e9f, 1e9f, 1e9f }, hi[3]{ -1e9f, -1e9f, -1e9f };
+			bool        edge = false, any = false;
+			int         widest = 0;
+			// Which model axes each view's right and up run along (front: x, z; side: y, z; above: x, y).
+			constexpr int kAxes[3][2] = { { 0, 2 }, { 1, 2 }, { 0, 1 } };
+			for (int view = 0; view < 3; ++view) {
+				int x0 = kTile, y0 = kTile, x1 = -1, y1 = -1;
+				for (UINT y = 0; y < kTile; ++y) {
+					const auto* row = a_pixels + y * a_pitch + view * kTile * 4;
+					for (UINT x = 0; x < kTile; ++x) {
+						if (row[x * 4 + 3] > 0) {
+							x0 = std::min(x0, int(x));
+							x1 = std::max(x1, int(x));
+							y0 = std::min(y0, int(y));
+							y1 = std::max(y1, int(y));
+						}
+					}
+				}
+				if (x1 < 0) {
+					continue;
+				}
+				any = true;
+				edge = edge || x0 == 0 || y0 == 0 || x1 == int(kTile) - 1 || y1 == int(kTile) - 1;
+				widest = std::max({ widest, x1 - x0 + 1, y1 - y0 + 1 });
+				const float pixel = 2.0f * R / kTile;
+				const float rx0 = -R + x0 * pixel, rx1 = -R + (x1 + 1) * pixel;
+				const float uy0 = R - (y1 + 1) * pixel, uy1 = R - y0 * pixel;
+				const int   ax = kAxes[view][0], ay = kAxes[view][1];
+				lo[ax] = std::min(lo[ax], rx0);
+				hi[ax] = std::max(hi[ax], rx1);
+				lo[ay] = std::min(lo[ay], uy0);
+				hi[ay] = std::max(hi[ay], uy1);
+			}
+			if (!any) {
+				a_model.radius = R * 4.0f;  // nowhere to be seen: look wider
+				return true;
+			}
+			for (int k = 0; k < 3; ++k) {
+				if (lo[k] > hi[k]) {
+					lo[k] = hi[k] = 0.0f;
+				}
+			}
+			// (The side view looks along -x, so its right runs along +y as used above.)
+			const RE::NiPoint3 mid{ (lo[0] + hi[0]) * 0.5f, (lo[1] + hi[1]) * 0.5f, (lo[2] + hi[2]) * 0.5f };
+			const RE::NiPoint3 half{ (hi[0] - lo[0]) * 0.5f, (hi[1] - lo[1]) * 0.5f, (hi[2] - lo[2]) * 0.5f };
+			a_model.center = a_model.center + mid;
+			if (edge) {
+				a_model.radius = std::max(R * 2.5f, half.Length() * 1.3f);
+				return true;
+			}
+			const float fitted = std::max(0.5f, half.Length() * 1.1f);
+			if (widest < int(kTile) / 2 || fitted < R * 0.7f) {
+				a_model.radius = fitted;
+				return true;
+			}
+			return false;
 		}
 
 		// From the trial views: the one showing the most, turned and fitted.
@@ -965,6 +1079,7 @@ float4 PSMain(VO i, bool front : SV_IsFrontFace) : SV_Target {
 				job.busy = true;
 				job.stage = 0;
 				job.waited = 0;
+				job.refits = 0;
 			}
 			if (job.stage == 0) {
 				BeginPass(a_context, rtvA, dsvA);
@@ -986,6 +1101,13 @@ float4 PSMain(VO i, bool front : SV_IsFrontFace) : SV_Target {
 			if (FAILED(hr)) {
 				Release(job.model);
 				job.busy = false;
+				continue;
+			}
+			if (trial && job.refits < 4 && Refit(job.model, static_cast<const std::uint8_t*>(mapped.pData), mapped.RowPitch)) {
+				a_context->Unmap(job.stagingA, 0);
+				++job.refits;
+				job.stage = 0;  // the trial views again, next frame
+				job.waited = 0;
 				continue;
 			}
 			if (trial) {
