@@ -32,10 +32,41 @@ namespace skycraft
 		PendingHurt dot;  // accumulated magic / unattributed damage
 
 		bool  essentialSet = false;
+		// SkyCraft+ : healing potions. Seconds left in which a health gain counts as a heal.
+		float healWindow = 0.0f;
 		bool  healthPrimed = false;
 		float diagTimer = 5.0f;
 		bool  engaged = false;
 		float engagedTimer = 0.0f;
+
+		bool IsHeal(const RE::EffectSetting* a_base)
+		{
+			using Arch = RE::EffectArchetypes::ArchetypeID;
+			return a_base && a_base->data.primaryAV == RE::ActorValue::kHealth && !a_base->IsDetrimental() &&
+			       (a_base->HasArchetype(Arch::kValueModifier) || a_base->HasArchetype(Arch::kPeakValueModifier) || a_base->HasArchetype(Arch::kDualValueModifier));
+		}
+
+		// SkyCraft+ : healing potions. A potion's heal is instant: its effect was gone before the
+		// health it gave was seen, so it was taken for Skyrim's own regeneration and Minecraft's hearts
+		// stayed where they were. A healing effect landing on the player opens a second for it.
+		class HealSink final : public RE::BSTEventSink<RE::TESMagicEffectApplyEvent>
+		{
+		public:
+			static HealSink* Get()
+			{
+				static HealSink sink;
+				return &sink;
+			}
+
+			RE::BSEventNotifyControl ProcessEvent(const RE::TESMagicEffectApplyEvent* a_event, RE::BSTEventSource<RE::TESMagicEffectApplyEvent>*) override
+			{
+				auto* player = RE::PlayerCharacter::GetSingleton();
+				if (a_event && player && a_event->target.get() == player && IsHeal(RE::TESForm::LookupByID<RE::EffectSetting>(a_event->magicEffect))) {
+					healWindow = 1.0f;
+				}
+				return RE::BSEventNotifyControl::kContinue;
+			}
+		};
 
 		class HitSink final : public RE::BSTEventSink<RE::TESHitEvent>
 		{
@@ -161,11 +192,9 @@ namespace skycraft
 			if (!effects) {
 				return false;
 			}
-			using Arch = RE::EffectArchetypes::ArchetypeID;
 			for (auto* active : *effects) {
 				auto* base = active && !active->flags.any(RE::ActiveEffect::Flag::kInactive) ? active->GetBaseObject() : nullptr;
-				if (base && base->data.primaryAV == RE::ActorValue::kHealth && !base->IsDetrimental() &&
-					(base->HasArchetype(Arch::kValueModifier) || base->HasArchetype(Arch::kPeakValueModifier) || base->HasArchetype(Arch::kDualValueModifier))) {
+				if (IsHeal(base)) {
 					return true;
 				}
 			}
@@ -201,6 +230,8 @@ namespace skycraft
 			const float hurt = deficit + std::exchange(cutDamage, 0.0f);
 			lastHit.age += a_delta;
 			lastDamagerAge += a_delta;
+			const bool healing = healWindow > 0.0f;
+			healWindow = std::max(0.0f, healWindow - a_delta);
 			if (!healthPrimed) {
 				// Whatever damage the save had before Minecraft took over isn't a new hit.
 				healthPrimed = true;
@@ -214,8 +245,12 @@ namespace skycraft
 			if (deficit < -0.01f) {
 				const float gained = -deficit;
 				av->DamageActorValue(RE::ActorValue::kHealth, gained);
-				if (HealingNow(a_player) && max > 0.0f) {
+				if ((healing || HealingNow(a_player)) && max > 0.0f) {
 					Link::Get().PushInput(proto::kInHeal, 0, static_cast<std::int32_t>(gained / max * 10000.0f));
+					static int logged = 0;
+					if (logged++ < 20) {
+						logger::info("health: a Skyrim heal of {:.1f} goes to Minecraft's hearts ({:.0f}%)", gained, gained / max * 100.0f);
+					}
 				}
 			}
 			if (deficit > 0.01f) {
@@ -924,6 +959,7 @@ namespace skycraft
 			ModActorValueHook::func = values.write_vfunc(0x6, ModActorValueHook::thunk);
 			if (auto* events = RE::ScriptEventSourceHolder::GetSingleton()) {
 				events->AddEventSink<RE::TESHitEvent>(HitSink::Get());
+				events->AddEventSink<RE::TESMagicEffectApplyEvent>(HealSink::Get());  // SkyCraft+
 			}
 			ResolveHitPipeline();
 			logger::info("combat hooks installed");
