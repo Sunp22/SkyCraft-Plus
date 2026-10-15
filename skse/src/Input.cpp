@@ -280,15 +280,26 @@ namespace skycraft
 			auto target = pick->GetActiveTarget().get();
 			if (!target || target.get() == player) {
 				if (auto* inView = activateInView ? NearestActivatableInView(player) : nullptr) {
-					inView->ActivateRef(player, 0, nullptr, 0, false);
+					inView->ActivateRef(player, 0, nullptr, 1, false);
 					logger::info("activated {:08X} ({}): in view, Skyrim's crosshair had no target", inView->GetFormID(), inView->GetDisplayFullName());
 					return;
 				}
 				logger::info("G: nothing to activate under the crosshair");
 				return;
 			}
-			target->ActivateRef(player, 0, nullptr, 0, false);
-			logger::info("activated {:08X} ({})", target->GetFormID(), target->GetDisplayFullName());
+			// SkyCraft+ : items off the floor and shelves. A target count of 0 took the item out of the
+			// world and gave the player none of it; 1 is what Papyrus's Activate passes.
+			auto* item = target->GetBaseObject();
+			const bool pickup = item && item->IsInventoryObject();
+			const auto before = pickup ? player->GetItemCount(item) : 0;
+			const auto name = std::string(target->GetDisplayFullName());
+			const auto id = target->GetFormID();
+			target->ActivateRef(player, 0, nullptr, 1, false);
+			if (pickup) {
+				logger::info("activated {:08X} ({}): the player has {} (had {})", id, name, player->GetItemCount(item), before);
+			} else {
+				logger::info("activated {:08X} ({})", id, name);
+			}
 		}
 
 		// SkyCraft+ : a right click with a Skyrim left hand goes to Minecraft when its crosshair is on
