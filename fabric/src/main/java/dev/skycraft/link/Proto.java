@@ -8,7 +8,7 @@ public final class Proto {
 	}
 
 	public static final int MAGIC = 0x43594B53;
-	public static final int VERSION = 35;
+	public static final int VERSION = 36;
 	// A second client on the same PC (multiplayer testing) talks to its own stand-in Skyrim:
 	// -Dskycraft.link=Local\SkyCraft_guest (see tools/fake_guest.py).
 	public static final String MAPPING_NAME = System.getProperty("skycraft.link", "Local\\SkyCraft_v1");
@@ -46,9 +46,9 @@ public final class Proto {
 	public static final long OFF_SKY_INVENTORY = OFF_RENDER_RING + RENDER_RING_BYTES;
 	public static final long SKY_INVENTORY_BYTES = 1L << 20;
 	public static final long MAPPING_BYTES = OFF_SKY_INVENTORY + SKY_INVENTORY_BYTES;
-	public static final int MAX_SKY_ITEMS = 4096, SKY_ITEM_BYTES = 128, SKY_ITEM_NAME_BYTES = 96;
+	public static final int MAX_SKY_ITEMS = 4096, SKY_ITEM_BYTES = 192, SKY_ITEM_NAME_BYTES = 96, SKY_ITEM_PLUGIN_BYTES = 60;
 	public static final long INV_SEQ = 0x0, INV_COUNT = 0x4, INV_GENERATION = 0x8, INV_GOLD = 0xC, INV_CARRIED = 0x10, INV_CARRY_MAX = 0x14, INV_ITEMS = 0x40;
-	// SkyItem: formId 0, kind 4, sub 5, material 6, count 8, flags 12, weight 16, value 20, stat 24, stat2 28, name 32
+	// SkyItem: formId 0, kind 4, sub 5, material 6, count 8, flags 12, weight 16, value 20, stat 24, stat2 28, name 32, localId 128, plugin 132 (v36)
 	public static final int SKY_WEAPON = 1, SKY_APPAREL = 2, SKY_POTION = 3, SKY_FOOD = 4, SKY_INGREDIENT = 5, SKY_BOOK = 6, SKY_KEY = 7, SKY_MISC = 8, SKY_AMMO = 9,
 		SKY_SCROLL = 10, SKY_SPELL = 20, SKY_SHOUT = 21, SKY_POWER = 22;
 	public static final int W_HAND = 0, W_SWORD = 1, W_DAGGER = 2, W_WAR_AXE = 3, W_MACE = 4, W_GREATSWORD = 5, W_BATTLEAXE = 6, W_WARHAMMER = 7, W_BOW = 8, W_STAFF = 9,
@@ -101,7 +101,8 @@ public final class Proto {
 	public static final int EV_SKILL_USE = 5;
 	public static final int EV_PLAYER_HURT = 6;
 	public static final int EV_SKY_ITEM = 7; // SkyCraft+ : v35, flags = SKY_ACT_*
-	public static final int SKY_ACT_RIGHT = 1, SKY_ACT_LEFT = 2, SKY_ACT_USE = 3, SKY_ACT_MENU_STATS = 4, SKY_ACT_MENU_MAP = 5;
+	public static final int SKY_ACT_RIGHT = 1, SKY_ACT_LEFT = 2, SKY_ACT_USE = 3, SKY_ACT_MENU_STATS = 4, SKY_ACT_MENU_MAP = 5,
+		SKY_ACT_EQUIP_RIGHT = 6, SKY_ACT_EQUIP_LEFT = 7, SKY_ACT_DROP = 8; // SkyCraft+ : v36, shortcuts
 	// Skyrim skills (ActorValue) Minecraft reports use of; weapon skills come from EV_HIT_ACTOR.
 	public static final int SKILL_BLOCK = 9;
 	public static final int SKILL_SMITHING = 10;

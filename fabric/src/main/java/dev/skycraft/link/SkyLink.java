@@ -505,9 +505,14 @@ public final class SkyLink {
 	}
 
 	/** SkyCraft+ : one of the Skyrim player's items, spells, shouts or powers (see SkyItem in the protocol). */
-	public record SkyItem(int formId, int kind, int sub, int material, int count, int flags, float weight, int value, float stat, float stat2, String name) {
+	public record SkyItem(int formId, int kind, int sub, int material, int count, int flags, float weight, int value, float stat, float stat2, String name, int localId, String plugin) {
 		public boolean has(int flag) {
 			return (this.flags & flag) != 0;
+		}
+
+		/** The same thing in any load order (and with another game started): plugin and id within it. */
+		public boolean is(String plugin, int localId) {
+			return this.localId == localId && this.plugin.equalsIgnoreCase(plugin);
 		}
 	}
 
@@ -540,7 +545,8 @@ public final class SkyLink {
 				long r = b + INV_ITEMS + (long) i * SKY_ITEM_BYTES;
 				items.add(new SkyItem(s.get(JAVA_INT, r), Byte.toUnsignedInt(s.get(JAVA_BYTE, r + 4)), Byte.toUnsignedInt(s.get(JAVA_BYTE, r + 5)),
 					Byte.toUnsignedInt(s.get(JAVA_BYTE, r + 6)), s.get(JAVA_INT, r + 8), s.get(JAVA_INT, r + 12), s.get(JAVA_FLOAT, r + 16), s.get(JAVA_INT, r + 20),
-					s.get(JAVA_FLOAT, r + 24), s.get(JAVA_FLOAT, r + 28), readName(s, r + 32, SKY_ITEM_NAME_BYTES)));
+					s.get(JAVA_FLOAT, r + 24), s.get(JAVA_FLOAT, r + 28), readName(s, r + 32, SKY_ITEM_NAME_BYTES),
+					s.get(JAVA_INT, r + 128), readName(s, r + 132, SKY_ITEM_PLUGIN_BYTES)));
 			}
 			SkyInventory inventory = new SkyInventory(s.get(JAVA_INT, b + INV_GENERATION), s.get(JAVA_INT, b + INV_GOLD), s.get(JAVA_FLOAT, b + INV_CARRIED),
 				s.get(JAVA_FLOAT, b + INV_CARRY_MAX), items);

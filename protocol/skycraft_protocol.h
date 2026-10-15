@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 35;
+	inline constexpr std::uint32_t kVersion = 36;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -377,6 +377,10 @@ namespace skycraft::proto
 		kSkyItemUse = 3,       // drink, eat, read; shouts and powers: make it the voice's
 		kSkyItemMenuStats = 4, // open Skyrim's skills (level up) menu (formId 0)
 		kSkyItemMenuMap = 5,   // open Skyrim's map (formId 0)
+		// SkyCraft+ (v36): Skyrim shortcuts on Minecraft's hotbar.
+		kSkyItemEquipRight = 6,  // equip in the right hand (never takes it off): a shortcut picked on the hotbar
+		kSkyItemEquipLeft = 7,   // the same with the left hand: a shortcut in the off-hand slot
+		kSkyItemDrop = 8,        // drop all of it in front of the player: a shortcut thrown out
 	};
 
 	// InputEvent::code for kInSkyrimHit.
@@ -856,8 +860,13 @@ namespace skycraft::proto
 		float         stat;      // damage, armor rating, magicka cost, or the main effect's magnitude
 		float         stat2;     // potions and spells: duration (s); shouts: recharge (s)
 		char          name[96];  // UTF-8, zero-terminated
+		// SkyCraft+ (v36): where it comes from, which stays the same across load orders (shortcuts
+		// keep these): the plugin's file name and the id within it. Made in game (FF...): no plugin
+		// and the form id.
+		std::uint32_t localId;
+		char          plugin[60];
 	};
-	static_assert(sizeof(SkyItem) == 128);
+	static_assert(sizeof(SkyItem) == 192);
 
 	struct SkyInventory
 	{
@@ -869,6 +878,6 @@ namespace skycraft::proto
 		std::uint32_t pad[10];
 		SkyItem       items[kMaxSkyItems];
 	};
-	static_assert(sizeof(SkyInventory) == 0x40 + 128 * kMaxSkyItems);
+	static_assert(sizeof(SkyInventory) == 0x40 + sizeof(SkyItem) * kMaxSkyItems);
 	static_assert(sizeof(SkyInventory) <= kSkyInventoryBytes);
 }

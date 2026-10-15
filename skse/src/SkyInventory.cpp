@@ -21,6 +21,20 @@ namespace skycraft::SkyInventory
 			std::snprintf(a_item.name, sizeof(a_item.name), "%s", a_name ? a_name : "");
 		}
 
+		// Where it comes from, for Minecraft's shortcuts: the plugin and the id within it (made in
+		// game: no plugin, and the form id, which the save keeps).
+		void SetSource(proto::SkyItem& a_item, const RE::TESForm* a_form)
+		{
+			auto* file = (a_form->GetFormID() >> 24) != 0xFF ? a_form->GetFile(0) : nullptr;
+			if (!file) {
+				a_item.localId = a_form->GetFormID();
+				return;
+			}
+			a_item.localId = a_form->GetFormID() & (file->IsLight() ? 0xFFFu : 0xFFFFFFu);
+			const auto name = file->GetFilename();
+			std::snprintf(a_item.plugin, sizeof(a_item.plugin), "%.*s", static_cast<int>(name.size()), name.data());
+		}
+
 		bool Contains(std::string_view a_text, std::string_view a_part)
 		{
 			return std::search(a_text.begin(), a_text.end(), a_part.begin(), a_part.end(), [](char a, char b) {
@@ -159,6 +173,7 @@ namespace skycraft::SkyInventory
 			item.count = a_count;
 			const char* name = a_entry ? a_entry->GetDisplayName() : nullptr;
 			SetName(item, name && *name ? name : a_object->GetName());
+			SetSource(item, a_object);
 			if (a_entry) {
 				item.weight = a_entry->GetWeight();
 				item.value = a_entry->GetValue();
@@ -282,6 +297,7 @@ namespace skycraft::SkyInventory
 			item.formId = a_spell->GetFormID();
 			item.count = 1;
 			SetName(item, a_spell->GetName());
+			SetSource(item, a_spell);
 			auto* effect = MainEffect(a_spell);
 			if (type == T::kSpell) {
 				item.kind = proto::kSkySpell;
@@ -330,6 +346,7 @@ namespace skycraft::SkyInventory
 			item.formId = a_shout->GetFormID();
 			item.kind = proto::kSkyShout;
 			SetName(item, a_shout->GetName());
+			SetSource(item, a_shout);
 			for (const auto& variation : a_shout->variations) {
 				if (variation.word && (variation.word->formFlags & RE::TESForm::RecordFlags::kUnlocked) != 0) {
 					++item.count;
@@ -452,7 +469,9 @@ namespace skycraft::SkyInventory
 		if (!form || !equip) {
 			return;
 		}
-		const bool left = a_event.flags == proto::kSkyItemLeft;
+		const bool left = a_event.flags == proto::kSkyItemLeft || a_event.flags == proto::kSkyItemEquipLeft;
+		// A shortcut picked on Minecraft's hotbar: into the hand, never out of it, nothing used.
+		const bool equipOnly = a_event.flags == proto::kSkyItemEquipRight || a_event.flags == proto::kSkyItemEquipLeft;
 		const auto* handSlot = Slot(left ? RE::DEFAULT_OBJECTS::kLeftHandEquip : RE::DEFAULT_OBJECTS::kRightHandEquip);
 		auto&      runtime = a_player->GetActorRuntimeData();
 
@@ -467,6 +486,9 @@ namespace skycraft::SkyInventory
 				equip->EquipSpell(a_player, spell, Slot(RE::DEFAULT_OBJECTS::kVoiceEquip));
 				logger::info("Skyrim items: {} is the voice's", spell->GetName());
 			} else if (runtime.selectedSpells[left ? RE::Actor::SlotTypes::kLeftHand : RE::Actor::SlotTypes::kRightHand] == spell) {
+				if (equipOnly) {
+					return;
+				}
 				a_player->DeselectSpell(spell);
 				logger::info("Skyrim items: {} taken out of the {} hand", spell->GetName(), left ? "left" : "right");
 			} else {
@@ -477,6 +499,19 @@ namespace skycraft::SkyInventory
 		}
 		auto* object = form->As<RE::TESBoundObject>();
 		if (!object || a_player->GetItemCount(object) <= 0) {
+			return;
+		}
+		if (a_event.flags == proto::kSkyItemDrop) {
+			if (object->Is(RE::FormType::Weapon, RE::FormType::Armor, RE::FormType::Ammo, RE::FormType::Light)) {
+				for (bool leftHand : { false, true }) {
+					if (auto* worn = ExtraFor(a_player, object, true, leftHand)) {
+						equip->UnequipObject(a_player, object, worn, 1, nullptr);
+					}
+				}
+			}
+			const auto count = a_player->GetItemCount(object);
+			a_player->RemoveItem(object, count, RE::ITEM_REMOVE_REASON::kDropping, nullptr, nullptr);
+			logger::info("Skyrim items: {} x{} dropped (a shortcut thrown out)", object->GetName(), count);
 			return;
 		}
 		switch (object->GetFormType()) {
@@ -490,6 +525,9 @@ namespace skycraft::SkyInventory
 				const bool inLeft = a_player->GetEquippedObject(true) == object, inRight = a_player->GetEquippedObject(false) == object;
 				const bool here = twoHanded ? inRight || inLeft : (torch ? inLeft : left ? inLeft : inRight);
 				const auto* slot = twoHanded ? nullptr : torch ? Slot(RE::DEFAULT_OBJECTS::kLeftHandEquip) : handSlot;
+				if (here && equipOnly) {
+					return;
+				}
 				if (here) {
 					equip->UnequipObject(a_player, object, ExtraFor(a_player, object, true, torch || (!twoHanded && left)), 1, slot);
 					logger::info("Skyrim items: {} unequipped", object->GetName());
@@ -503,6 +541,9 @@ namespace skycraft::SkyInventory
 		case RE::FormType::Ammo:
 			{
 				auto* worn = ExtraFor(a_player, object, true, false);
+				if (worn && equipOnly) {
+					return;
+				}
 				if (worn) {
 					equip->UnequipObject(a_player, object, worn, 1, nullptr);
 					logger::info("Skyrim items: {} taken off", object->GetName());
@@ -514,10 +555,16 @@ namespace skycraft::SkyInventory
 			}
 		case RE::FormType::AlchemyItem:
 		case RE::FormType::Ingredient:
+			if (equipOnly) {
+				return;
+			}
 			equip->EquipObject(a_player, object, nullptr, 1, nullptr);
 			logger::info("Skyrim items: {} used", object->GetName());
 			return;
 		case RE::FormType::Book:
+			if (equipOnly) {
+				return;
+			}
 			{
 				auto* book = object->As<RE::TESObjectBOOK>();
 				if (book->TeachesSpell() || book->TeachesSkill()) {
