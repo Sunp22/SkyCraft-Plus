@@ -504,6 +504,54 @@ public final class SkyLink {
 		return false;
 	}
 
+	/** SkyCraft+ : one of the Skyrim player's items, spells, shouts or powers (see SkyItem in the protocol). */
+	public record SkyItem(int formId, int kind, int sub, int material, int count, int flags, float weight, int value, float stat, float stat2, String name) {
+		public boolean has(int flag) {
+			return (this.flags & flag) != 0;
+		}
+	}
+
+	/** SkyCraft+ : Skyrim's inventory as a whole (see SkyInventory in the protocol). */
+	public record SkyInventory(int generation, int gold, float carried, float carryMax, java.util.List<SkyItem> items) {
+	}
+
+	/** SkyCraft+ : SkyInventory::generation, to see whether there's anything new to read (-1 if the link is down). */
+	public static int skyInventoryGeneration() {
+		MemorySegment s = shm;
+		return s == null ? -1 : (int) INT.getAcquire(s, OFF_SKY_INVENTORY + INV_GENERATION);
+	}
+
+	/** SkyCraft+ : seqlock read of Skyrim's inventory; null if the link is down or Skyrim kept writing. */
+	public static @org.jspecify.annotations.Nullable SkyInventory readSkyInventory() {
+		MemorySegment s = shm;
+		if (s == null) {
+			return null;
+		}
+		long b = OFF_SKY_INVENTORY;
+		for (int attempt = 0; attempt < 16; attempt++) {
+			int seq1 = (int) INT.getAcquire(s, b + INV_SEQ);
+			if ((seq1 & 1) != 0) {
+				Thread.onSpinWait();
+				continue;
+			}
+			int count = Math.clamp(s.get(JAVA_INT, b + INV_COUNT), 0, MAX_SKY_ITEMS);
+			java.util.List<SkyItem> items = new java.util.ArrayList<>(count);
+			for (int i = 0; i < count; i++) {
+				long r = b + INV_ITEMS + (long) i * SKY_ITEM_BYTES;
+				items.add(new SkyItem(s.get(JAVA_INT, r), Byte.toUnsignedInt(s.get(JAVA_BYTE, r + 4)), Byte.toUnsignedInt(s.get(JAVA_BYTE, r + 5)),
+					Byte.toUnsignedInt(s.get(JAVA_BYTE, r + 6)), s.get(JAVA_INT, r + 8), s.get(JAVA_INT, r + 12), s.get(JAVA_FLOAT, r + 16), s.get(JAVA_INT, r + 20),
+					s.get(JAVA_FLOAT, r + 24), s.get(JAVA_FLOAT, r + 28), readName(s, r + 32, SKY_ITEM_NAME_BYTES)));
+			}
+			SkyInventory inventory = new SkyInventory(s.get(JAVA_INT, b + INV_GENERATION), s.get(JAVA_INT, b + INV_GOLD), s.get(JAVA_FLOAT, b + INV_CARRIED),
+				s.get(JAVA_FLOAT, b + INV_CARRY_MAX), items);
+			VarHandle.loadLoadFence();
+			if ((int) INT.getAcquire(s, b + INV_SEQ) == seq1) {
+				return inventory;
+			}
+		}
+		return null;
+	}
+
 	public static boolean readActors(java.util.List<Actor> out) {
 		out.clear();
 		MemorySegment s = shm;

@@ -1051,6 +1051,8 @@ namespace skycraft
 						const float max = a_player->GetActorValueMax(RE::ActorValue::kHealth);
 						a_player->AsActorValueOwner()->DamageActorValue(RE::ActorValue::kHealth, std::clamp(ev.a, 0.0f, 1.0f) * max);
 						logger::info("Skyrim mode: a Minecraft mob took {:.0f}% of the player's health", ev.a * 100.0f);
+					} else if (ev.type == proto::kEvSkyItem) {
+						SkyInventory::Apply(a_player, ev);  // SkyCraft+
 					}
 				}
 				pendingExplosions.clear();
@@ -1082,6 +1084,9 @@ namespace skycraft
 					break;
 				case proto::kEvArrowStuck:
 					WorldRender::StickArrow(ev.formId, ev.a, ev.b, ev.c, ev.d, std::bit_cast<float>(ev.flags));
+					break;
+				case proto::kEvSkyItem:
+					SkyInventory::Apply(a_player, ev);  // SkyCraft+
 					break;
 				case proto::kEvSkillUse:
 					if (ev.formId >= static_cast<std::uint32_t>(RE::ActorValue::kOneHanded) && ev.formId <= static_cast<std::uint32_t>(RE::ActorValue::kEnchanting)) {

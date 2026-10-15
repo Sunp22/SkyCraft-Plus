@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 34;
+	inline constexpr std::uint32_t kVersion = 35;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -40,7 +40,9 @@ namespace skycraft::proto
 	inline constexpr std::uint64_t kOffWorldEntities = 0x1C000;  // MC -> Skyrim, see WorldEntities
 	inline constexpr std::uint64_t kOffRenderRing = kOffOverlayPixels + kOverlaySlotBytes * kOverlaySlots;
 	inline constexpr std::uint64_t kRenderRingBytes = 64ull << 20;
-	inline constexpr std::uint64_t kMappingBytes = kOffRenderRing + kRenderRingBytes;
+	inline constexpr std::uint64_t kOffSkyInventory = kOffRenderRing + kRenderRingBytes;  // SkyCraft+ : v35, Skyrim -> MC, see SkyInventory
+	inline constexpr std::uint64_t kSkyInventoryBytes = 1ull << 20;
+	inline constexpr std::uint64_t kMappingBytes = kOffSkyInventory + kSkyInventoryBytes;
 
 	// ---- header @0x0 ------------------------------------------------------------------------
 	struct Header
@@ -178,6 +180,9 @@ namespace skycraft::proto
 		// SkyCraft+ : controller inventory snapping (v34). The screen open has item slots (an
 		// inventory, chest, furnace...): the D-pad and left stick jump slot to slot (kInSlotJump).
 		kMcSlotScreen = 1u << 11,
+		// SkyCraft+ : Skyrim's inventory in Minecraft's (v35). Minecraft's inventory or one of its
+		// Skyrim item screens is open: Skyrim keeps SkyInventory up to date.
+		kMcWantsSkyInventory = 1u << 12,
 	};
 
 	// SkyCraft+ : McState::dimension. 3 and up are Minecraft's own worlds: Skyrim parks its player in
@@ -360,6 +365,18 @@ namespace skycraft::proto
 		                    // 10 Smithing, 11 Heavy Armor, 12 Light Armor), a = uses (as Skyrim's AdvanceSkill counts them)
 		kEvPlayerHurt = 6,  // Skyrim mode: a Minecraft mob or explosion hurt the player: a = share of Minecraft's max
 		                    // health it took; Skyrim takes that share of its own
+		kEvSkyItem = 7,     // SkyCraft+ (v35): a click in a Skyrim item screen: formId = SkyItem::formId,
+		                    // flags = SkyItemAction
+	};
+
+	// SkyCraft+ : what a click on a Skyrim item does (McEvent::flags of kEvSkyItem).
+	enum SkyItemAction : std::uint32_t
+	{
+		kSkyItemRight = 1,     // equip in (or, if there already, take off) the right hand; worn things: put on/take off
+		kSkyItemLeft = 2,      // the same with the left hand
+		kSkyItemUse = 3,       // drink, eat, read; shouts and powers: make it the voice's
+		kSkyItemMenuStats = 4, // open Skyrim's skills (level up) menu (formId 0)
+		kSkyItemMenuMap = 5,   // open Skyrim's map (formId 0)
 	};
 
 	// InputEvent::code for kInSkyrimHit.
@@ -754,4 +771,104 @@ namespace skycraft::proto
 		std::uint64_t bits[8];
 	};
 	static_assert(sizeof(ColBlock) == 80);
+
+	// ---- SkyCraft+ : Skyrim's inventory @kOffSkyInventory (Skyrim -> MC, seqlock), v35 -------
+	// The player's Skyrim items, spells, shouts and powers, for Minecraft's own Skyrim item
+	// screens (Skyrim's menus can't be open alongside Minecraft's inventory). Written a few times a
+	// second while McFlags::kMcWantsSkyInventory is set, and right after each kEvSkyItem.
+	inline constexpr std::uint32_t kMaxSkyItems = 4096;
+
+	enum SkyItemKind : std::uint8_t
+	{
+		kSkyWeapon = 1,      // sub: SkyWeaponType
+		kSkyApparel = 2,     // sub: SkyApparelSlot; flags kSkyItemHeavy / kSkyItemLight
+		kSkyPotion = 3,      // sub: SkyPotionKind
+		kSkyFood = 4,
+		kSkyIngredient = 5,
+		kSkyBook = 6,        // sub: 1 spell tome, 2 note, 0 other
+		kSkyKey = 7,
+		kSkyMisc = 8,        // sub: 1 soul gem (filled: kSkyItemFilled), 2 torch, 3 lockpick, 0 other
+		kSkyAmmo = 9,        // sub: 1 bolt, 0 arrow
+		kSkyScroll = 10,
+		kSkySpell = 20,      // sub: SkySchool; element: SkyElement
+		kSkyShout = 21,
+		kSkyPower = 22,      // sub: 1 lesser power
+	};
+
+	enum SkyWeaponType : std::uint8_t
+	{
+		kSkyHand = 0, kSkySword = 1, kSkyDagger = 2, kSkyWarAxe = 3, kSkyMace = 4, kSkyGreatsword = 5,
+		kSkyBattleaxe = 6, kSkyWarhammer = 7, kSkyBow = 8, kSkyStaff = 9, kSkyCrossbow = 10, kSkyPickaxe = 11, kSkyWoodAxe = 12,
+	};
+
+	enum SkyApparelSlot : std::uint8_t
+	{
+		kSkyBody = 0, kSkyHead = 1, kSkyHands = 2, kSkyFeet = 3, kSkyShield = 4, kSkyRing = 5, kSkyAmulet = 6, kSkyCirclet = 7,
+	};
+
+	enum SkyPotionKind : std::uint8_t
+	{
+		kSkyPotionOther = 0, kSkyPotionHealth = 1, kSkyPotionMagicka = 2, kSkyPotionStamina = 3, kSkyPoison = 4,
+	};
+
+	enum SkySchool : std::uint8_t
+	{
+		kSkyAlteration = 0, kSkyConjuration = 1, kSkyDestruction = 2, kSkyIllusion = 3, kSkyRestoration = 4,
+	};
+
+	// SkyItem::material: what a Minecraft stand-in is made of. For spells, the element.
+	enum SkyMaterial : std::uint8_t
+	{
+		kSkyMatNone = 0, kSkyMatWood = 1, kSkyMatLeather = 2, kSkyMatIron = 3, kSkyMatSteel = 4, kSkyMatOrcish = 5,
+		kSkyMatDwarven = 6, kSkyMatElven = 7, kSkyMatGlass = 8, kSkyMatEbony = 9, kSkyMatDaedric = 10, kSkyMatDragon = 11,
+		kSkyMatSilver = 12, kSkyMatGold = 13, kSkyMatStalhrim = 14, kSkyMatChain = 15,
+		kSkyFire = 1, kSkyFrost = 2, kSkyShock = 3,
+	};
+
+	enum SkyItemFlags : std::uint32_t
+	{
+		kSkyItemRightHand = 1u << 0,  // equipped in the right hand
+		kSkyItemLeftHand = 1u << 1,   // equipped in the left hand
+		kSkyItemWorn = 1u << 2,       // apparel put on; ammo readied
+		kSkyItemVoice = 1u << 3,      // the shout or power in use
+		kSkyItemEnchanted = 1u << 4,
+		kSkyItemStolen = 1u << 5,
+		kSkyItemFavorite = 1u << 6,
+		kSkyItemHeavy = 1u << 7,
+		kSkyItemLight = 1u << 8,
+		kSkyItemFilled = 1u << 9,     // a soul gem with a soul
+		kSkyItemRead = 1u << 10,      // a book already read
+		kSkyItemQuest = 1u << 11,     // a quest item (can't be dropped)
+		kSkyItemTwoHanded = 1u << 12,
+	};
+
+	struct SkyItem
+	{
+		std::uint32_t formId;
+		std::uint8_t  kind;      // SkyItemKind
+		std::uint8_t  sub;
+		std::uint8_t  material;  // SkyMaterial
+		std::uint8_t  pad0;
+		std::int32_t  count;     // spells: 1; shouts: words known
+		std::uint32_t flags;     // SkyItemFlags
+		float         weight;
+		std::int32_t  value;
+		float         stat;      // damage, armor rating, magicka cost, or the main effect's magnitude
+		float         stat2;     // potions and spells: duration (s); shouts: recharge (s)
+		char          name[96];  // UTF-8, zero-terminated
+	};
+	static_assert(sizeof(SkyItem) == 128);
+
+	struct SkyInventory
+	{
+		std::uint32_t seq;
+		std::uint32_t count;
+		std::uint32_t generation;   // changes whenever anything in it does
+		std::int32_t  gold;
+		float         carried, carryMax;
+		std::uint32_t pad[10];
+		SkyItem       items[kMaxSkyItems];
+	};
+	static_assert(sizeof(SkyInventory) == 0x40 + 128 * kMaxSkyItems);
+	static_assert(sizeof(SkyInventory) <= kSkyInventoryBytes);
 }

@@ -1367,6 +1367,7 @@ namespace skycraft
 			SkyrimShots::PerFrame(a_player, (puppet || skyrimDrives) && haveMc && st.mcInWorld, a_delta);
 			MinecraftEnemies::PerFrame(a_player, a_delta, st.parked, st.mcWorld, mc.x, mc.y, mc.z);  // SkyCraft+
 			MapMarkers::PerFrame(a_player, a_delta);  // SkyCraft+
+			SkyInventory::PerFrame(a_player, haveMc && (mc.flags & proto::kMcWantsSkyInventory) != 0, a_delta);  // SkyCraft+
 			if (haveMc && st.mcInWorld) {
 				MinecraftEnemies::StopShotsAtBlocks(a_player);  // SkyCraft+
 			}

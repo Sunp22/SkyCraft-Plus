@@ -259,6 +259,15 @@ namespace skycraft
 		void OnGameLoaded();
 	}
 
+	// SkyCraft+ : Skyrim's inventory in Minecraft's (SkyInventory.cpp).
+	namespace SkyInventory
+	{
+		// Main thread, every frame: keeps proto::SkyInventory current while Minecraft wants it.
+		void PerFrame(RE::PlayerCharacter* a_player, bool a_wanted, float a_delta);
+		// Main thread: a click in one of Minecraft's Skyrim item screens (kEvSkyItem).
+		void Apply(RE::PlayerCharacter* a_player, const proto::McEvent& a_event);
+	}
+
 	// SkyCraft+ : Skyrim enemies in Minecraft's own worlds (the Nether, the End's outer islands).
 	namespace MinecraftEnemies
 	{

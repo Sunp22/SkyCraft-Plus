@@ -36,6 +36,8 @@ namespace skycraft
 		void WriteActors(const proto::ActorRecord* a_records, std::uint32_t a_count);
 		// SkyCraft+ : the Skyrim player's projectiles this frame (main thread).
 		void WriteSkyrimShots(const proto::SkyrimShot* a_shots, std::uint32_t a_count);
+		// SkyCraft+ : Skyrim's inventory in Minecraft's.
+		void WriteSkyInventory(const proto::SkyItem* a_items, std::uint32_t a_count, std::uint32_t a_generation, std::int32_t a_gold, float a_carried, float a_carryMax);
 		// Event ring (consumer, main thread). Returns false when empty.
 		bool PopEvent(proto::McEvent& a_out);
 		// World entities + block outline (seqlock read, render thread).
