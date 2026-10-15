@@ -43,7 +43,8 @@ public final class SkyInventoryPanels {
 	}
 
 	private static final int COLUMNS = 5, ROWS = 5, TAB = 18;
-	static final int WIDTH = 7 + COLUMNS * 18 + 7, HEIGHT = 166;
+	static final int WIDTH = 7 + COLUMNS * 18 + 11, HEIGHT = 166;  // (room on the right for the scroll bar)
+	private static final int SCROLL_X = 7 + COLUMNS * 18 + 2, SORT_WIDTH = 22;
 	private static final int TABS_TOP = 6, TITLE_TOP = 45, GRID_TOP = 56, FOOTER_TOP = GRID_TOP + ROWS * 18 + 3;
 	private static final int BUTTON_HEIGHT = 18, GAP = 3;
 
@@ -89,6 +90,45 @@ public final class SkyInventoryPanels {
 		}
 	}
 
+	/** How a panel's things are ordered (names breaking ties). */
+	enum Sort {
+		NAME("A-Z", "name", "name"),
+		POWER("Pwr", "damage or armor, highest first", "magicka cost, highest first"),
+		VALUE("Val", "value, highest first", null),
+		WEIGHT("Wt", "weight, heaviest first", null),
+		COUNT("#", "how many, most first", null);
+
+		final String label, items;
+		final @Nullable String magic;  // null: not for the magic panel
+
+		Sort(String label, String items, @Nullable String magic) {
+			this.label = label;
+			this.items = items;
+			this.magic = magic;
+		}
+
+		Comparator<SkyLink.SkyItem> order() {
+			Comparator<SkyLink.SkyItem> byName = Comparator.comparing((SkyLink.SkyItem i) -> i.name().toLowerCase());
+			return switch (this) {
+				case NAME -> byName;
+				case POWER -> Comparator.comparingDouble((SkyLink.SkyItem i) -> -i.stat()).thenComparing(byName);
+				case VALUE -> Comparator.comparingInt((SkyLink.SkyItem i) -> -i.value()).thenComparing(byName);
+				case WEIGHT -> Comparator.comparingDouble((SkyLink.SkyItem i) -> -i.weight()).thenComparing(byName);
+				case COUNT -> Comparator.comparingInt((SkyLink.SkyItem i) -> -i.count()).thenComparing(byName);
+			};
+		}
+
+		Sort next(boolean items) {
+			Sort next = this;
+			do {
+				next = values()[(next.ordinal() + 1) % values().length];
+			} while (!items && next.magic == null);
+			return next;
+		}
+	}
+
+	private static Sort itemsSort = Sort.NAME, magicSort = Sort.NAME;
+
 	// The tab picked last on each side, the next time the inventory opens.
 	private static Category lastItems = Category.ALL_ITEMS, lastMagic = Category.ALL_MAGIC;
 
@@ -109,6 +149,50 @@ public final class SkyInventoryPanels {
 				}
 			}
 			this.category = items ? lastItems : lastMagic;
+		}
+
+		Sort sort() {
+			return this.items ? itemsSort : magicSort;
+		}
+
+		void nextSort() {
+			if (this.items) {
+				itemsSort = itemsSort.next(true);
+			} else {
+				magicSort = magicSort.next(false);
+			}
+			this.generation = Integer.MIN_VALUE;
+			this.refresh();
+		}
+
+		boolean onSort(double mx, double my) {
+			int sx = this.x + WIDTH - 7 - SORT_WIDTH, sy = this.y + TITLE_TOP - 2;
+			return this.visible && mx >= sx && mx < sx + SORT_WIDTH && my >= sy && my < sy + 12;
+		}
+
+		/** The scroll bar beside the grid: a click there scrolls to that point. */
+		boolean onScrollBar(double mx, double my) {
+			return mx >= this.x + SCROLL_X && mx < this.x + SCROLL_X + 5 && my >= this.y + GRID_TOP && my < this.y + GRID_TOP + ROWS * 18;
+		}
+
+		void scrollTo(double my) {
+			double at = (my - this.y - GRID_TOP) / (ROWS * 18.0);
+			this.scroll = Math.clamp((int) Math.round(at * this.maxScroll()), 0, this.maxScroll());
+		}
+
+		/** Where a controller's cursor can jump to: the tabs, the sort button and the grid's things. */
+		void jumpTargets(List<int[]> out) {
+			if (!this.visible) {
+				return;
+			}
+			for (int i = 0; i < this.tabs.size(); i++) {
+				out.add(new int[] { this.x + 7 + (i % COLUMNS) * TAB + 9, this.y + TABS_TOP + (i / COLUMNS) * TAB + 9 });
+			}
+			out.add(new int[] { this.x + WIDTH - 7 - SORT_WIDTH / 2, this.y + TITLE_TOP + 4 });
+			int filled = Math.max(1, Math.min(COLUMNS * ROWS, this.shown.size() - this.scroll * COLUMNS));
+			for (int i = 0; i < filled; i++) {
+				out.add(new int[] { this.x + 8 + (i % COLUMNS) * 18 + 8, this.y + GRID_TOP + 1 + (i / COLUMNS) * 18 + 8 });
+			}
 		}
 
 		void pick(Category category) {
@@ -134,7 +218,7 @@ public final class SkyInventoryPanels {
 					this.shown.add(item);
 				}
 			}
-			this.shown.sort(Comparator.comparing((SkyLink.SkyItem i) -> i.name().toLowerCase()));
+			this.shown.sort(this.sort().order());
 			this.scroll = Math.clamp(this.scroll, 0, this.maxScroll());
 		}
 
@@ -203,6 +287,39 @@ public final class SkyInventoryPanels {
 		return screen instanceof InventoryScreen;
 	}
 
+	private static final java.util.Map<Screen, State> STATES = new java.util.WeakHashMap<>();
+
+	/** SkyCraft+ : controller inventory snapping. The panels' places a controller's cursor jumps to (GUI pixels). */
+	public static List<int[]> jumpTargets(@Nullable Screen screen) {
+		List<int[]> out = new ArrayList<>();
+		State state = screen == null ? null : STATES.get(screen);
+		if (state != null) {
+			for (Panel panel : state.panels()) {
+				panel.jumpTargets(out);
+			}
+		}
+		return out;
+	}
+
+	/** A shortcut for this in the first free hotbar slot (else inventory slot), unless there's one already. */
+	private static void quickShortcut(Minecraft minecraft, SkyLink.SkyItem item) {
+		var items = minecraft.player.getInventory();
+		int free = -1;
+		for (int i = 0; i < 36; i++) {
+			ItemStack there = items.getItem(i);
+			SkyShortcuts.Ref ref = SkyShortcuts.ref(there);
+			if (ref != null && item.is(ref.plugin(), ref.localId())) {
+				return;
+			}
+			if (free < 0 && there.isEmpty()) {
+				free = i;
+			}
+		}
+		if (free >= 0) {
+			SkyShortcutsClient.make(item, free);
+		}
+	}
+
 	public static void register() {
 		ScreenEvents.AFTER_INIT.register((minecraft, screen, width, height) -> {
 			if (!(screen instanceof InventoryScreen inventory) || minecraft.player == null || !SkyLink.active()) {
@@ -210,6 +327,7 @@ public final class SkyInventoryPanels {
 			}
 			var accessor = (ContainerScreenAccessor) inventory;
 			State state = new State();
+			STATES.put(screen, state);
 			int center = (width - 176) / 2;
 			List<Button> buttons = new ArrayList<>();
 			int top = accessor.skycraft$topPos();
@@ -269,10 +387,26 @@ public final class SkyInventoryPanels {
 				if (!inventory.getMenu().getCarried().isEmpty()) {
 					return false;
 				}
+				if (panel.onSort(event.x(), event.y())) {
+					panel.nextSort();
+					return false;
+				}
+				if (panel.onScrollBar(event.x(), event.y())) {
+					panel.scrollTo(event.y());
+					return false;
+				}
 				Category tab = panel.tabAt(event.x(), event.y());
 				if (tab != null) {
 					panel.pick(tab);
 					panel.refresh();
+					return false;
+				}
+				// Shift-click (a controller's Y): a shortcut in the first free slot, no dragging needed.
+				if (event.hasShiftDown()) {
+					SkyLink.SkyItem item = panel.itemAt(event.x(), event.y());
+					if (item != null) {
+						quickShortcut(minecraft, item);
+					}
 					return false;
 				}
 				state.pressed = panel.itemAt(event.x(), event.y());
@@ -370,9 +504,28 @@ public final class SkyInventoryPanels {
 				}
 			}
 			graphics.text(font, panel.category.label, x + 7, y + TITLE_TOP, 0xFF404040, false);
+			// The sort button: how the grid is ordered; a click changes it.
+			int sortX = x + WIDTH - 7 - SORT_WIDTH, sortY = y + TITLE_TOP - 2;
+			boolean onSort = panel.onSort(mouseX, mouseY);
+			graphics.fill(sortX, sortY, sortX + SORT_WIDTH, sortY + 12, 0xFF373737);
+			graphics.fill(sortX + 1, sortY + 1, sortX + SORT_WIDTH, sortY + 12, 0xFFFFFFFF);
+			graphics.fill(sortX + 1, sortY + 1, sortX + SORT_WIDTH - 1, sortY + 11, onSort ? 0xFFB0B0D8 : 0xFF9C9C9C);
+			graphics.centeredText(font, Component.literal(panel.sort().label), sortX + SORT_WIDTH / 2, sortY + 2, 0xFFFFFFFF);
+			if (onSort) {
+				Sort sort = panel.sort();
+				tooltip = List.of(Component.literal("Sorted by " + (panel.items ? sort.items : sort.magic)),
+					Component.literal("Click to change").withStyle(ChatFormatting.DARK_GRAY));
+			}
+			// The scroll bar.
+			int barX = x + SCROLL_X, barTop = y + GRID_TOP, barHeight = ROWS * 18;
+			graphics.fill(barX, barTop, barX + 4, barTop + barHeight, 0xFF8B8B8B);
 			if (panel.maxScroll() > 0) {
-				String page = (panel.scroll + 1) + "/" + (panel.maxScroll() + 1);
-				graphics.text(font, page, x + WIDTH - 7 - font.width(page), y + TITLE_TOP, 0xFF404040, false);
+				int rows = panel.maxScroll() + ROWS;
+				int thumb = Math.max(8, barHeight * ROWS / rows);
+				int thumbY = barTop + (barHeight - thumb) * panel.scroll / panel.maxScroll();
+				graphics.fill(barX, thumbY, barX + 4, thumbY + thumb, 0xFFFFFFFF);
+				graphics.fill(barX + 1, thumbY + 1, barX + 4, thumbY + thumb, 0xFF555555);
+				graphics.fill(barX + 1, thumbY + 1, barX + 3, thumbY + thumb - 1, 0xFFC6C6C6);
 			}
 			for (int i = 0; i < COLUMNS * ROWS; i++) {
 				int sx = x + 8 + (i % COLUMNS) * 18, sy = y + GRID_TOP + 1 + (i / COLUMNS) * 18;
@@ -531,6 +684,7 @@ public final class SkyInventoryPanels {
 			lines.add(Component.literal(hint).withStyle(ChatFormatting.DARK_GRAY));
 		}
 		lines.add(Component.literal("Drag it into your inventory for a shortcut").withStyle(ChatFormatting.DARK_GRAY));
+		lines.add(Component.literal("Shift-click (controller Y): shortcut in the first free slot").withStyle(ChatFormatting.DARK_GRAY));
 		return lines;
 	}
 
