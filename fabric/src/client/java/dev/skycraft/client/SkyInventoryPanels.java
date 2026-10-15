@@ -1,6 +1,7 @@
 // SkyCraft+ : Skyrim's inventory in Minecraft's
 package dev.skycraft.client;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import dev.skycraft.client.mixin.ContainerScreenAccessor;
 import dev.skycraft.link.Proto;
 import dev.skycraft.link.SkyLink;
@@ -182,7 +183,7 @@ public final class SkyInventoryPanels {
 		}
 
 		void dragFrom(double mx, double my) {
-			if (this.pressed != null && this.pressedButton == 0 && Math.abs(mx - this.pressX) + Math.abs(my - this.pressY) > 4) {
+			if (this.pressed != null && this.pressedButton == InputConstants.MOUSE_BUTTON_LEFT && Math.abs(mx - this.pressX) + Math.abs(my - this.pressY) > 4) {
 				this.dragging = true;
 			}
 		}
@@ -297,7 +298,7 @@ public final class SkyInventoryPanels {
 						}
 					}
 				} else if (state.at(event.x(), event.y()) != null && item == itemUnder(state, event.x(), event.y())) {
-					click(item, state.pressedButton == 1);
+					click(item, state.pressedButton == InputConstants.MOUSE_BUTTON_RIGHT);
 				}
 				return false;
 			});
