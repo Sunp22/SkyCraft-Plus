@@ -69,14 +69,22 @@ public final class SkyInventoryPanels {
 
 		final String label;
 		final boolean items;
-		final ItemStack icon;
+		final Item iconItem;
+		private @Nullable ItemStack icon;  // (made on first use: items aren't ready when this class loads)
 		final Predicate<SkyLink.SkyItem> filter;
 
 		Category(String label, boolean items, Item icon, Predicate<SkyLink.SkyItem> filter) {
 			this.label = label;
 			this.items = items;
-			this.icon = new ItemStack(icon);
+			this.iconItem = icon;
 			this.filter = filter;
+		}
+
+		ItemStack icon() {
+			if (this.icon == null) {
+				this.icon = new ItemStack(this.iconItem);
+			}
+			return this.icon;
 		}
 	}
 
@@ -323,7 +331,7 @@ public final class SkyInventoryPanels {
 				if (tab == panel.category) {
 					graphics.fill(tx, ty, tx + 16, ty + 16, 0xFFD8D8A0);
 				}
-				graphics.item(tab.icon, tx, ty);
+				graphics.item(tab.icon(), tx, ty);
 				if (mouseX >= tx - 1 && mouseX < tx + 17 && mouseY >= ty - 1 && mouseY < ty + 17) {
 					graphics.fill(tx, ty, tx + 16, ty + 16, 0x80FFFFFF);
 					tooltip = List.of(Component.literal(tab.label));
