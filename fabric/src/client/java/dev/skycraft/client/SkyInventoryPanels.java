@@ -243,11 +243,19 @@ public final class SkyInventoryPanels {
 					panel.refresh();
 				}
 			});
-			ScreenEvents.afterExtract(screen).register((s, graphics, mouseX, mouseY, delta) -> {
+			// The panels with the inventory's background, so tooltips (Minecraft's and theirs) go over them.
+			ScreenEvents.afterBackground(screen).register((s, graphics, mouseX, mouseY, delta) -> {
 				// A held left button that moved away is a drag. (Minecraft's own drag events need raw mouse
 				// motion, and here the cursor is placed where Skyrim's is.)
 				state.dragFrom(mouseX, mouseY);
 				extract(minecraft, state, graphics, mouseX, mouseY);
+			});
+			// What's dragged, over everything.
+			ScreenEvents.afterExtract(screen).register((s, graphics, mouseX, mouseY, delta) -> {
+				if (state.dragging && state.pressed != null) {
+					graphics.nextStratum();
+					picture(graphics, state.pressed, mouseX - 8, mouseY - 8);
+				}
 			});
 			ScreenMouseEvents.allowMouseClick(screen).register((s, event) -> {
 				Panel panel = state.at(event.x(), event.y());
@@ -353,7 +361,9 @@ public final class SkyInventoryPanels {
 				if (tab == panel.category) {
 					graphics.fill(tx, ty, tx + 16, ty + 16, 0xFFD8D8A0);
 				}
-				graphics.item(tab.icon(), tx, ty);
+				if (!SkyIconTextures.draw(graphics, Proto.SKY_ICON_CATEGORY + tab.ordinal(), tx, ty)) {
+					graphics.item(tab.icon(), tx, ty);
+				}
 				if (mouseX >= tx - 1 && mouseX < tx + 17 && mouseY >= ty - 1 && mouseY < ty + 17) {
 					graphics.fill(tx, ty, tx + 16, ty + 16, 0x80FFFFFF);
 					tooltip = List.of(Component.literal(tab.label));
@@ -375,8 +385,7 @@ public final class SkyInventoryPanels {
 				if (equipped(item)) {
 					graphics.fill(sx, sy, sx + 16, sy + 16, 0xFF70B070);
 				}
-				ItemStack stack = SkyIcons.stack(item);
-				graphics.item(stack, sx, sy);
+				ItemStack stack = picture(graphics, item, sx, sy);
 				graphics.itemDecorations(font, stack, sx, sy, item.count() > 1 && item.kind() < Proto.SKY_SPELL ? String.valueOf(item.count()) : null);
 				String mark = mark(item);
 				if (mark != null) {
@@ -404,11 +413,18 @@ public final class SkyInventoryPanels {
 				graphics.text(font, "L/R click: hand", x + 7, y + FOOTER_TOP, 0xFF606060, false);
 			}
 		}
-		if (state.dragging && state.pressed != null) {
-			graphics.item(SkyIcons.stack(state.pressed), mouseX - 8, mouseY - 8);
-		} else if (tooltip != null) {
+		if (tooltip != null && !state.dragging) {
 			graphics.setComponentTooltipForNextFrame(font, tooltip, mouseX, mouseY);
 		}
+	}
+
+	/** Skyrim's picture of a thing, or until Skyrim has drawn it its Minecraft stand-in; returns the stand-in (for the count). */
+	static ItemStack picture(GuiGraphicsExtractor graphics, SkyLink.SkyItem item, int x, int y) {
+		ItemStack stack = SkyIcons.stack(item);
+		if (!SkyIconTextures.draw(graphics, item.formId(), x, y)) {
+			graphics.item(stack, x, y);
+		}
+		return stack;
 	}
 
 	/** A Minecraft-style raised panel. */
