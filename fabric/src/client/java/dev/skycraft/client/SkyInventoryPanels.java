@@ -181,6 +181,12 @@ public final class SkyInventoryPanels {
 			return new Panel[] { this.magic, this.items };
 		}
 
+		void dragFrom(double mx, double my) {
+			if (this.pressed != null && this.pressedButton == 0 && Math.abs(mx - this.pressX) + Math.abs(my - this.pressY) > 4) {
+				this.dragging = true;
+			}
+		}
+
 		@Nullable Panel at(double mx, double my) {
 			for (Panel panel : this.panels()) {
 				if (panel.contains(mx, my)) {
@@ -236,7 +242,12 @@ public final class SkyInventoryPanels {
 					panel.refresh();
 				}
 			});
-			ScreenEvents.afterExtract(screen).register((s, graphics, mouseX, mouseY, delta) -> extract(minecraft, state, graphics, mouseX, mouseY));
+			ScreenEvents.afterExtract(screen).register((s, graphics, mouseX, mouseY, delta) -> {
+				// A held left button that moved away is a drag. (Minecraft's own drag events need raw mouse
+				// motion, and here the cursor is placed where Skyrim's is.)
+				state.dragFrom(mouseX, mouseY);
+				extract(minecraft, state, graphics, mouseX, mouseY);
+			});
 			ScreenMouseEvents.allowMouseClick(screen).register((s, event) -> {
 				Panel panel = state.at(event.x(), event.y());
 				if (panel == null) {
@@ -266,9 +277,7 @@ public final class SkyInventoryPanels {
 				if (state.pressed == null) {
 					return true;
 				}
-				if (state.pressedButton == 0 && Math.abs(event.x() - state.pressX) + Math.abs(event.y() - state.pressY) > 4) {
-					state.dragging = true;
-				}
+				state.dragFrom(event.x(), event.y());
 				return false;
 			});
 			ScreenMouseEvents.allowMouseRelease(screen).register((s, event) -> {
@@ -277,9 +286,10 @@ public final class SkyInventoryPanels {
 					return state.at(event.x(), event.y()) == null;
 				}
 				state.pressed = null;
+				state.dragFrom(event.x(), event.y());
 				if (state.dragging) {
 					state.dragging = false;
-					Slot slot = accessor.skycraft$hoveredSlot();
+					Slot slot = slotAt(inventory, accessor, event.x(), event.y());
 					if (slot != null && slot.container instanceof Inventory) {
 						int index = slot.getContainerSlot();
 						if ((index < 36 || index == 40) && (slot.getItem().isEmpty() || SkyShortcuts.isShortcut(slot.getItem()))) {
@@ -302,6 +312,17 @@ public final class SkyInventoryPanels {
 				return false;
 			});
 		});
+	}
+
+	/** The inventory's slot at (mx, my), where a dragged Skyrim thing goes. */
+	private static @Nullable Slot slotAt(InventoryScreen screen, ContainerScreenAccessor accessor, double mx, double my) {
+		for (Slot slot : screen.getMenu().slots) {
+			int sx = accessor.skycraft$leftPos() + slot.x, sy = accessor.skycraft$topPos() + slot.y;
+			if (slot.isActive() && mx >= sx - 1 && mx < sx + 17 && my >= sy - 1 && my < sy + 17) {
+				return slot;
+			}
+		}
+		return null;
 	}
 
 	private static SkyLink.@Nullable SkyItem itemUnder(State state, double mx, double my) {
