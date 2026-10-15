@@ -656,6 +656,10 @@ public final class SkyClient {
 			if (minecraft.gui.screen() instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<?>) {
 				flags |= Proto.MC_SLOT_SCREEN;
 			}
+			// SkyCraft+ : Skyrim's inventory in Minecraft's. Skyrim keeps its list current meanwhile.
+			if (SkyItemsScreen.wantsSkyInventory(minecraft.gui.screen())) {
+				flags |= Proto.MC_WANTS_SKY_INVENTORY;
+			}
 			mc.cursorSeq = InputBridge.jumpSeq;
 			mc.cursorX = InputBridge.jumpX;
 			mc.cursorY = InputBridge.jumpY;
