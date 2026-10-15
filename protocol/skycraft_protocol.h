@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 36;
+	inline constexpr std::uint32_t kVersion = 37;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -42,7 +42,9 @@ namespace skycraft::proto
 	inline constexpr std::uint64_t kRenderRingBytes = 64ull << 20;
 	inline constexpr std::uint64_t kOffSkyInventory = kOffRenderRing + kRenderRingBytes;  // SkyCraft+ : v35, Skyrim -> MC, see SkyInventory
 	inline constexpr std::uint64_t kSkyInventoryBytes = 1ull << 20;
-	inline constexpr std::uint64_t kMappingBytes = kOffSkyInventory + kSkyInventoryBytes;
+	inline constexpr std::uint64_t kOffSkyIcons = kOffSkyInventory + kSkyInventoryBytes;  // SkyCraft+ : v37, Skyrim -> MC, see SkyIcons
+	inline constexpr std::uint64_t kSkyIconsBytes = 17ull << 20;
+	inline constexpr std::uint64_t kMappingBytes = kOffSkyIcons + kSkyIconsBytes;
 
 	// ---- header @0x0 ------------------------------------------------------------------------
 	struct Header
@@ -880,4 +882,32 @@ namespace skycraft::proto
 	};
 	static_assert(sizeof(SkyInventory) == 0x40 + sizeof(SkyItem) * kMaxSkyItems);
 	static_assert(sizeof(SkyInventory) <= kSkyInventoryBytes);
+
+	// ---- SkyCraft+ : Skyrim's item pictures @kOffSkyIcons (Skyrim -> MC), v37 ----------------
+	// Skyrim draws each listed item's model (and one for each of Minecraft's Skyrim categories) to
+	// a small picture for Minecraft's Skyrim panels and shortcuts. Each slot is its own seqlock;
+	// SkyIcons::generation changes whenever any slot does.
+	inline constexpr std::uint32_t kSkyIconSize = 64;
+	inline constexpr std::uint32_t kMaxSkyIcons = 1024;
+	// SkyIconSlot::key for a category's picture: this plus its index in Minecraft's list (All items,
+	// Weapons, Apparel, Potions, Scrolls, Food, Ingredients, Books, Keys, Misc, All magic, Alteration,
+	// Conjuration, Destruction, Illusion, Restoration, Shouts, Powers).
+	inline constexpr std::uint32_t kSkyIconCategory = 0xFFFFFF00;
+
+	struct SkyIconSlot
+	{
+		std::uint32_t seq;
+		std::uint32_t key;     // SkyItem::formId, or kSkyIconCategory + n; 0 = empty
+		std::uint32_t pad[2];
+		std::uint8_t  rgba[kSkyIconSize * kSkyIconSize * 4];  // rows top to bottom, straight alpha
+	};
+	static_assert(sizeof(SkyIconSlot) == 16 + kSkyIconSize * kSkyIconSize * 4);
+
+	struct SkyIcons
+	{
+		std::uint32_t generation;
+		std::uint32_t pad[15];
+		SkyIconSlot   slots[kMaxSkyIcons];
+	};
+	static_assert(sizeof(SkyIcons) <= kSkyIconsBytes);
 }

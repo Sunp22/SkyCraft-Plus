@@ -8,7 +8,7 @@ public final class Proto {
 	}
 
 	public static final int MAGIC = 0x43594B53;
-	public static final int VERSION = 36;
+	public static final int VERSION = 37;
 	// A second client on the same PC (multiplayer testing) talks to its own stand-in Skyrim:
 	// -Dskycraft.link=Local\SkyCraft_guest (see tools/fake_guest.py).
 	public static final String MAPPING_NAME = System.getProperty("skycraft.link", "Local\\SkyCraft_v1");
@@ -45,7 +45,13 @@ public final class Proto {
 	// SkyCraft+ : v35, Skyrim's inventory (Skyrim -> MC, seqlock), see SkyInventory
 	public static final long OFF_SKY_INVENTORY = OFF_RENDER_RING + RENDER_RING_BYTES;
 	public static final long SKY_INVENTORY_BYTES = 1L << 20;
-	public static final long MAPPING_BYTES = OFF_SKY_INVENTORY + SKY_INVENTORY_BYTES;
+	// SkyCraft+ : v37, Skyrim's item pictures (Skyrim -> MC), see SkyIcons
+	public static final long OFF_SKY_ICONS = OFF_SKY_INVENTORY + SKY_INVENTORY_BYTES;
+	public static final long SKY_ICONS_BYTES = 17L << 20;
+	public static final long MAPPING_BYTES = OFF_SKY_ICONS + SKY_ICONS_BYTES;
+	public static final int SKY_ICON_SIZE = 64, MAX_SKY_ICONS = 1024, SKY_ICON_CATEGORY = 0xFFFFFF00;
+	public static final long ICONS_GENERATION = 0x0, ICONS_SLOTS = 0x40, ICON_SLOT_BYTES = 16 + SKY_ICON_SIZE * SKY_ICON_SIZE * 4;
+	public static final long ICON_SEQ = 0x0, ICON_KEY = 0x4, ICON_RGBA = 0x10;
 	public static final int MAX_SKY_ITEMS = 4096, SKY_ITEM_BYTES = 192, SKY_ITEM_NAME_BYTES = 96, SKY_ITEM_PLUGIN_BYTES = 60;
 	public static final long INV_SEQ = 0x0, INV_COUNT = 0x4, INV_GENERATION = 0x8, INV_GOLD = 0xC, INV_CARRIED = 0x10, INV_CARRY_MAX = 0x14, INV_ITEMS = 0x40;
 	// SkyItem: formId 0, kind 4, sub 5, material 6, count 8, flags 12, weight 16, value 20, stat 24, stat2 28, name 32, localId 128, plugin 132 (v36)

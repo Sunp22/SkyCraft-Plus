@@ -38,6 +38,8 @@ namespace skycraft
 		void WriteSkyrimShots(const proto::SkyrimShot* a_shots, std::uint32_t a_count);
 		// SkyCraft+ : Skyrim's inventory in Minecraft's.
 		void WriteSkyInventory(const proto::SkyItem* a_items, std::uint32_t a_count, std::uint32_t a_generation, std::int32_t a_gold, float a_carried, float a_carryMax);
+		// SkyCraft+ : Skyrim's item pictures. One picture (kSkyIconSize square, RGBA) into a slot.
+		void WriteSkyIcon(std::uint32_t a_slot, std::uint32_t a_key, const std::uint8_t* a_rgba);
 		// Event ring (consumer, main thread). Returns false when empty.
 		bool PopEvent(proto::McEvent& a_out);
 		// World entities + block outline (seqlock read, render thread).

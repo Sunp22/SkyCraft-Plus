@@ -268,6 +268,17 @@ namespace skycraft
 		void Apply(RE::PlayerCharacter* a_player, const proto::McEvent& a_event);
 	}
 
+	// SkyCraft+ : Skyrim's item pictures (IconRender.cpp).
+	namespace IconRender
+	{
+		// Main thread: the things listed for Minecraft (pictures for these, and the categories').
+		void Want(const proto::SkyItem* a_items, std::size_t a_count);
+		// Main thread, while Minecraft wants Skyrim's inventory: loads the models still to draw.
+		void PerFrame();
+		// Present: draws them and hands the pictures to Minecraft.
+		void Draw(ID3D11Device* a_device, ID3D11DeviceContext* a_context);
+	}
+
 	// SkyCraft+ : Skyrim enemies in Minecraft's own worlds (the Nether, the End's outer islands).
 	namespace MinecraftEnemies
 	{

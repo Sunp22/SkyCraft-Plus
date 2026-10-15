@@ -278,6 +278,25 @@ namespace skycraft
 		seq.store(s + 2, std::memory_order_release);
 	}
 
+	void Link::WriteSkyIcon(std::uint32_t a_slot, std::uint32_t a_key, const std::uint8_t* a_rgba)
+	{
+		if (!base_ || a_slot >= proto::kMaxSkyIcons) {
+			return;
+		}
+		auto*      icons = At<proto::SkyIcons>(proto::kOffSkyIcons);
+		auto&      slot = icons->slots[a_slot];
+		auto       seq = Atomic(slot.seq);
+		const auto s = seq.load(std::memory_order_relaxed);
+		seq.store(s + 1, std::memory_order_relaxed);
+		std::atomic_thread_fence(std::memory_order_release);
+		slot.key = a_key;
+		if (a_rgba) {
+			std::memcpy(slot.rgba, a_rgba, sizeof(slot.rgba));
+		}
+		seq.store(s + 2, std::memory_order_release);
+		Atomic(icons->generation).fetch_add(1, std::memory_order_release);
+	}
+
 	void Link::WriteActors(const proto::ActorRecord* a_records, std::uint32_t a_count)
 	{
 		if (!base_) {

@@ -63,6 +63,12 @@ public final class SkyShortcutsClient {
 		return item != null && item.count() > 1 && item.kind() < Proto.SKY_SPELL ? String.valueOf(item.count()) : null;
 	}
 
+	/** Draws Skyrim's picture of a shortcut's thing in place of its stand-in (GuiGraphicsShortcutMixin); false if there's none. */
+	public static boolean drawPicture(net.minecraft.client.gui.GuiGraphicsExtractor graphics, ItemStack stack, int x, int y) {
+		SkyLink.SkyItem item = resolve(stack);
+		return item != null && SkyIconTextures.draw(graphics, item.formId(), x, y);
+	}
+
 	/** A shortcut whose thing Skyrim no longer has is drawn greyed out. */
 	public static boolean gone(ItemStack stack) {
 		return SkyShortcuts.isShortcut(stack) && inventory != null && resolve(stack) == null;
@@ -208,6 +214,9 @@ public final class SkyShortcutsClient {
 			any = SkyShortcuts.isShortcut(items.getItem(i));
 		}
 		anyShortcuts = any || SkyInventoryPanels.wantsSkyInventory(minecraft.gui.screen());
+		if (anyShortcuts) {
+			SkyIconTextures.tick(minecraft);
+		}
 		int now = SkyLink.skyInventoryGeneration();
 		if (anyShortcuts && now != generation) {
 			SkyLink.SkyInventory read = SkyLink.readSkyInventory();

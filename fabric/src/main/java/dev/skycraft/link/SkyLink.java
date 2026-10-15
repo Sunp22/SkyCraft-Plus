@@ -558,6 +558,40 @@ public final class SkyLink {
 		return null;
 	}
 
+	/** SkyCraft+ : SkyIcons::generation, to see whether any picture changed (-1 if the link is down). */
+	public static int skyIconsGeneration() {
+		MemorySegment s = shm;
+		return s == null ? -1 : (int) INT.getAcquire(s, OFF_SKY_ICONS + ICONS_GENERATION);
+	}
+
+	/** SkyCraft+ : a picture slot's seq (even when settled; -1 if the link is down) and key, without its pixels. */
+	public static long skyIconHeader(int slot) {
+		MemorySegment s = shm;
+		if (s == null) {
+			return -1L;
+		}
+		long b = OFF_SKY_ICONS + ICONS_SLOTS + slot * ICON_SLOT_BYTES;
+		int seq = (int) INT.getAcquire(s, b + ICON_SEQ);
+		return (long) seq << 32 | Integer.toUnsignedLong(s.get(JAVA_INT, b + ICON_KEY));
+	}
+
+	/** SkyCraft+ : seqlock read of a picture slot's pixels (RGBA) into out; returns its key, or 0 if it changed meanwhile. */
+	public static int readSkyIcon(int slot, byte[] out) {
+		MemorySegment s = shm;
+		if (s == null) {
+			return 0;
+		}
+		long b = OFF_SKY_ICONS + ICONS_SLOTS + slot * ICON_SLOT_BYTES;
+		int seq1 = (int) INT.getAcquire(s, b + ICON_SEQ);
+		if ((seq1 & 1) != 0) {
+			return 0;
+		}
+		int key = s.get(JAVA_INT, b + ICON_KEY);
+		MemorySegment.copy(s, JAVA_BYTE, b + ICON_RGBA, out, 0, Math.min(out.length, SKY_ICON_SIZE * SKY_ICON_SIZE * 4));
+		VarHandle.loadLoadFence();
+		return (int) INT.getAcquire(s, b + ICON_SEQ) == seq1 ? key : 0;
+	}
+
 	public static boolean readActors(java.util.List<Actor> out) {
 		out.clear();
 		MemorySegment s = shm;

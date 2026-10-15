@@ -411,6 +411,7 @@ namespace skycraft::SkyInventory
 				lastHash = hash;
 				++generation;
 			}
+			IconRender::Want(items.data(), items.size());
 			Link::Get().WriteSkyInventory(items.data(), static_cast<std::uint32_t>(items.size()), generation, gold, carried, carryMax);
 		}
 
@@ -596,6 +597,7 @@ namespace skycraft::SkyInventory
 			dirty = true;  // fresh the moment Minecraft's inventory opens
 			return;
 		}
+		IconRender::PerFrame();
 		if (!dirty && timer > 0.0f) {
 			return;
 		}
