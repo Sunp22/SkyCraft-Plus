@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 37;
+	inline constexpr std::uint32_t kVersion = 38;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -383,6 +383,9 @@ namespace skycraft::proto
 		kSkyItemEquipRight = 6,  // equip in the right hand (never takes it off): a shortcut picked on the hotbar
 		kSkyItemEquipLeft = 7,   // the same with the left hand: a shortcut in the off-hand slot
 		kSkyItemDrop = 8,        // drop all of it in front of the player: a shortcut thrown out
+		// SkyCraft+ (v38): a shortcut taken out of the off-hand slot (or its hotbar slot).
+		kSkyItemUnequipRight = 9,  // out of the right hand if it's there (never puts it in)
+		kSkyItemUnequipLeft = 10,  // the same with the left hand (a shield: taken off)
 	};
 
 	// InputEvent::code for kInSkyrimHit.

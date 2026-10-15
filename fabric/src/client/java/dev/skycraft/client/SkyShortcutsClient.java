@@ -30,7 +30,14 @@ public final class SkyShortcutsClient {
 	private static SkyLink.@Nullable SkyInventory inventory;
 	private static int generation = Integer.MIN_VALUE;
 	private static boolean anyShortcuts;
-	private static String lastMain = "", lastOff = "";
+	/** What a hand's shortcut slot held last tick, and the Skyrim thing it put in that hand (if any). */
+	private static final class Hand {
+		String key = "";
+		int slot = -1, formId;
+		boolean holds;
+	}
+
+	private static final Hand MAIN = new Hand(), OFF = new Hand();
 
 	/** This player's Skyrim's list, read again when Skyrim changed it (at most once a tick). */
 	static SkyLink.@Nullable SkyInventory inventory() {
@@ -154,6 +161,7 @@ public final class SkyShortcutsClient {
 		return switch (item.kind()) {
 			case Proto.SKY_WEAPON, Proto.SKY_SPELL, Proto.SKY_SCROLL, Proto.SKY_SHOUT, Proto.SKY_POWER -> true;
 			case Proto.SKY_MISC -> item.sub() == 2;
+			case Proto.SKY_APPAREL -> item.sub() == Proto.A_SHIELD;
 			default -> false;
 		};
 	}
@@ -225,23 +233,37 @@ public final class SkyShortcutsClient {
 				generation = read.generation();
 			}
 		}
-		lastMain = equipPicked(player.getMainHandItem(), player.getInventory().getSelectedSlot(), lastMain, Proto.SKY_ACT_EQUIP_RIGHT);
-		lastOff = equipPicked(player.getOffhandItem(), 40, lastOff, Proto.SKY_ACT_EQUIP_LEFT);
+		follow(MAIN, player.getMainHandItem(), player.getInventory().getSelectedSlot(), false);
+		follow(OFF, player.getOffhandItem(), 40, true);
 	}
 
-	private static String equipPicked(ItemStack stack, int slot, String last, int action) {
+	/**
+	 * A shortcut newly in a hand's slot (picked on the hotbar, put in the off hand) equips its Skyrim
+	 * thing in that hand. One that put its thing there and then left the slot (taken out, swapped for
+	 * something else; not another hotbar slot picked) takes it out of the hand again.
+	 */
+	private static void follow(Hand hand, ItemStack stack, int slot, boolean offHand) {
 		SkyShortcuts.Ref ref = SkyShortcuts.ref(stack);
-		String key = ref == null ? "" : slot + ":" + ref.plugin() + ":" + ref.localId();
-		if (key.equals(last)) {
-			return last;
+		String key = ref == null ? "" : ref.plugin() + ":" + ref.localId();
+		if (key.equals(hand.key) && slot == hand.slot) {
+			return;
 		}
 		SkyLink.SkyItem item = ref == null ? null : resolve(stack);
 		if (ref != null && item == null && inventory == null) {
-			return last;  // Skyrim's list isn't here yet: tried again next tick
+			return;  // Skyrim's list isn't here yet: tried again next tick
 		}
-		if (equips(item)) {
-			SkyLink.pushEvent(Proto.EV_SKY_ITEM, item.formId(), 0.0F, 0.0F, 0.0F, 0.0F, action);
+		boolean equips = equips(item);
+		if (hand.holds && slot == hand.slot && !equips) {
+			SkyLink.pushEvent(Proto.EV_SKY_ITEM, hand.formId, 0.0F, 0.0F, 0.0F, 0.0F, offHand ? Proto.SKY_ACT_UNEQUIP_LEFT : Proto.SKY_ACT_UNEQUIP_RIGHT);
 		}
-		return key;
+		hand.key = key;
+		hand.slot = slot;
+		hand.holds = false;
+		hand.formId = 0;
+		if (equips) {
+			SkyLink.pushEvent(Proto.EV_SKY_ITEM, item.formId(), 0.0F, 0.0F, 0.0F, 0.0F, offHand ? Proto.SKY_ACT_EQUIP_LEFT : Proto.SKY_ACT_EQUIP_RIGHT);
+			hand.holds = item.kind() != Proto.SKY_SHOUT && item.kind() != Proto.SKY_POWER;
+			hand.formId = item.formId();
+		}
 	}
 }

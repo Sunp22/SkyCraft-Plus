@@ -476,6 +476,36 @@ namespace skycraft::SkyInventory
 		const auto* handSlot = Slot(left ? RE::DEFAULT_OBJECTS::kLeftHandEquip : RE::DEFAULT_OBJECTS::kRightHandEquip);
 		auto&      runtime = a_player->GetActorRuntimeData();
 
+		// A shortcut taken out of a hand's slot in Minecraft: out of that hand, if it's still there.
+		if (a_event.flags == proto::kSkyItemUnequipRight || a_event.flags == proto::kSkyItemUnequipLeft) {
+			const bool fromLeft = a_event.flags == proto::kSkyItemUnequipLeft;
+			if (auto* spell = form->As<RE::SpellItem>(); spell && !form->Is(RE::FormType::Scroll)) {
+				if (runtime.selectedSpells[fromLeft ? RE::Actor::SlotTypes::kLeftHand : RE::Actor::SlotTypes::kRightHand] == spell) {
+					a_player->DeselectSpell(spell);
+					logger::info("Skyrim items: {} taken out of the {} hand (its shortcut left the slot)", spell->GetName(), fromLeft ? "left" : "right");
+				}
+				return;
+			}
+			auto* object = form->As<RE::TESBoundObject>();
+			if (!object) {
+				return;
+			}
+			if (object->Is(RE::FormType::Armor)) {
+				if (auto* worn = ExtraFor(a_player, object, true, false)) {
+					equip->UnequipObject(a_player, object, worn, 1, nullptr);
+					logger::info("Skyrim items: {} taken off (its shortcut left the slot)", object->GetName());
+				}
+				return;
+			}
+			if (a_player->GetEquippedObject(fromLeft) == object) {
+				const bool bothHands = a_player->GetEquippedObject(!fromLeft) == object;
+				equip->UnequipObject(a_player, object, ExtraFor(a_player, object, true, fromLeft), 1,
+					bothHands ? nullptr : Slot(fromLeft ? RE::DEFAULT_OBJECTS::kLeftHandEquip : RE::DEFAULT_OBJECTS::kRightHandEquip));
+				logger::info("Skyrim items: {} unequipped (its shortcut left the slot)", object->GetName());
+			}
+			return;
+		}
+
 		if (auto* shout = form->As<RE::TESShout>()) {
 			equip->EquipShout(a_player, shout);
 			logger::info("Skyrim items: {} is the voice's", shout->GetName());
