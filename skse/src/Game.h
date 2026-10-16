@@ -68,6 +68,7 @@ namespace skycraft
 		float                      skyrimVsMinecraft{ 1.5f };
 		// SkyCraft+ : Minecraft's attacks break Skyrim's breakable objects, spider webs and the like ([Combat] bMinecraftHitsObjects).
 		bool                       minecraftHitsObjects{ true };
+		bool                       enderDragonSoul{ true };  // SkyCraft+ : bEnderDragonSoul
 		// SkyCraft+ : the underground. Skyrim's land is more than two blocks above the player (a mine).
 		std::atomic<bool>          playerUnderLand{ false };
 		// SkyCraft+ : performance. Deep down, Skyrim's world isn't drawn ([Worlds] bHideWorldDeep).

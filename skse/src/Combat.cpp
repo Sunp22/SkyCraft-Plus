@@ -1026,9 +1026,33 @@ namespace skycraft
 			swingPending = true;
 		}
 
+		// SkyCraft+ : the Ender Dragon gives a dragon soul. The soul is added at once (so a save made
+		// in the End keeps it); the message waits until the player is back in Skyrim's world, as
+		// Skyrim's HUD isn't shown while it waits in the empty cell.
+		int soulMessages = 0;
+
+		void GiveDragonSoul(RE::PlayerCharacter* a_player)
+		{
+			if (!State().enderDragonSoul) {
+				return;
+			}
+			a_player->AsActorValueOwner()->ModActorValue(RE::ACTOR_VALUE_MODIFIER::kPermanent, RE::ActorValue::kDragonSouls, 1.0f);
+			++soulMessages;
+			logger::info("the Ender Dragon died: one dragon soul (now {:.0f})", a_player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kDragonSouls));
+		}
+
+		void ShowSoulMessages()
+		{
+			if (soulMessages > 0 && !State().parked && !RE::UI::GetSingleton()->GameIsPaused()) {
+				soulMessages = 0;
+				RE::SendHUDMessage::ShowHUDMessage("Dragon soul absorbed");
+			}
+		}
+
 		void PerFrame(RE::PlayerCharacter* a_player, bool a_puppeting, float a_delta)
 		{
 			auto& link = Link::Get();
+			ShowSoulMessages();  // SkyCraft+
 			// SkyCraft+ : Minecraft hits on Skyrim objects.
 			if (swingPending.exchange(false) && a_puppeting && !State().parked && State().minecraftHitsObjects) {
 				HitSkyrimObject(a_player);
@@ -1053,6 +1077,8 @@ namespace skycraft
 						logger::info("Skyrim mode: a Minecraft mob took {:.0f}% of the player's health", ev.a * 100.0f);
 					} else if (ev.type == proto::kEvSkyItem) {
 						SkyInventory::Apply(a_player, ev);  // SkyCraft+
+					} else if (ev.type == proto::kEvDragonSoul) {
+						GiveDragonSoul(a_player);  // SkyCraft+
 					}
 				}
 				pendingExplosions.clear();
@@ -1087,6 +1113,9 @@ namespace skycraft
 					break;
 				case proto::kEvSkyItem:
 					SkyInventory::Apply(a_player, ev);  // SkyCraft+
+					break;
+				case proto::kEvDragonSoul:
+					GiveDragonSoul(a_player);  // SkyCraft+
 					break;
 				case proto::kEvSkillUse:
 					if (ev.formId >= static_cast<std::uint32_t>(RE::ActorValue::kOneHanded) && ev.formId <= static_cast<std::uint32_t>(RE::ActorValue::kEnchanting)) {

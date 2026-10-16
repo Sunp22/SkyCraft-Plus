@@ -40,7 +40,8 @@
     "WorldOptionsMixin",
     "SmithingMixin",
     "SlotShortcutMixin",
-    "LivingEntityShortcutMixin"
+    "LivingEntityShortcutMixin",
+    "EnderDragonFightMixin"
   ],
   "injectors": { "defaultRequire": 1 }
 }

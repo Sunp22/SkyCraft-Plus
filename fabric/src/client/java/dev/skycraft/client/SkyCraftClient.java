@@ -58,6 +58,12 @@ public final class SkyCraftClient implements ClientModInitializer {
 				dev.skycraft.link.SkyLink.pushEvent(dev.skycraft.link.Proto.EV_PLAYER_DIED, payload.attackerFormId(), 0, 0, 0, 0, 0);
 			}
 		});
+		// SkyCraft+ : a guest in a friend's End: the Ender Dragon died, a dragon soul for this player's Skyrim.
+		net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(dev.skycraft.net.SkyNet.DragonSoul.TYPE, (payload, context) -> {
+			if (dev.skycraft.link.SkyLink.active()) {
+				dev.skycraft.link.SkyLink.pushEvent(dev.skycraft.link.Proto.EV_DRAGON_SOUL, 0, 0, 0, 0, 0, 0);
+			}
+		});
 		// SkyCraft+ : held items in multiplayer. What other players' Skyrim hands hold.
 		net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(dev.skycraft.net.SkyNet.HandsOf.TYPE,
 			(payload, context) -> SkyHands.otherPlayerHands(payload.entityId(), payload.hands()));

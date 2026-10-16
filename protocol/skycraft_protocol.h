@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 38;
+	inline constexpr std::uint32_t kVersion = 39;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -369,6 +369,8 @@ namespace skycraft::proto
 		                    // health it took; Skyrim takes that share of its own
 		kEvSkyItem = 7,     // SkyCraft+ (v35): a click in a Skyrim item screen: formId = SkyItem::formId,
 		                    // flags = SkyItemAction
+		kEvDragonSoul = 8,  // SkyCraft+ (v39): the Ender Dragon died while this player was in its fight: one
+		                    // Skyrim dragon soul
 	};
 
 	// SkyCraft+ : what a click on a Skyrim item does (McEvent::flags of kEvSkyItem).
