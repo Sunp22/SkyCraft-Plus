@@ -301,6 +301,12 @@ public final class SkyInventoryPanels {
 		return out;
 	}
 
+	/** How far Minecraft's status effects move right to clear the Skyrim items panel (EffectsInInventoryMixin); 0: not shown. */
+	public static int effectsShift(@Nullable Screen screen) {
+		State state = screen == null ? null : STATES.get(screen);
+		return state != null && state.items.visible ? GAP + WIDTH : 0;
+	}
+
 	/** A shortcut for this in the first free hotbar slot (else inventory slot), unless there's one already. */
 	private static void quickShortcut(Minecraft minecraft, SkyLink.SkyItem item) {
 		var items = minecraft.player.getInventory();

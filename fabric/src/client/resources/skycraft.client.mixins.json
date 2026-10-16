@@ -9,6 +9,7 @@
     "ClientLevelAccessor",
     "ContainerScreenAccessor",
     "ClientLevelDigMixin",
+    "EffectsInInventoryMixin",
     "EntityCollideMixin",
     "FirstPersonHandsMixin",
     "FramerateLimitTrackerMixin",
