@@ -8,7 +8,7 @@ public final class Proto {
 	}
 
 	public static final int MAGIC = 0x43594B53;
-	public static final int VERSION = 39;
+	public static final int VERSION = 40;
 	// A second client on the same PC (multiplayer testing) talks to its own stand-in Skyrim:
 	// -Dskycraft.link=Local\SkyCraft_guest (see tools/fake_guest.py).
 	public static final String MAPPING_NAME = System.getProperty("skycraft.link", "Local\\SkyCraft_v1");
@@ -203,6 +203,7 @@ public final class Proto {
 	public static final int SKY_PAUSED = 1 << 7;
 	public static final int SKY_PARKED = 1 << 8; // SkyCraft+ : v26
 	public static final int SKY_BRING_BACK = 1 << 9; // SkyCraft+ : v28
+	public static final int SKY_RIDING = 1 << 10; // SkyCraft+ : v40, on a Skyrim horse in Skyrim's third-person camera
 
 	// SkyState handKinds (SkyCraft+ : v29): what a Skyrim-held hand holds.
 	public static final int HAND_NONE = 0, HAND_SWORD = 1, HAND_DAGGER = 2, HAND_WAR_AXE = 3, HAND_MACE = 4, HAND_GREATSWORD = 5, HAND_BATTLEAXE = 6,

@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 39;
+	inline constexpr std::uint32_t kVersion = 40;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -85,6 +85,9 @@ namespace skycraft::proto
 		// while Minecraft's is in the Nether or the End (v28): the save wins. Minecraft takes the
 		// teleport anyway, out of its own world to Skyrim's player.
 		kSkyBringBack = 1u << 9,
+		// SkyCraft+ : riding a Skyrim horse in Skyrim's third-person camera (v40): Minecraft sends its
+		// player's body (kRenAvatar) in its riding pose, facing yaw; Skyrim draws it in the saddle.
+		kSkyRiding = 1u << 10,
 	};
 
 	// SkyState::placeFlags: where the player is and the weather, for Minecraft's spawning.

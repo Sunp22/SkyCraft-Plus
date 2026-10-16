@@ -253,6 +253,11 @@ public final class SkyLink {
 		public boolean bringBack() {
 			return (this.flags & SKY_BRING_BACK) != 0;
 		}
+
+		/** SkyCraft+ : on a Skyrim horse in Skyrim's third-person camera: Skyrim draws Minecraft's body in the saddle. */
+		public boolean riding() {
+			return (this.flags & SKY_RIDING) != 0;
+		}
 	}
 
 	/** Seqlock read of SkyState into {@code out}. Returns false if the link is down. */
