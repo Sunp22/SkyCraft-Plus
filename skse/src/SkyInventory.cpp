@@ -11,6 +11,8 @@ namespace skycraft::SkyInventory
 	namespace
 	{
 		std::vector<proto::SkyItem> items;
+		// SkyCraft+ : Skyrim items in Minecraft's containers whose pictures Minecraft asked for, and when.
+		std::unordered_map<RE::FormID, std::uint64_t> pictures;
 		float                       timer = 0.0f;
 		bool                        dirty = true;
 		std::uint64_t               lastHash = 0;
@@ -411,7 +413,22 @@ namespace skycraft::SkyInventory
 				lastHash = hash;
 				++generation;
 			}
-			IconRender::Want(items.data(), items.size());
+			// SkyCraft+ : and the pictures of Skyrim items in Minecraft's containers on screen (kStorePicture).
+			std::vector<proto::SkyItem> icons = items;
+			const auto                  now = GetTickCount64();
+			for (auto it = pictures.begin(); it != pictures.end();) {
+				auto* form = now - it->second < 60000 ? RE::TESForm::LookupByID(it->first) : nullptr;
+				if (!form) {
+					it = pictures.erase(it);
+					continue;
+				}
+				proto::SkyItem icon{};
+				icon.formId = it->first;
+				SetName(icon, form->GetName());
+				icons.push_back(icon);
+				++it;
+			}
+			IconRender::Want(icons.data(), icons.size());
 			Link::Get().WriteSkyInventory(items.data(), static_cast<std::uint32_t>(items.size()), generation, gold, carried, carryMax);
 		}
 
@@ -452,6 +469,232 @@ namespace skycraft::SkyInventory
 		void Notify(const char* a_text)
 		{
 			RE::SendHUDMessage::ShowHUDMessage(a_text);
+		}
+
+		// SkyCraft+ : Skyrim items in Minecraft's containers. Results Minecraft hasn't taken yet (its
+		// ring was full) wait here, in order.
+		std::deque<proto::SkyStoreResult> unsent;
+
+		proto::SkyStoreResult Refusal(std::uint32_t a_id, std::uint8_t a_status)
+		{
+			proto::SkyStoreResult result{};
+			result.id = a_id;
+			result.status = a_status;
+			return result;
+		}
+
+		// One kind of copy taken out: what Minecraft's stored item will say about it (as the list does).
+		proto::SkyStoreResult Taken(RE::PlayerCharacter* a_player, std::uint32_t a_id, RE::TESBoundObject* a_object, RE::InventoryEntryData* a_entry, std::int32_t a_count,
+			float a_health, float a_charge, std::int32_t a_soul)
+		{
+			proto::SkyStoreResult result = Refusal(a_id, proto::kStoreOk);
+			result.count = a_count;
+			result.health = a_health;
+			result.charge = a_charge;
+			result.soul = a_soul;
+			result.formId = a_object->GetFormID();
+			const auto   before = items.size();
+			std::int32_t gold = 0;
+			AddItem(a_player, a_object, a_count, nullptr, gold);  // (the base name: the list's may be a tempered copy's)
+			if (items.size() > before) {
+				const auto& item = items.back();
+				result.kind = item.kind;
+				result.sub = item.sub;
+				result.material = item.material;
+				result.flags = item.flags & ~(proto::kSkyItemRightHand | proto::kSkyItemLeftHand | proto::kSkyItemWorn | proto::kSkyItemVoice | proto::kSkyItemFavorite);
+				result.weight = item.weight;
+				result.value = item.value;
+				result.stat = item.stat;
+				result.stat2 = item.stat2;
+				std::memcpy(result.name, item.name, sizeof(result.name));
+				result.localId = item.localId;
+				std::memcpy(result.plugin, item.plugin, sizeof(result.plugin));
+				items.pop_back();
+			}
+			if (auto* enchantable = a_object->As<RE::TESEnchantableForm>(); enchantable && enchantable->formEnchanting) {
+				result.flags |= proto::kSkyItemEnchanted;
+			}
+			if (a_entry && a_entry->IsQuestObject()) {
+				result.flags |= proto::kSkyItemQuest;
+			}
+			return result;
+		}
+
+		// Out of Skyrim's inventory into a Minecraft container: plain copies first, then tempered,
+		// charged or filled ones (each kind its own stored item). Quest items, things made in this
+		// game and things enchanted by the player stay (they only exist in this save).
+		void Take(RE::PlayerCharacter* a_player, const proto::SkyStoreRequest& a_request)
+		{
+			auto* object = RE::TESForm::LookupByID<RE::TESBoundObject>(a_request.formId);
+			if (!object || a_request.count <= 0) {
+				unsent.push_back(Refusal(a_request.id, proto::kStoreNone));
+				return;
+			}
+			if ((object->GetFormID() >> 24) == 0xFF) {
+				Notify("Things made in this game (your own potions and the like) stay in Skyrim.");
+				unsent.push_back(Refusal(a_request.id, proto::kStoreMadeHere));
+				return;
+			}
+			auto       inventory = a_player->GetInventory([object](RE::TESBoundObject& a_candidate) { return &a_candidate == object; });
+			const auto it = inventory.find(object);
+			if (it == inventory.end() || it->second.first <= 0) {
+				unsent.push_back(Refusal(a_request.id, proto::kStoreNone));
+				return;
+			}
+			auto* entry = it->second.second.get();
+			if (entry && entry->IsQuestObject()) {
+				Notify("Quest items stay in Skyrim.");
+				unsent.push_back(Refusal(a_request.id, proto::kStoreQuest));
+				return;
+			}
+			auto* equip = RE::ActorEquipManager::GetSingleton();
+			if (equip && object->Is(RE::FormType::Weapon, RE::FormType::Armor, RE::FormType::Ammo, RE::FormType::Light)) {
+				for (bool left : { false, true }) {
+					if (auto* worn = ExtraFor(a_player, object, true, left)) {
+						equip->UnequipObject(a_player, object, worn, 1, nullptr);
+					}
+				}
+			}
+			struct Copy
+			{
+				RE::ExtraDataList* list;
+				std::int32_t       count;
+				float              health, charge;
+				std::int32_t       soul;
+			};
+			std::vector<Copy> copies;
+			std::int32_t      listed = 0;
+			bool              enchantedByYou = false;
+			if (entry && entry->extraLists) {
+				for (auto* list : *entry->extraLists) {
+					if (!list) {
+						continue;
+					}
+					const std::int32_t count = std::max(1, list->GetCount());
+					listed += count;
+					if (list->GetByType<RE::ExtraEnchantment>()) {
+						enchantedByYou = true;
+						continue;
+					}
+					const auto* health = list->GetByType<RE::ExtraHealth>();
+					const auto* charge = list->GetByType<RE::ExtraCharge>();
+					const auto* soul = list->GetByType<RE::ExtraSoul>();
+					copies.push_back({ list, count, health ? health->health : 1.0f, charge ? charge->charge : -1.0f, soul ? static_cast<std::int32_t>(soul->soul.get()) : 0 });
+				}
+			}
+			// What goes, worked out before anything is removed (removing changes the lists).
+			std::int32_t                                                     left = std::min(a_request.count, it->second.first);
+			std::vector<std::pair<RE::ExtraDataList*, proto::SkyStoreResult>> plan;
+			if (const std::int32_t plain = std::min(left, it->second.first - listed); plain > 0) {
+				plan.emplace_back(nullptr, Taken(a_player, a_request.id, object, entry, plain, 1.0f, -1.0f, 0));
+				left -= plain;
+			}
+			for (const auto& copy : copies) {
+				if (left <= 0) {
+					break;
+				}
+				const std::int32_t n = std::min(left, copy.count);
+				plan.emplace_back(copy.list, Taken(a_player, a_request.id, object, entry, n, copy.health, copy.charge, copy.soul));
+				left -= n;
+			}
+			if (plan.empty()) {
+				if (enchantedByYou) {
+					Notify("Things you enchanted yourself stay in Skyrim.");
+				}
+				unsent.push_back(Refusal(a_request.id, enchantedByYou ? proto::kStoreMadeHere : proto::kStoreNone));
+				return;
+			}
+			for (auto& [list, result] : plan) {
+				a_player->RemoveItem(object, result.count, RE::ITEM_REMOVE_REASON::kRemove, list, nullptr);
+				logger::info("Skyrim items: {} x{} put in a Minecraft container (tempering {:.2f}, charge {:.0f}, soul {})", result.name, result.count, result.health, result.charge,
+					result.soul);
+				unsent.push_back(result);
+			}
+		}
+
+		// Out of a Minecraft container back into Skyrim's inventory, as it went in.
+		void Give(RE::PlayerCharacter* a_player, const proto::SkyStoreRequest& a_request)
+		{
+			const std::string_view plugin(a_request.plugin, strnlen(a_request.plugin, sizeof(a_request.plugin)));
+			auto*                  handler = RE::TESDataHandler::GetSingleton();
+			RE::TESForm*           form = plugin.empty() ? RE::TESForm::LookupByID(a_request.localId) : handler ? handler->LookupForm(a_request.localId, plugin) : nullptr;
+			auto*                  object = form ? form->As<RE::TESBoundObject>() : nullptr;
+			if (!object || a_request.count <= 0) {
+				Notify("A Skyrim item from a Minecraft container couldn't be found (is its mod still loaded?).");
+				logger::warn("Skyrim items: {:06X} in '{}' from a Minecraft container not found", a_request.localId, plugin);
+				unsent.push_back(Refusal(a_request.id, proto::kStoreMissing));
+				return;
+			}
+			const bool tempered = std::fabs(a_request.health - 1.0f) >= 0.0001f;
+			if (!tempered && a_request.charge < 0.0f && a_request.soul <= 0) {
+				a_player->AddObjectToContainer(object, nullptr, a_request.count, nullptr);
+			} else {
+				// Each copy as a thing in the world with that data, picked up (a new list can't be made
+				// here; picking up keeps a reference's data, as with tempered loot).
+				for (std::int32_t i = 0; i < a_request.count; ++i) {
+					auto ref = a_player->PlaceObjectAtMe(object, false);
+					if (!ref) {
+						a_player->AddObjectToContainer(object, nullptr, a_request.count - i, nullptr);
+						break;
+					}
+					auto* list = &ref->extraList;
+					if (tempered) {
+						list->Add(new RE::ExtraHealth(a_request.health));
+					}
+					if (a_request.charge >= 0.0f) {
+						auto* charge = RE::BSExtraData::Create<RE::ExtraCharge>();
+						charge->charge = a_request.charge;
+						list->Add(charge);
+					}
+					if (a_request.soul > 0) {
+						list->Add(new RE::ExtraSoul(static_cast<RE::SOUL_LEVEL>(a_request.soul)));
+					}
+					a_player->PickUpObject(ref.get(), 1, false, false);
+				}
+			}
+			logger::info("Skyrim items: {} x{} back from a Minecraft container", object->GetName(), a_request.count);
+			proto::SkyStoreResult result = Refusal(a_request.id, proto::kStoreOk);
+			result.count = a_request.count;
+			result.formId = object->GetFormID();
+			unsent.push_back(result);
+		}
+
+		// A picture for a stored item: drawn as if it were in the inventory, for a minute after each ask.
+		void Picture(const proto::SkyStoreRequest& a_request)
+		{
+			const std::string_view plugin(a_request.plugin, strnlen(a_request.plugin, sizeof(a_request.plugin)));
+			auto*                  handler = RE::TESDataHandler::GetSingleton();
+			RE::TESForm*           form = plugin.empty() ? nullptr : handler ? handler->LookupForm(a_request.localId, plugin) : nullptr;
+			if (!form || !form->As<RE::TESBoundObject>()) {
+				unsent.push_back(Refusal(a_request.id, proto::kStoreMissing));
+				return;
+			}
+			pictures[form->GetFormID()] = GetTickCount64();
+			proto::SkyStoreResult result = Refusal(a_request.id, proto::kStoreOk);
+			result.formId = form->GetFormID();
+			unsent.push_back(result);
+		}
+
+		void ProcessStore(RE::PlayerCharacter* a_player)
+		{
+			auto& link = Link::Get();
+			while (!unsent.empty() && link.PushStoreResult(unsent.front())) {
+				unsent.pop_front();
+			}
+			proto::SkyStoreRequest request;
+			for (int budget = 8; budget > 0 && unsent.size() < proto::kStoreResults && link.PopStoreRequest(request); --budget) {
+				dirty = true;
+				if (request.op == proto::kStoreTake) {
+					Take(a_player, request);
+				} else if (request.op == proto::kStoreGive) {
+					Give(a_player, request);
+				} else if (request.op == proto::kStorePicture) {
+					Picture(request);
+				}
+			}
+			while (!unsent.empty() && link.PushStoreResult(unsent.front())) {
+				unsent.pop_front();
+			}
 		}
 	}
 
@@ -622,6 +865,7 @@ namespace skycraft::SkyInventory
 
 	void PerFrame(RE::PlayerCharacter* a_player, bool a_wanted, float a_delta)
 	{
+		ProcessStore(a_player);  // SkyCraft+
 		timer -= a_delta;
 		if (!a_wanted) {
 			dirty = true;  // fresh the moment Minecraft's inventory opens

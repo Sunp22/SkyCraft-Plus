@@ -629,6 +629,71 @@ public final class SkyLink {
 		return false;
 	}
 
+	// ---- SkyCraft+ : Skyrim items in Minecraft's containers ----------------------------------
+
+	/** One answer from Skyrim to a store request (see SkyStoreResult in the protocol header). */
+	public record StoreResult(int id, int status, int kind, int sub, int material, int count, float health, float charge, int soul, int flags, float weight,
+		int value, float stat, float stat2, int localId, String plugin, String name, int formId) {
+	}
+
+	private static int nextStoreId = 1;
+
+	/** Asks Skyrim to take something out of its inventory (STORE_TAKE) or put it back (STORE_GIVE); returns the request's id, or 0 if it couldn't be sent. */
+	public static synchronized int pushStoreRequest(int op, int formId, int count, float health, float charge, int soul, int localId, String plugin) {
+		MemorySegment s = shm;
+		if (s == null) {
+			return 0;
+		}
+		long base = OFF_SKY_STORE;
+		long head = s.get(JAVA_LONG, base + STORE_REQ_HEAD);
+		long tail = (long) LONG.getAcquire(s, base + STORE_REQ_TAIL);
+		if (head - tail >= STORE_REQUESTS) {
+			return 0;
+		}
+		int id = nextStoreId++;
+		long e = base + STORE_REQ_DATA + (head & (STORE_REQUESTS - 1)) * STORE_REQUEST_BYTES;
+		s.asSlice(e, STORE_REQUEST_BYTES).fill((byte) 0);
+		s.set(JAVA_INT, e, id);
+		s.set(JAVA_BYTE, e + 4, (byte) op);
+		s.set(JAVA_INT, e + 8, formId);
+		s.set(JAVA_INT, e + 12, count);
+		s.set(JAVA_FLOAT, e + 16, health);
+		s.set(JAVA_FLOAT, e + 20, charge);
+		s.set(JAVA_INT, e + 24, soul);
+		s.set(JAVA_INT, e + 28, localId);
+		byte[] name = plugin.getBytes(StandardCharsets.UTF_8);
+		for (int i = 0; i < Math.min(name.length, SKY_ITEM_PLUGIN_BYTES - 1); i++) {
+			s.set(JAVA_BYTE, e + 32 + i, name[i]);
+		}
+		LONG.setRelease(s, base + STORE_REQ_HEAD, head + 1);
+		return id;
+	}
+
+	/** Skyrim's answers since last time (empty if none, or the link is down). */
+	public static synchronized java.util.List<StoreResult> popStoreResults() {
+		MemorySegment s = shm;
+		if (s == null) {
+			return java.util.List.of();
+		}
+		long base = OFF_SKY_STORE;
+		long head = (long) LONG.getAcquire(s, base + STORE_RES_HEAD);
+		long tail = s.get(JAVA_LONG, base + STORE_RES_TAIL);
+		if (tail >= head) {
+			return java.util.List.of();
+		}
+		java.util.List<StoreResult> out = new java.util.ArrayList<>();
+		for (; tail < head; tail++) {
+			long r = base + STORE_RES_DATA + (tail & (STORE_RESULTS - 1)) * STORE_RESULT_BYTES;
+			out.add(new StoreResult(s.get(JAVA_INT, r), Byte.toUnsignedInt(s.get(JAVA_BYTE, r + 4)), Byte.toUnsignedInt(s.get(JAVA_BYTE, r + 5)),
+				Byte.toUnsignedInt(s.get(JAVA_BYTE, r + 6)), Byte.toUnsignedInt(s.get(JAVA_BYTE, r + 7)), s.get(JAVA_INT, r + 8), s.get(JAVA_FLOAT, r + 12),
+				s.get(JAVA_FLOAT, r + 16), s.get(JAVA_INT, r + 20), s.get(JAVA_INT, r + 24), s.get(JAVA_FLOAT, r + 28), s.get(JAVA_INT, r + 32),
+				s.get(JAVA_FLOAT, r + 36), s.get(JAVA_FLOAT, r + 40), s.get(JAVA_INT, r + 44), readName(s, r + 48, SKY_ITEM_PLUGIN_BYTES),
+				readName(s, r + 108, SKY_ITEM_NAME_BYTES), s.get(JAVA_INT, r + 204)));
+		}
+		LONG.setRelease(s, base + STORE_RES_TAIL, head);
+		return out;
+	}
+
 	private static String readName(MemorySegment s, long off, int max) {
 		byte[] bytes = new byte[max];
 		int n = 0;

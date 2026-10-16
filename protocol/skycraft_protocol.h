@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 40;
+	inline constexpr std::uint32_t kVersion = 41;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -44,7 +44,9 @@ namespace skycraft::proto
 	inline constexpr std::uint64_t kSkyInventoryBytes = 1ull << 20;
 	inline constexpr std::uint64_t kOffSkyIcons = kOffSkyInventory + kSkyInventoryBytes;  // SkyCraft+ : v37, Skyrim -> MC, see SkyIcons
 	inline constexpr std::uint64_t kSkyIconsBytes = 17ull << 20;
-	inline constexpr std::uint64_t kMappingBytes = kOffSkyIcons + kSkyIconsBytes;
+	inline constexpr std::uint64_t kOffSkyStore = kOffSkyIcons + kSkyIconsBytes;  // SkyCraft+ : v41, both ways, see SkyStoreRequest
+	inline constexpr std::uint64_t kSkyStoreBytes = 64ull << 10;
+	inline constexpr std::uint64_t kMappingBytes = kOffSkyStore + kSkyStoreBytes;
 
 	// ---- header @0x0 ------------------------------------------------------------------------
 	struct Header
@@ -918,4 +920,75 @@ namespace skycraft::proto
 		SkyIconSlot   slots[kMaxSkyIcons];
 	};
 	static_assert(sizeof(SkyIcons) <= kSkyIconsBytes);
+
+	// ---- SkyCraft+ : Skyrim items in Minecraft's containers @kOffSkyStore, v41 ---------------------
+	// A Skyrim item put in a Minecraft chest (shulker box, hopper, bundle...) leaves Skyrim's inventory
+	// and becomes a Minecraft item that says what it is (plugin, id, tempering, charge, soul); taken
+	// back into Minecraft's inventory it goes back into Skyrim's. Minecraft asks (requests ring, MC ->
+	// Skyrim), Skyrim answers each request with one result per kind of copy it took out (results
+	// ring, Skyrim -> MC), or one with a status saying why not.
+	inline constexpr std::uint32_t kStoreRequests = 32;   // power of two
+	inline constexpr std::uint32_t kStoreResults = 64;    // power of two
+	inline constexpr std::uint64_t kStoreReqHeadOff = 0x00;  // u64, written by MC
+	inline constexpr std::uint64_t kStoreReqTailOff = 0x40;  // u64, written by Skyrim
+	inline constexpr std::uint64_t kStoreResHeadOff = 0x80;  // u64, written by Skyrim
+	inline constexpr std::uint64_t kStoreResTailOff = 0xC0;  // u64, written by MC
+	inline constexpr std::uint64_t kStoreReqDataOff = 0x100;
+
+	enum SkyStoreOp : std::uint8_t
+	{
+		kStoreTake = 1,  // take count of formId out of Skyrim's inventory (plain copies first)
+		kStoreGive = 2,  // put count of plugin/localId, with health/charge/soul, into it
+		kStorePicture = 3,  // draw plugin/localId's picture too for a while (SkyIcons; the result's formId is its key)
+	};
+
+	enum SkyStoreStatus : std::uint8_t
+	{
+		kStoreOk = 1,
+		kStoreQuest = 2,     // a quest item: it stays
+		kStoreMadeHere = 3,  // made in this game (FF..., a potion you brewed) or enchanted by you: it stays
+		kStoreNone = 4,      // none of it left
+		kStoreMissing = 5,   // give: no such thing (its plugin isn't loaded)
+	};
+
+	struct SkyStoreRequest
+	{
+		std::uint32_t id;
+		std::uint8_t  op;  // SkyStoreOp
+		std::uint8_t  pad[3];
+		std::uint32_t formId;  // take
+		std::int32_t  count;
+		float         health;  // give: tempering (1 = none)
+		float         charge;  // give: an enchanted weapon's charge (< 0 = none)
+		std::int32_t  soul;    // give: a soul gem's soul (RE::SOUL_LEVEL, 0 = none)
+		std::uint32_t localId;
+		char          plugin[60];
+		std::uint32_t pad2;
+	};
+	static_assert(sizeof(SkyStoreRequest) == 96);
+
+	struct SkyStoreResult
+	{
+		std::uint32_t id;      // the request's
+		std::uint8_t  status;  // SkyStoreStatus
+		std::uint8_t  kind;    // SkyItemKind
+		std::uint8_t  sub;
+		std::uint8_t  material;
+		std::int32_t  count;   // how many were taken (or given)
+		float         health;
+		float         charge;
+		std::int32_t  soul;
+		std::uint32_t flags;   // SkyItemFlags
+		float         weight;
+		std::int32_t  value;
+		float         stat, stat2;
+		std::uint32_t localId;
+		char          plugin[60];
+		char          name[96];
+		std::uint32_t formId;
+		std::uint32_t pad[4];
+	};
+	static_assert(sizeof(SkyStoreResult) == 224);
+	inline constexpr std::uint64_t kStoreResDataOff = kStoreReqDataOff + kStoreRequests * sizeof(SkyStoreRequest);
+	static_assert(kStoreResDataOff + kStoreResults * sizeof(SkyStoreResult) <= kSkyStoreBytes);
 }

@@ -41,7 +41,9 @@
     "SmithingMixin",
     "SlotShortcutMixin",
     "LivingEntityShortcutMixin",
-    "EnderDragonFightMixin"
+    "EnderDragonFightMixin",
+    "BundleShortcutMixin",
+    "ShulkerBoxSlotShortcutMixin"
   ],
   "injectors": { "defaultRequire": 1 }
 }

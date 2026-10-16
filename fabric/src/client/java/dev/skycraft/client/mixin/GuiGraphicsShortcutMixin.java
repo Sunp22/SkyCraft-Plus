@@ -21,7 +21,8 @@ public abstract class GuiGraphicsShortcutMixin {
 	/** Skyrim's picture of a shortcut's thing, once Skyrim has drawn it, instead of its stand-in. */
 	@Inject(method = "item(Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/world/level/Level;Lnet/minecraft/world/item/ItemStack;III)V", at = @At("HEAD"), cancellable = true)
 	private void skycraft$skyrimPicture(@Nullable LivingEntity owner, @Nullable Level level, ItemStack stack, int x, int y, int seed, CallbackInfo ci) {
-		if (SkyShortcuts.isShortcut(stack) && SkyShortcutsClient.drawPicture((GuiGraphicsExtractor) (Object) this, stack, x, y)) {
+		if (SkyShortcuts.isShortcut(stack) && SkyShortcutsClient.drawPicture((GuiGraphicsExtractor) (Object) this, stack, x, y)
+			|| dev.skycraft.net.SkyStorage.isStored(stack) && dev.skycraft.client.SkyStorageClient.drawPicture((GuiGraphicsExtractor) (Object) this, stack, x, y)) {
 			ci.cancel();
 		}
 	}

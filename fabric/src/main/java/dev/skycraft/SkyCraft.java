@@ -25,6 +25,7 @@ public final class SkyCraft implements ModInitializer {
 		dev.skycraft.combat.SkyWeaponTools.init();
 		dev.skycraft.net.SkyNet.init();
 		dev.skycraft.net.SkyShortcuts.init(); // SkyCraft+ : Skyrim shortcuts
+		dev.skycraft.net.SkyStorage.init(); // SkyCraft+ : Skyrim items in Minecraft's containers
 		dev.skycraft.world.SkyDig.init();
 		dev.skycraft.world.SkySpawner.init();
 		dev.skycraft.combat.SkyMagic.init();

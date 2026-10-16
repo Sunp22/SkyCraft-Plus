@@ -336,6 +336,45 @@ namespace skycraft
 		return true;
 	}
 
+	bool Link::PopStoreRequest(proto::SkyStoreRequest& a_out)
+	{
+		if (!base_) {
+			return false;
+		}
+		auto*      store = base_ + proto::kOffSkyStore;
+		auto&      headRef = *reinterpret_cast<std::uint64_t*>(store + proto::kStoreReqHeadOff);
+		auto&      tailRef = *reinterpret_cast<std::uint64_t*>(store + proto::kStoreReqTailOff);
+		const auto head = Atomic(headRef).load(std::memory_order_acquire);
+		auto       tail = Atomic(tailRef).load(std::memory_order_relaxed);
+		if (tail >= head) {
+			return false;
+		}
+		if (head - tail > proto::kStoreRequests) {
+			tail = head - proto::kStoreRequests;
+		}
+		a_out = reinterpret_cast<const proto::SkyStoreRequest*>(store + proto::kStoreReqDataOff)[tail & (proto::kStoreRequests - 1)];
+		Atomic(tailRef).store(tail + 1, std::memory_order_release);
+		return true;
+	}
+
+	bool Link::PushStoreResult(const proto::SkyStoreResult& a_result)
+	{
+		if (!base_) {
+			return false;
+		}
+		auto*      store = base_ + proto::kOffSkyStore;
+		auto&      headRef = *reinterpret_cast<std::uint64_t*>(store + proto::kStoreResHeadOff);
+		auto&      tailRef = *reinterpret_cast<std::uint64_t*>(store + proto::kStoreResTailOff);
+		const auto head = Atomic(headRef).load(std::memory_order_relaxed);
+		const auto tail = Atomic(tailRef).load(std::memory_order_acquire);
+		if (head - tail >= proto::kStoreResults) {
+			return false;
+		}
+		reinterpret_cast<proto::SkyStoreResult*>(store + proto::kStoreResDataOff)[head & (proto::kStoreResults - 1)] = a_result;
+		Atomic(headRef).store(head + 1, std::memory_order_release);
+		return true;
+	}
+
 	bool Link::ReadWorldEntities(proto::WorldEntities& a_out) const
 	{
 		if (!base_) {

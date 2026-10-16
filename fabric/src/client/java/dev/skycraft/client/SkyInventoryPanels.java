@@ -19,6 +19,7 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
@@ -284,7 +285,7 @@ public final class SkyInventoryPanels {
 
 	/** True while Skyrim should keep its inventory list current (SkyClient's MC_WANTS_SKY_INVENTORY). */
 	public static boolean wantsSkyInventory(@Nullable Screen screen) {
-		return screen instanceof InventoryScreen;
+		return screen instanceof InventoryScreen || SkyStorageClient.storageScreen(screen);  // SkyCraft+ : and beside chests
 	}
 
 	private static final java.util.Map<Screen, State> STATES = new java.util.WeakHashMap<>();
@@ -328,7 +329,11 @@ public final class SkyInventoryPanels {
 
 	public static void register() {
 		ScreenEvents.AFTER_INIT.register((minecraft, screen, width, height) -> {
-			if (!(screen instanceof InventoryScreen inventory) || minecraft.player == null || !SkyLink.active()) {
+			// SkyCraft+ : Skyrim items in Minecraft's containers. Beside a chest (shulker box, hopper...)
+			// the items panel too, to drag Skyrim items into it and back.
+			boolean full = screen instanceof InventoryScreen;
+			if (!(screen instanceof AbstractContainerScreen<?> inventory) || !(full || SkyStorageClient.storageScreen(screen)) || minecraft.player == null
+				|| !SkyLink.active()) {
 				return;
 			}
 			var accessor = (ContainerScreenAccessor) inventory;
@@ -337,11 +342,11 @@ public final class SkyInventoryPanels {
 			int center = (width - 176) / 2;
 			List<Button> buttons = new ArrayList<>();
 			int top = accessor.skycraft$topPos();
-			if (top >= 22) {
+			if (full && top >= 22) {
 				buttons.add(Button.builder(Component.literal("Skills"), b -> openSkyrimMenu(minecraft, Proto.SKY_ACT_MENU_STATS))
 					.bounds(accessor.skycraft$leftPos() + 88 - 40, top - 21, 80, BUTTON_HEIGHT).build());
 			}
-			if (top + 166 + 21 <= height) {
+			if (full && top + 166 + 21 <= height) {
 				buttons.add(Button.builder(Component.literal("Map"), b -> openSkyrimMenu(minecraft, Proto.SKY_ACT_MENU_MAP))
 					.bounds(accessor.skycraft$leftPos() + 88 - 40, top + 166 + 3, 80, BUTTON_HEIGHT).build());
 			}
@@ -361,7 +366,7 @@ public final class SkyInventoryPanels {
 				state.magic.x = leftPos - GAP - WIDTH;
 				state.items.x = leftPos + 176 + GAP;
 				state.magic.y = state.items.y = topPos;
-				state.magic.visible = state.magic.x >= 2 && leftPos == center;
+				state.magic.visible = full && state.magic.x >= 2 && leftPos == center;
 				state.items.visible = state.items.x + WIDTH <= width - 2;
 				for (Panel panel : state.panels()) {
 					panel.refresh();
@@ -388,6 +393,10 @@ public final class SkyInventoryPanels {
 				}
 				if (SkyShortcuts.isShortcut(inventory.getMenu().getCarried())) {
 					SkyShortcutsClient.forgetCarried();  // a shortcut put back
+					return false;
+				}
+				if (dev.skycraft.net.SkyStorage.isStored(inventory.getMenu().getCarried())) {
+					SkyStorageClient.takeCarried();  // SkyCraft+ : out of a chest, back into Skyrim
 					return false;
 				}
 				if (!inventory.getMenu().getCarried().isEmpty()) {
@@ -444,6 +453,8 @@ public final class SkyInventoryPanels {
 						if ((index < 36 || index == 40) && (slot.getItem().isEmpty() || SkyShortcuts.isShortcut(slot.getItem()))) {
 							SkyShortcutsClient.make(item, index);
 						}
+					} else if (slot != null && SkyStorageClient.storageMenu(inventory.getMenu()) && dev.skycraft.net.SkyStorage.storageSlot(slot)) {
+						SkyStorageClient.store(item, item.count(), slot.index, false);  // SkyCraft+ : into the chest
 					}
 				} else if (state.at(event.x(), event.y()) != null && item == itemUnder(state, event.x(), event.y())) {
 					click(item, state.pressedButton == InputConstants.MOUSE_BUTTON_RIGHT);
@@ -464,7 +475,7 @@ public final class SkyInventoryPanels {
 	}
 
 	/** The inventory's slot at (mx, my), where a dragged Skyrim thing goes. */
-	private static @Nullable Slot slotAt(InventoryScreen screen, ContainerScreenAccessor accessor, double mx, double my) {
+	private static @Nullable Slot slotAt(AbstractContainerScreen<?> screen, ContainerScreenAccessor accessor, double mx, double my) {
 		for (Slot slot : screen.getMenu().slots) {
 			int sx = accessor.skycraft$leftPos() + slot.x, sy = accessor.skycraft$topPos() + slot.y;
 			if (slot.isActive() && mx >= sx - 1 && mx < sx + 17 && my >= sy - 1 && my < sy + 17) {
@@ -690,6 +701,9 @@ public final class SkyInventoryPanels {
 			lines.add(Component.literal(hint).withStyle(ChatFormatting.DARK_GRAY));
 		}
 		lines.add(Component.literal("Drag it into your inventory for a shortcut").withStyle(ChatFormatting.DARK_GRAY));
+		if (item.kind() < Proto.SKY_SPELL) {
+			lines.add(Component.literal("Drag it into a chest to store it there").withStyle(ChatFormatting.DARK_GRAY));
+		}
 		lines.add(Component.literal("Shift-click (controller Y): shortcut in the first free slot").withStyle(ChatFormatting.DARK_GRAY));
 		return lines;
 	}

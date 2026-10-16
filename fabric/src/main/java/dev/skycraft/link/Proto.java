@@ -8,7 +8,7 @@ public final class Proto {
 	}
 
 	public static final int MAGIC = 0x43594B53;
-	public static final int VERSION = 40;
+	public static final int VERSION = 41;
 	// A second client on the same PC (multiplayer testing) talks to its own stand-in Skyrim:
 	// -Dskycraft.link=Local\SkyCraft_guest (see tools/fake_guest.py).
 	public static final String MAPPING_NAME = System.getProperty("skycraft.link", "Local\\SkyCraft_v1");
@@ -48,7 +48,15 @@ public final class Proto {
 	// SkyCraft+ : v37, Skyrim's item pictures (Skyrim -> MC), see SkyIcons
 	public static final long OFF_SKY_ICONS = OFF_SKY_INVENTORY + SKY_INVENTORY_BYTES;
 	public static final long SKY_ICONS_BYTES = 17L << 20;
-	public static final long MAPPING_BYTES = OFF_SKY_ICONS + SKY_ICONS_BYTES;
+	// SkyCraft+ : v41, Skyrim items in Minecraft's containers (both ways), see SkyStoreRequest
+	public static final long OFF_SKY_STORE = OFF_SKY_ICONS + SKY_ICONS_BYTES;
+	public static final long SKY_STORE_BYTES = 64L << 10;
+	public static final long MAPPING_BYTES = OFF_SKY_STORE + SKY_STORE_BYTES;
+	public static final int STORE_REQUESTS = 32, STORE_RESULTS = 64, STORE_REQUEST_BYTES = 96, STORE_RESULT_BYTES = 224;
+	public static final long STORE_REQ_HEAD = 0x00, STORE_REQ_TAIL = 0x40, STORE_RES_HEAD = 0x80, STORE_RES_TAIL = 0xC0, STORE_REQ_DATA = 0x100,
+		STORE_RES_DATA = STORE_REQ_DATA + STORE_REQUESTS * STORE_REQUEST_BYTES;
+	public static final int STORE_TAKE = 1, STORE_GIVE = 2, STORE_PICTURE = 3;
+	public static final int STORE_OK = 1, STORE_QUEST = 2, STORE_MADE_HERE = 3, STORE_NONE = 4, STORE_MISSING = 5;
 	public static final int SKY_ICON_SIZE = 64, MAX_SKY_ICONS = 1024, SKY_ICON_CATEGORY = 0xFFFFFF00;
 	public static final long ICONS_GENERATION = 0x0, ICONS_SLOTS = 0x40, ICON_SLOT_BYTES = 16 + SKY_ICON_SIZE * SKY_ICON_SIZE * 4;
 	public static final long ICON_SEQ = 0x0, ICON_KEY = 0x4, ICON_RGBA = 0x10;
