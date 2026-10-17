@@ -186,6 +186,9 @@ public final class SkyShortcutsClient {
 			if (item == null) {
 				continue;
 			}
+			if (SkyPoisonClient.apply(item)) {
+				return true;  // SkyCraft+ : onto the Minecraft weapon in hand
+			}
 			int action = switch (item.kind()) {
 				case Proto.SKY_POTION, Proto.SKY_FOOD, Proto.SKY_INGREDIENT -> Proto.SKY_ACT_USE;
 				case Proto.SKY_APPAREL, Proto.SKY_AMMO -> Proto.SKY_ACT_RIGHT;

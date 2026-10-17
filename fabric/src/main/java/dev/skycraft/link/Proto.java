@@ -122,7 +122,8 @@ public final class Proto {
 	public static final int EV_DRAGON_SOUL = 8; // SkyCraft+ : v39, the Ender Dragon died near this player: a Skyrim dragon soul
 	public static final int SKY_ACT_RIGHT = 1, SKY_ACT_LEFT = 2, SKY_ACT_USE = 3, SKY_ACT_MENU_STATS = 4, SKY_ACT_MENU_MAP = 5,
 		SKY_ACT_EQUIP_RIGHT = 6, SKY_ACT_EQUIP_LEFT = 7, SKY_ACT_DROP = 8, // SkyCraft+ : v36, shortcuts
-		SKY_ACT_UNEQUIP_RIGHT = 9, SKY_ACT_UNEQUIP_LEFT = 10; // SkyCraft+ : v38
+		SKY_ACT_UNEQUIP_RIGHT = 9, SKY_ACT_UNEQUIP_LEFT = 10, // SkyCraft+ : v38
+		SKY_ACT_CONSUME = 11; // SkyCraft+ : v43, one used up (a poison onto a Minecraft weapon)
 	// Skyrim skills (ActorValue) Minecraft reports use of; weapon skills come from EV_HIT_ACTOR.
 	public static final int SKILL_BLOCK = 9;
 	public static final int SKILL_SMITHING = 10;

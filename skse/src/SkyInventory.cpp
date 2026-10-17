@@ -775,6 +775,11 @@ namespace skycraft::SkyInventory
 		if (!object || a_player->GetItemCount(object) <= 0) {
 			return;
 		}
+		if (a_event.flags == proto::kSkyItemConsume) {  // SkyCraft+ : a poison onto a Minecraft weapon
+			a_player->RemoveItem(object, 1, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
+			logger::info("Skyrim items: {} used on Minecraft's weapon", object->GetName());
+			return;
+		}
 		if (a_event.flags == proto::kSkyItemDrop) {
 			if (object->Is(RE::FormType::Weapon, RE::FormType::Armor, RE::FormType::Ammo, RE::FormType::Light)) {
 				for (bool leftHand : { false, true }) {

@@ -752,6 +752,9 @@ public final class SkyInventoryPanels {
 		if (SkyArmorClient.click(item)) {
 			return;  // SkyCraft+ : into (or out of) its Minecraft armor slot
 		}
+		if (SkyPoisonClient.apply(item)) {
+			return;  // SkyCraft+ : onto the Minecraft weapon in hand
+		}
 		int action = switch (item.kind()) {
 			case Proto.SKY_WEAPON, Proto.SKY_SPELL, Proto.SKY_SCROLL -> rightButton && !item.has(Proto.ITEM_TWO_HANDED) ? Proto.SKY_ACT_LEFT : Proto.SKY_ACT_RIGHT;
 			case Proto.SKY_APPAREL, Proto.SKY_AMMO -> Proto.SKY_ACT_RIGHT;

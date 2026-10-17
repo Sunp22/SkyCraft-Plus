@@ -395,6 +395,8 @@ namespace skycraft::proto
 		// SkyCraft+ (v38): a shortcut taken out of the off-hand slot (or its hotbar slot).
 		kSkyItemUnequipRight = 9,  // out of the right hand if it's there (never puts it in)
 		kSkyItemUnequipLeft = 10,  // the same with the left hand (a shield: taken off)
+		// SkyCraft+ (v43): one of it used up elsewhere (a poison onto a Minecraft weapon).
+		kSkyItemConsume = 11,
 	};
 
 	// InputEvent::code for kInSkyrimHit.
