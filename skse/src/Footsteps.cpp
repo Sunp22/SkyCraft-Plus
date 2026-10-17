@@ -32,7 +32,7 @@ namespace skycraft::Footsteps
 
 		RE::BGSFootstep* StepOf(RE::BGSFootstepSet* a_set, std::uint32_t a_type, bool a_left)
 		{
-			for (std::uint32_t type : { a_type, std::uint32_t(RE::ACTOR_MOVEMENT_TYPES::kRun), std::uint32_t(RE::ACTOR_MOVEMENT_TYPES::kWalk) }) {
+			for (std::uint32_t type : { a_type, std::uint32_t(RE::ACTOR_MOVEMENT_TYPES::kWalk), std::uint32_t(RE::ACTOR_MOVEMENT_TYPES::kRun) }) {
 				const auto& entries = a_set->entries[type];
 				RE::BGSFootstep* any = nullptr;
 				for (auto* step : entries) {
@@ -52,7 +52,7 @@ namespace skycraft::Footsteps
 			return nullptr;
 		}
 
-		void Step(RE::PlayerCharacter* a_player, bool a_sneaking)
+		void Step(RE::PlayerCharacter* a_player, bool a_sneaking, bool a_sprinting)
 		{
 			auto* set = FootstepSetOf(a_player->GetWornArmor(RE::BGSBipedObjectForm::BipedObjectSlot::kFeet));
 			if (!set) {
@@ -66,7 +66,7 @@ namespace skycraft::Footsteps
 			left = !left;
 			const RE::NiPoint3 at = a_player->GetPosition();
 			RE::BGSImpactData* impact = nullptr;
-			if (auto* step = set ? StepOf(set, a_sneaking ? RE::ACTOR_MOVEMENT_TYPES::kSneak : RE::ACTOR_MOVEMENT_TYPES::kRun, left) : nullptr) {
+			if (auto* step = set ? StepOf(set, a_sneaking ? RE::ACTOR_MOVEMENT_TYPES::kSneak : a_sprinting ? RE::ACTOR_MOVEMENT_TYPES::kRun : RE::ACTOR_MOVEMENT_TYPES::kWalk, left) : nullptr) {
 				if (auto* type = RE::BGSMaterialType::GetMaterialType(material)) {
 					if (auto it = step->impactSet->impactMap.find(type); it != step->impactSet->impactMap.end()) {
 						impact = it->second;
@@ -123,10 +123,11 @@ namespace skycraft::Footsteps
 		}
 		travel += moved;
 		const bool   sneaking = (a_mc.flags & proto::kMcSneaking) != 0;
-		const double stride = sneaking ? 0.8 : (a_mc.flags & proto::kMcSprinting) ? 1.4 : 1.05;  // blocks a step
+		const bool   sprinting = (a_mc.flags & proto::kMcSprinting) != 0;
+		const double stride = sneaking ? 0.9 : sprinting ? 2.0 : 1.9;  // blocks a step (a walk, a run: Skyrim's own cadence)
 		if (travel >= stride) {
 			travel = std::fmod(travel, stride);
-			Step(a_player, sneaking);
+			Step(a_player, sneaking, sprinting);
 		}
 	}
 }
