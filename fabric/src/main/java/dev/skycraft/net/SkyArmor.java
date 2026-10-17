@@ -22,6 +22,9 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.ItemAttributeModifiers;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.item.equipment.EquipmentAsset;
+import net.minecraft.world.item.equipment.EquipmentAssets;
 import net.minecraft.world.item.equipment.Equippable;
 import org.jspecify.annotations.Nullable;
 
@@ -81,14 +84,39 @@ public final class SkyArmor {
 		return (flags & Proto.ITEM_HEAVY) != 0 ? Math.round(points(sub, rating) * 0.3 * 2.0) / 2.0 : 0.0;
 	}
 
-	/** Makes a Skyrim apparel shortcut Minecraft armor for its slot (if it has one). */
+	/**
+	 * The Minecraft armor a Skyrim piece looks like on the player's body: by its kind and how good it
+	 * is for its slot (its armor points against a diamond piece's). Clothes and hoods: leather; light
+	 * armor: leather, chainmail, then diamond (glass, dragonscale); heavy: iron, diamond, then
+	 * netherite (daedric, dragonplate); circlets: gold.
+	 */
+	static ResourceKey<EquipmentAsset> looksLike(int sub, float rating, int flags) {
+		if (sub == Proto.A_CIRCLET) {
+			return EquipmentAssets.GOLD;
+		}
+		double diamond = switch (sub) {
+			case Proto.A_BODY -> 8.0;
+			default -> 3.0;
+		};
+		double quality = points(sub, rating) / diamond;
+		if ((flags & Proto.ITEM_HEAVY) != 0) {
+			return quality < 0.8 ? EquipmentAssets.IRON : quality < 1.05 ? EquipmentAssets.DIAMOND : EquipmentAssets.NETHERITE;
+		}
+		if ((flags & Proto.ITEM_LIGHT) != 0) {
+			return quality < 0.5 ? EquipmentAssets.LEATHER : quality < 0.85 ? EquipmentAssets.CHAINMAIL : EquipmentAssets.DIAMOND;
+		}
+		return EquipmentAssets.LEATHER;
+	}
+
+	/** Makes a Skyrim apparel shortcut Minecraft armor for its slot (if it has one), drawn as its look-alike. */
 	static void makeArmor(ItemStack stack, int kind, int sub, float rating, int flags) {
 		EquipmentSlot slot = kind == Proto.SKY_APPAREL ? slotFor(sub) : null;
 		if (slot == null) {
 			return;
 		}
 		boolean heavy = (flags & Proto.ITEM_HEAVY) != 0;
-		stack.set(DataComponents.EQUIPPABLE, Equippable.builder(slot).setEquipSound(heavy ? SoundEvents.ARMOR_EQUIP_IRON : SoundEvents.ARMOR_EQUIP_LEATHER).build());
+		stack.set(DataComponents.EQUIPPABLE, Equippable.builder(slot).setEquipSound(heavy ? SoundEvents.ARMOR_EQUIP_IRON : SoundEvents.ARMOR_EQUIP_LEATHER)
+			.setAsset(looksLike(sub, rating, flags)).build());
 		ItemAttributeModifiers.Builder modifiers = ItemAttributeModifiers.builder();
 		EquipmentSlotGroup group = EquipmentSlotGroup.bySlot(slot);
 		modifiers.add(Attributes.ARMOR, new AttributeModifier(PIECE_ID.withSuffix("." + slot.getName()), points(sub, rating), AttributeModifier.Operation.ADD_VALUE), group);
