@@ -44,7 +44,12 @@ public final class SkyShortcuts {
 	}
 
 	/** Client -> server: put a shortcut in a slot of the player's own inventory (0-35, 40 the off hand). */
-	public record Make(int slot, String plugin, int localId, int kind, String model, int color, boolean glint, String name) implements CustomPacketPayload {
+	public record Make(int slot, String plugin, int localId, int kind, String model, int color, boolean glint, String name, int sub, float stat, int flags)
+		implements CustomPacketPayload {
+		public Make(int slot, String plugin, int localId, int kind, String model, int color, boolean glint, String name) {
+			this(slot, plugin, localId, kind, model, color, glint, name, -1, 0.0F, 0);
+		}
+
 		public static final Type<Make> TYPE = new Type<>(Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "shortcut_make"));
 		public static final StreamCodec<RegistryFriendlyByteBuf, Make> CODEC = StreamCodec.of((buf, make) -> {
 			buf.writeVarInt(make.slot);
@@ -55,7 +60,11 @@ public final class SkyShortcuts {
 			buf.writeInt(make.color);
 			buf.writeBoolean(make.glint);
 			buf.writeUtf(make.name, 128);
-		}, buf -> new Make(buf.readVarInt(), buf.readUtf(64), buf.readInt(), buf.readVarInt(), buf.readUtf(128), buf.readInt(), buf.readBoolean(), buf.readUtf(128)));
+			buf.writeVarInt(make.sub + 1);
+			buf.writeFloat(make.stat);
+			buf.writeInt(make.flags);
+		}, buf -> new Make(buf.readVarInt(), buf.readUtf(64), buf.readInt(), buf.readVarInt(), buf.readUtf(128), buf.readInt(), buf.readBoolean(), buf.readUtf(128),
+			buf.readVarInt() - 1, buf.readFloat(), buf.readInt()));
 
 		@Override
 		public Type<? extends CustomPacketPayload> type() {
@@ -136,6 +145,7 @@ public final class SkyShortcuts {
 			stack.set(DataComponents.ENCHANTMENT_GLINT_OVERRIDE, true);
 		}
 		stack.set(DataComponents.MAX_STACK_SIZE, 1);
+		SkyArmor.makeArmor(stack, make.kind, make.sub, make.stat, make.flags);  // SkyCraft+ : Skyrim armor in Minecraft's armor slots
 		stack.set(DataComponents.CUSTOM_NAME, Component.literal(make.name).withStyle(s -> s.withItalic(false)));
 		stack.set(DataComponents.LORE, new ItemLore(List.of(Component.literal("Skyrim shortcut").withStyle(s -> s.withItalic(false).withColor(0x808080)))));
 		return stack;

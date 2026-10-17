@@ -255,6 +255,66 @@ public final class SkyInventoryPanels {
 		}
 	}
 
+	/**
+	 * SkyCraft+ : Skyrim armor. Slots of the panels' own in Minecraft's inventory, for what Skyrim
+	 * wears that Minecraft has no slot for (beside the player, over the off hand) and the shout in use
+	 * (beside the recipe book). They show what's worn; a Skyrim thing dragged onto one is put on (made
+	 * the shout), a click on one takes it off.
+	 */
+	enum Extra {
+		HANDS(77, 8, "Gauntlets", Items.LEATHER),
+		AMULET(77, 26, "Necklace", Items.STRING),
+		RING(77, 44, "Ring", Items.GOLD_NUGGET),
+		SHOUT(152, 62, "Shout", Items.DRAGON_BREATH);
+
+		final int x, y;
+		final String label;
+		final Item iconItem;
+		private @Nullable ItemStack icon;
+
+		Extra(int x, int y, String label, Item icon) {
+			this.x = x;
+			this.y = y;
+			this.label = label;
+			this.iconItem = icon;
+		}
+
+		ItemStack icon() {
+			if (this.icon == null) {
+				this.icon = new ItemStack(this.iconItem);
+			}
+			return this.icon;
+		}
+
+		boolean holds(SkyLink.SkyItem item) {
+			return switch (this) {
+				case HANDS -> item.kind() == Proto.SKY_APPAREL && item.sub() == Proto.A_HANDS;
+				case AMULET -> item.kind() == Proto.SKY_APPAREL && item.sub() == Proto.A_AMULET;
+				case RING -> item.kind() == Proto.SKY_APPAREL && item.sub() == Proto.A_RING;
+				case SHOUT -> item.kind() == Proto.SKY_SHOUT || item.kind() == Proto.SKY_POWER;
+			};
+		}
+
+		/** What Skyrim has here now, or null. */
+		SkyLink.@Nullable SkyItem current() {
+			SkyLink.SkyInventory inventory = SkyShortcutsClient.inventory();
+			if (inventory == null) {
+				return null;
+			}
+			for (SkyLink.SkyItem item : inventory.items()) {
+				if (this.holds(item) && item.has(this == SHOUT ? Proto.ITEM_VOICE : Proto.ITEM_WORN)) {
+					return item;
+				}
+			}
+			return null;
+		}
+
+		/** Puts this on (makes it the shout). */
+		void put(SkyLink.SkyItem item) {
+			SkyLink.pushEvent(Proto.EV_SKY_ITEM, item.formId(), 0.0F, 0.0F, 0.0F, 0.0F, this == SHOUT ? Proto.SKY_ACT_USE : Proto.SKY_ACT_EQUIP_RIGHT);
+		}
+	}
+
 	/** One open inventory's panels, and a press or drag on them. */
 	private static final class State {
 		final Panel magic = new Panel(false), items = new Panel(true);
@@ -262,6 +322,22 @@ public final class SkyInventoryPanels {
 		int pressedButton;
 		double pressX, pressY;
 		boolean dragging;
+		boolean full;  // Minecraft's own inventory (else a chest's): the Extra slots too
+		int left, top;
+
+		/** The Extra slot at (mx, my), or null. */
+		@Nullable Extra extraAt(double mx, double my) {
+			if (!this.full || !SkyArmorClient.enabled()) {
+				return null;
+			}
+			for (Extra extra : Extra.values()) {
+				int x = this.left + extra.x, y = this.top + extra.y;
+				if (mx >= x - 1 && mx < x + 17 && my >= y - 1 && my < y + 17) {
+					return extra;
+				}
+			}
+			return null;
+		}
 
 		Panel[] panels() {
 			return new Panel[] { this.magic, this.items };
@@ -297,6 +373,11 @@ public final class SkyInventoryPanels {
 		if (state != null) {
 			for (Panel panel : state.panels()) {
 				panel.jumpTargets(out);
+			}
+			if (state.full && SkyArmorClient.enabled()) {
+				for (Extra extra : Extra.values()) {
+					out.add(new int[] { state.left + extra.x + 8, state.top + extra.y + 8 });
+				}
 			}
 		}
 		return out;
@@ -366,6 +447,9 @@ public final class SkyInventoryPanels {
 				state.magic.x = leftPos - GAP - WIDTH;
 				state.items.x = leftPos + 176 + GAP;
 				state.magic.y = state.items.y = topPos;
+				state.full = full;
+				state.left = leftPos;
+				state.top = topPos;
 				state.magic.visible = full && state.magic.x >= 2 && leftPos == center;
 				state.items.visible = state.items.x + WIDTH <= width - 2;
 				for (Panel panel : state.panels()) {
@@ -387,6 +471,19 @@ public final class SkyInventoryPanels {
 				}
 			});
 			ScreenMouseEvents.allowMouseClick(screen).register((s, event) -> {
+				// SkyCraft+ : Skyrim armor. A shortcut put on an Extra slot puts its thing on; a click takes it off.
+				Extra extra = state.extraAt(event.x(), event.y());
+				if (extra != null) {
+					ItemStack carried = inventory.getMenu().getCarried();
+					SkyLink.SkyItem held = SkyShortcuts.isShortcut(carried) ? SkyShortcutsClient.resolve(carried) : null;
+					SkyLink.SkyItem current = extra.current();
+					if (held != null && extra.holds(held)) {
+						extra.put(held);
+					} else if (carried.isEmpty() && current != null && extra != Extra.SHOUT) {
+						SkyLink.pushEvent(Proto.EV_SKY_ITEM, current.formId(), 0.0F, 0.0F, 0.0F, 0.0F, Proto.SKY_ACT_UNEQUIP_RIGHT);
+					}
+					return false;
+				}
 				Panel panel = state.at(event.x(), event.y());
 				if (panel == null) {
 					return true;
@@ -447,11 +544,18 @@ public final class SkyInventoryPanels {
 				state.dragFrom(event.x(), event.y());
 				if (state.dragging) {
 					state.dragging = false;
-					Slot slot = slotAt(inventory, accessor, event.x(), event.y());
-					if (slot != null && slot.container instanceof Inventory) {
+					Extra extra = state.extraAt(event.x(), event.y());
+					Slot slot = extra != null ? null : slotAt(inventory, accessor, event.x(), event.y());
+					if (extra != null) {
+						if (extra.holds(item)) {
+							extra.put(item);  // SkyCraft+ : Skyrim armor
+						}
+					} else if (slot != null && slot.container instanceof Inventory) {
 						int index = slot.getContainerSlot();
 						if ((index < 36 || index == 40) && (slot.getItem().isEmpty() || SkyShortcuts.isShortcut(slot.getItem()))) {
 							SkyShortcutsClient.make(item, index);
+						} else if (index >= 36 && index <= 39) {
+							SkyArmorClient.dropOn(item, index);  // SkyCraft+ : onto its armor slot
 						}
 					} else if (slot != null && SkyStorageClient.storageMenu(inventory.getMenu()) && dev.skycraft.net.SkyStorage.storageSlot(slot)) {
 						SkyStorageClient.store(item, item.count(), slot.index, false);  // SkyCraft+ : into the chest
@@ -583,6 +687,34 @@ public final class SkyInventoryPanels {
 				graphics.text(font, "L/R click: hand", x + 7, y + FOOTER_TOP, 0xFF606060, false);
 			}
 		}
+		// SkyCraft+ : Skyrim armor. The Extra slots: what's worn there (the shout in use), or what goes there.
+		if (state.full && SkyArmorClient.enabled()) {
+			for (Extra extra : Extra.values()) {
+				int x = state.left + extra.x, y = state.top + extra.y;
+				slot(graphics, x, y);
+				SkyLink.SkyItem current = extra.current();
+				if (current != null) {
+					picture(graphics, current, x, y);
+				} else {
+					graphics.item(extra.icon(), x, y);
+					graphics.fill(x, y, x + 16, y + 16, 0xB08B8B8B);
+				}
+				if (mouseX >= x - 1 && mouseX < x + 17 && mouseY >= y - 1 && mouseY < y + 17 && !state.dragging) {
+					graphics.fill(x, y, x + 16, y + 16, 0x80FFFFFF);
+					if (current != null) {
+						List<Component> lines = new ArrayList<>(tooltip(current, false));
+						if (extra != Extra.SHOUT) {
+							lines.add(Component.literal("Click: take off").withStyle(ChatFormatting.DARK_GRAY));
+						}
+						tooltip = lines;
+					} else {
+						tooltip = List.of(Component.literal("Skyrim " + extra.label.toLowerCase()),
+							Component.literal(extra == Extra.SHOUT ? "Drag a shout or power here" : "Drag Skyrim " + extra.label.toLowerCase() + " here")
+								.withStyle(ChatFormatting.DARK_GRAY));
+					}
+				}
+			}
+		}
 		if (tooltip != null && !state.dragging) {
 			graphics.setComponentTooltipForNextFrame(font, tooltip, mouseX, mouseY);
 		}
@@ -617,6 +749,9 @@ public final class SkyInventoryPanels {
 
 	/** What Skyrim's own menu would do with a left (right hand) or right (left hand) click. */
 	private static void click(SkyLink.SkyItem item, boolean rightButton) {
+		if (SkyArmorClient.click(item)) {
+			return;  // SkyCraft+ : into (or out of) its Minecraft armor slot
+		}
 		int action = switch (item.kind()) {
 			case Proto.SKY_WEAPON, Proto.SKY_SPELL, Proto.SKY_SCROLL -> rightButton && !item.has(Proto.ITEM_TWO_HANDED) ? Proto.SKY_ACT_LEFT : Proto.SKY_ACT_RIGHT;
 			case Proto.SKY_APPAREL, Proto.SKY_AMMO -> Proto.SKY_ACT_RIGHT;

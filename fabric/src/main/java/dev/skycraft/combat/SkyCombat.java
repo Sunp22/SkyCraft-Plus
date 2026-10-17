@@ -309,7 +309,14 @@ public final class SkyCombat {
 		float damage = skyrimDamage / SKYRIM_TO_MC_DAMAGE;
 		float healthBefore = player.getHealth();
 		boolean blocking = player.isBlocking();
-		boolean hurt = player.hurtServer(level, source, damage);
+		// SkyCraft+ : Skyrim armor in Minecraft's slots already counted in Skyrim (SkyArmor).
+		boolean hurt;
+		dev.skycraft.net.SkyArmor.skyrimHit = true;
+		try {
+			hurt = player.hurtServer(level, source, damage);
+		} finally {
+			dev.skycraft.net.SkyArmor.skyrimHit = false;
+		}
 		trainDefence(player, damage, blocking && player.getHealth() >= healthBefore - 1.0E-3F);
 		SkyCraft.LOG.info("SkyCraft: Skyrim hit the player for {} ({} Minecraft): health {} -> {}{}", skyrimDamage, damage, healthBefore, player.getHealth(),
 			hurt ? "" : " (blocked/immune)");

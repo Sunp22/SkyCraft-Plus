@@ -59,9 +59,9 @@ public final class SkyShortcutsClient {
 		return null;
 	}
 
-	/** True while the player has shortcuts: Skyrim keeps its list current for their counts. */
+	/** True while the player has shortcuts (or Skyrim armor may go in Minecraft's slots): Skyrim keeps its list current. */
 	static boolean wanted() {
-		return anyShortcuts;
+		return anyShortcuts || SkyArmorClient.enabled() && SkyLink.active();
 	}
 
 	/** The count drawn on a shortcut (GuiGraphicsShortcutMixin): Skyrim's, for things there's more than one of. */
@@ -81,19 +81,24 @@ public final class SkyShortcutsClient {
 		return SkyShortcuts.isShortcut(stack) && inventory != null && resolve(stack) == null;
 	}
 
+	/** What the server needs to make this Skyrim thing's shortcut (in slot): its look, and (apparel) its armor. */
+	static SkyShortcuts.Make makeOf(SkyLink.SkyItem item, int slot) {
+		ItemStack icon = SkyIcons.stack(item);
+		var contents = icon.get(DataComponents.POTION_CONTENTS);
+		int color = contents != null ? contents.customColor().orElse(0) : 0;
+		boolean glint = Boolean.TRUE.equals(icon.get(DataComponents.ENCHANTMENT_GLINT_OVERRIDE));
+		String name = item.name().length() > 100 ? item.name().substring(0, 100) : item.name();
+		return new SkyShortcuts.Make(slot, item.plugin(), item.localId(), item.kind(), BuiltInRegistries.ITEM.getKey(icon.getItem()).toString(), color, glint, name,
+			item.sub(), item.stat(), item.flags());
+	}
+
 	/** The shortcut for this Skyrim thing, made by the server in slot (0-35, 40 the off hand). */
 	static void make(SkyLink.SkyItem item, int slot) {
 		if (!ClientPlayNetworking.canSend(SkyShortcuts.Make.TYPE)) {
 			SkyCraft.LOG.info("SkyCraft: Skyrim shortcuts: the server doesn't have SkyCraft");
 			return;
 		}
-		ItemStack icon = SkyIcons.stack(item);
-		var contents = icon.get(DataComponents.POTION_CONTENTS);
-		int color = contents != null ? contents.customColor().orElse(0) : 0;
-		boolean glint = Boolean.TRUE.equals(icon.get(DataComponents.ENCHANTMENT_GLINT_OVERRIDE));
-		String name = item.name().length() > 100 ? item.name().substring(0, 100) : item.name();
-		ClientPlayNetworking.send(new SkyShortcuts.Make(slot, item.plugin(), item.localId(), item.kind(), BuiltInRegistries.ITEM.getKey(icon.getItem()).toString(),
-			color, glint, name));
+		ClientPlayNetworking.send(makeOf(item, slot));
 	}
 
 	/** The shortcut on the cursor was put back on the Skyrim panels. */
@@ -221,7 +226,7 @@ public final class SkyShortcutsClient {
 		for (int i = 0; i < items.getContainerSize() && !any; i++) {
 			any = SkyShortcuts.isShortcut(items.getItem(i));
 		}
-		anyShortcuts = any || SkyInventoryPanels.wantsSkyInventory(minecraft.gui.screen());
+		anyShortcuts = any || SkyInventoryPanels.wantsSkyInventory(minecraft.gui.screen()) || SkyArmorClient.enabled();
 		if (anyShortcuts) {
 			SkyIconTextures.tick(minecraft);
 		}

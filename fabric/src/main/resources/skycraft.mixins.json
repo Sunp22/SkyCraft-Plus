@@ -47,7 +47,8 @@
     "LandRandomPosMixin",
     "RandomStrollGoalMixin",
     "MoveToTargetSinkMixin",
-    "GroundPathNavigationMixin"
+    "GroundPathNavigationMixin",
+    "LivingEntityArmorMixin"
   ],
   "injectors": { "defaultRequire": 1 }
 }
