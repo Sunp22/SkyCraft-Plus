@@ -43,6 +43,8 @@ namespace skycraft
 		// SkyCraft+ : Skyrim items in Minecraft's containers (main thread). A request from Minecraft
 		// (false when none), and a result back (false when the ring is full: try again later).
 		bool PopStoreRequest(proto::SkyStoreRequest& a_out);
+		// SkyCraft+ : loot chests. Where they go in the dungeon the player is in (main thread).
+		void WriteLootSpots(const proto::LootSpot* a_spots, std::uint32_t a_count);
 		bool PushStoreResult(const proto::SkyStoreResult& a_result);
 		// Event ring (consumer, main thread). Returns false when empty.
 		bool PopEvent(proto::McEvent& a_out);

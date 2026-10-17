@@ -669,6 +669,38 @@ public final class SkyLink {
 		return id;
 	}
 
+	/** SkyCraft+ : a loot chest's spot in the dungeon the player is in (see LootSpot in the protocol header). */
+	public record LootSpot(double x, double y, double z, float yaw, int worldId, int tier, int kind, String key, String location) {
+	}
+
+	/** SkyCraft+ : seqlock read of where loot chests go (null if the link is down or Skyrim was writing). */
+	public static java.util.@org.jspecify.annotations.Nullable List<LootSpot> readLootSpots() {
+		MemorySegment s = shm;
+		if (s == null) {
+			return null;
+		}
+		long b = OFF_SKY_STORE + LOOT_SPOTS_OFF;
+		for (int attempt = 0; attempt < 8; attempt++) {
+			int seq1 = (int) INT.getAcquire(s, b + LOOT_SEQ);
+			if ((seq1 & 1) != 0) {
+				Thread.onSpinWait();
+				continue;
+			}
+			int count = Math.clamp(s.get(JAVA_INT, b + LOOT_COUNT), 0, MAX_LOOT_SPOTS);
+			java.util.List<LootSpot> spots = new java.util.ArrayList<>(count);
+			for (int i = 0; i < count; i++) {
+				long r = b + LOOT_SPOTS + (long) i * LOOT_SPOT_BYTES;
+				spots.add(new LootSpot(s.get(JAVA_DOUBLE, r), s.get(JAVA_DOUBLE, r + 8), s.get(JAVA_DOUBLE, r + 16), s.get(JAVA_FLOAT, r + 24), s.get(JAVA_INT, r + 28),
+					Byte.toUnsignedInt(s.get(JAVA_BYTE, r + 32)), Byte.toUnsignedInt(s.get(JAVA_BYTE, r + 33)), readName(s, r + 36, 44), readName(s, r + 80, 40)));
+			}
+			VarHandle.loadLoadFence();
+			if ((int) INT.getAcquire(s, b + LOOT_SEQ) == seq1) {
+				return spots;
+			}
+		}
+		return null;
+	}
+
 	/** Skyrim's answers since last time (empty if none, or the link is down). */
 	public static synchronized java.util.List<StoreResult> popStoreResults() {
 		MemorySegment s = shm;

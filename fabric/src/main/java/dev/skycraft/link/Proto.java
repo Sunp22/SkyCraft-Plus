@@ -8,7 +8,7 @@ public final class Proto {
 	}
 
 	public static final int MAGIC = 0x43594B53;
-	public static final int VERSION = 41;
+	public static final int VERSION = 42;
 	// A second client on the same PC (multiplayer testing) talks to its own stand-in Skyrim:
 	// -Dskycraft.link=Local\SkyCraft_guest (see tools/fake_guest.py).
 	public static final String MAPPING_NAME = System.getProperty("skycraft.link", "Local\\SkyCraft_v1");
@@ -56,6 +56,10 @@ public final class Proto {
 	public static final long STORE_REQ_HEAD = 0x00, STORE_REQ_TAIL = 0x40, STORE_RES_HEAD = 0x80, STORE_RES_TAIL = 0xC0, STORE_REQ_DATA = 0x100,
 		STORE_RES_DATA = STORE_REQ_DATA + STORE_REQUESTS * STORE_REQUEST_BYTES;
 	public static final int STORE_TAKE = 1, STORE_GIVE = 2, STORE_PICTURE = 3;
+	// SkyCraft+ : v42, loot chests (Skyrim -> MC, seqlock) inside the SkyStore region, see LootSpots
+	public static final long LOOT_SPOTS_OFF = 0x8000, LOOT_SEQ = 0x0, LOOT_COUNT = 0x4, LOOT_SPOTS = 0x40;
+	public static final int MAX_LOOT_SPOTS = 16, LOOT_SPOT_BYTES = 128, LOOT_MIDDLE = 1, LOOT_END = 2;
+	// LootSpot: x 0, y 8, z 16 (doubles), yaw 24, worldId 28, tier 32, kind 33, key 36 (44), location 80 (40)
 	public static final int STORE_OK = 1, STORE_QUEST = 2, STORE_MADE_HERE = 3, STORE_NONE = 4, STORE_MISSING = 5;
 	public static final int SKY_ICON_SIZE = 64, MAX_SKY_ICONS = 1024, SKY_ICON_CATEGORY = 0xFFFFFF00;
 	public static final long ICONS_GENERATION = 0x0, ICONS_SLOTS = 0x40, ICON_SLOT_BYTES = 16 + SKY_ICON_SIZE * SKY_ICON_SIZE * 4;

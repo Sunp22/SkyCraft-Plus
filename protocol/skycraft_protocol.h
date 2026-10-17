@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 41;
+	inline constexpr std::uint32_t kVersion = 42;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -991,4 +991,40 @@ namespace skycraft::proto
 	static_assert(sizeof(SkyStoreResult) == 224);
 	inline constexpr std::uint64_t kStoreResDataOff = kStoreReqDataOff + kStoreRequests * sizeof(SkyStoreRequest);
 	static_assert(kStoreResDataOff + kStoreResults * sizeof(SkyStoreResult) <= kSkyStoreBytes);
+
+	// ---- SkyCraft+ : loot chests @kOffSkyStore + kLootSpotsOff (Skyrim -> MC, seqlock), v42 ------
+	// Where a Minecraft loot chest goes in the dungeon (cave, camp, ruin...) the player is in: one
+	// beside its boss chest (the end), one partway in (the middle). Minecraft places each once per
+	// world (by key), on a small pad of Minecraft ground, with a loot table by tier.
+	inline constexpr std::uint64_t kLootSpotsOff = 0x8000;
+	inline constexpr std::uint32_t kMaxLootSpots = 16;
+
+	enum LootSpotKind : std::uint8_t
+	{
+		kLootMiddle = 1,
+		kLootEnd = 2,
+	};
+
+	struct LootSpot
+	{
+		double        x, y, z;   // on the floor, MC coords
+		float         yaw;       // the way the chest faces (MC degrees): into the room
+		std::uint32_t worldId;   // the worldspace or interior cell it's in (as SkyState::worldId)
+		std::uint8_t  tier;      // 1 (an early dungeon's) .. 5 (an end-game one's)
+		std::uint8_t  kind;      // LootSpotKind
+		std::uint8_t  pad[2];
+		char          key[44];   // placed once per Minecraft world: "plugin:id:kind"
+		char          location[40];  // the dungeon's (a few middles per dungeon at most)
+		std::uint32_t pad2[2];
+	};
+	static_assert(sizeof(LootSpot) == 128);
+
+	struct LootSpots
+	{
+		std::uint32_t seq;
+		std::uint32_t count;
+		std::uint32_t pad[14];
+		LootSpot      spots[kMaxLootSpots];
+	};
+	static_assert(kLootSpotsOff + sizeof(LootSpots) <= kSkyStoreBytes);
 }

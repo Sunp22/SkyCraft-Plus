@@ -357,6 +357,24 @@ namespace skycraft
 		return true;
 	}
 
+	void Link::WriteLootSpots(const proto::LootSpot* a_spots, std::uint32_t a_count)
+	{
+		if (!base_) {
+			return;
+		}
+		auto*      table = At<proto::LootSpots>(proto::kOffSkyStore + proto::kLootSpotsOff);
+		auto       seq = Atomic(table->seq);
+		const auto s = seq.load(std::memory_order_relaxed);
+		seq.store(s + 1, std::memory_order_relaxed);
+		std::atomic_thread_fence(std::memory_order_release);
+		const auto count = std::min(a_count, proto::kMaxLootSpots);
+		table->count = count;
+		if (count) {
+			std::memcpy(table->spots, a_spots, sizeof(proto::LootSpot) * count);
+		}
+		seq.store(s + 2, std::memory_order_release);
+	}
+
 	bool Link::PushStoreResult(const proto::SkyStoreResult& a_result)
 	{
 		if (!base_) {

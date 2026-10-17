@@ -171,6 +171,8 @@ namespace skycraft
 			State().skyrimVsMinecraft = std::max(0.0f, static_cast<float>(ini.GetDoubleValue("Combat", "fSkyrimWeaponsVsMinecraft", 1.5)));
 			State().minecraftHitsObjects = ini.GetBoolValue("Combat", "bMinecraftHitsObjects", true);
 			State().enderDragonSoul = ini.GetBoolValue("Worlds", "bEnderDragonSoul", true);
+			State().lootChestsOption = ini.GetBoolValue("Worlds", "bLootChests", true);  // SkyCraft+
+			logger::info("Minecraft loot chests in Skyrim's dungeons: {}", State().lootChestsOption ? "on" : "off");
 			logger::info("the Ender Dragon gives a dragon soul: {}", State().enderDragonSoul ? "on" : "off");
 			logger::info("damage: Minecraft hits on Skyrim's actors x({:.2f} + {:.3f} per level), Skyrim weapons on Minecraft's mobs x{:.2f}", State().mcDamageBase,
 				State().mcDamagePerLevel, State().skyrimVsMinecraft);

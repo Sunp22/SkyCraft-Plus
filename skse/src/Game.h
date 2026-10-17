@@ -72,6 +72,8 @@ namespace skycraft
 		// SkyCraft+ : riding Skyrim's horses as Minecraft's player ([Controls] bRideAsMinecraft).
 		bool                       rideAsMinecraft{ true };
 		bool                       ridingAsMinecraft{ false };  // this frame: Minecraft's body in the saddle
+		// SkyCraft+ : Minecraft loot chests in Skyrim's dungeons ([Worlds] bLootChests).
+		bool                       lootChestsOption{ true };
 		// SkyCraft+ : the underground. Skyrim's land is more than two blocks above the player (a mine).
 		std::atomic<bool>          playerUnderLand{ false };
 		// SkyCraft+ : performance. Deep down, Skyrim's world isn't drawn ([Worlds] bHideWorldDeep).
@@ -281,6 +283,13 @@ namespace skycraft
 		void PerFrame();
 		// Present: draws them and hands the pictures to Minecraft.
 		void Draw(ID3D11Device* a_device, ID3D11DeviceContext* a_context);
+	}
+
+	// SkyCraft+ : Minecraft loot chests in Skyrim's dungeons.
+	namespace LootSpots
+	{
+		// Main thread, every frame: where the chests go in the dungeon the player is in (every 2 s).
+		void PerFrame(RE::PlayerCharacter* a_player, float a_delta);
 	}
 
 	// SkyCraft+ : Skyrim enemies in Minecraft's own worlds (the Nether, the End's outer islands).
