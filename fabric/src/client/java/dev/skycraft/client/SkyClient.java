@@ -57,6 +57,8 @@ public final class SkyClient {
 	private static int exporterErrors;
 	// SkyCraft+ : mode switch. Skyrim drives its own player and ours follows (SkyState flag).
 	private static boolean skyrimDriving;
+	// SkyCraft+ : Skyrim food feeds Minecraft's hunger. Skyrim's count when last looked (-1: not yet).
+	private static int fedSeen = -1;
 
 	private SkyClient() {
 	}
@@ -97,6 +99,7 @@ public final class SkyClient {
 		}
 		if (nowLinked != linked) {
 			linked = nowLinked;
+			fedSeen = -1;
 			SkyCraft.LOG.info("SkyCraft: Skyrim link {}", linked ? "up" : "down");
 			if (linked) {
 				tookOver = true;
@@ -192,6 +195,14 @@ public final class SkyClient {
 			&& SkyLink.readSkyrimShots(GUEST_SHOTS) && !GUEST_SHOTS.isEmpty()) {
 			shotsSentAt = System.nanoTime();
 			net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(new dev.skycraft.net.SkyNet.Shots(java.util.List.copyOf(GUEST_SHOTS)));
+		}
+		// SkyCraft+ : Skyrim food and stamina potions: the hunger points given since last looked.
+		if (sky.inGame()) {
+			int fresh = fedSeen < 0 ? 0 : (sky.fed - fedSeen) & 0xFF;
+			if (fresh > 0 && fresh < 128) {
+				act(minecraft, dev.skycraft.net.SkyNet.Act.simple(dev.skycraft.net.SkyNet.Act.FEED, fresh, 0.0F, 0.0F));
+			}
+			fedSeen = sky.fed;
 		}
 		boolean drives = sky.skyrimDrives() && sky.inGame() && !sky.loading();
 		if (drives != skyrimDriving) {

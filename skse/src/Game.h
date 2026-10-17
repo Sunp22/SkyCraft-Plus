@@ -74,6 +74,9 @@ namespace skycraft
 		bool                       ridingAsMinecraft{ false };  // this frame: Minecraft's body in the saddle
 		// SkyCraft+ : Skyrim footsteps for Minecraft's walking ([Controls] bMinecraftFootsteps).
 		bool                       minecraftFootsteps{ true };
+		// SkyCraft+ : hunger points Skyrim food and stamina potions gave (SkyState::fed; [Combat] bSkyrimFoodFeeds).
+		std::atomic<std::uint32_t> fedPoints{ 0 };
+		bool                       skyrimFoodFeeds{ true };
 		// SkyCraft+ : Minecraft loot chests in Skyrim's dungeons ([Worlds] bLootChests).
 		bool                       lootChestsOption{ true };
 		// SkyCraft+ : the underground. Skyrim's land is more than two blocks above the player (a mine).

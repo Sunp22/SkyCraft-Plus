@@ -207,6 +207,7 @@ public final class SkyLink {
 		public float seaLevel;
 		public int rightHandKind, leftHandKind; // SkyCraft+ : Proto.HAND_*
 		public int sendToWorld; // SkyCraft+ : a save made in the Nether or the End: Proto.DIM_* to go to (0: none)
+		public int fed; // SkyCraft+ : hunger points Skyrim food and stamina potions gave, counted up (0..255, wrapping)
 
 		public boolean inGame() {
 			return (this.flags & SKY_IN_GAME) != 0;
@@ -333,6 +334,7 @@ public final class SkyLink {
 			out.rightHandKind = s.get(JAVA_BYTE, b + SS_HAND_KINDS) & 0xFF;
 			out.leftHandKind = s.get(JAVA_BYTE, b + SS_HAND_KINDS + 1) & 0xFF;
 			out.sendToWorld = s.get(JAVA_BYTE, b + SS_SEND_TO_WORLD) & 0xFF;
+			out.fed = s.get(JAVA_BYTE, b + SS_FED) & 0xFF;
 			VarHandle.loadLoadFence();
 			int seq2 = (int) INT.getAcquire(s, b + SS_SEQ);
 			if (seq1 == seq2) {

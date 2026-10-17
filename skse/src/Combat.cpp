@@ -68,6 +68,55 @@ namespace skycraft
 			}
 		};
 
+		// SkyCraft+ : Skyrim food and stamina potions feed Minecraft's hunger. Eaten or drunk anywhere
+		// (Skyrim's menus, the panels, a hotbar shortcut): food by how much it restores, a stamina
+		// potion by its stamina (a Minor one 2 points, Ultimate the whole bar).
+		class FedSink final : public RE::BSTEventSink<RE::TESEquipEvent>
+		{
+		public:
+			static FedSink* Get()
+			{
+				static FedSink sink;
+				return &sink;
+			}
+
+			RE::BSEventNotifyControl ProcessEvent(const RE::TESEquipEvent* a_event, RE::BSTEventSource<RE::TESEquipEvent>*) override
+			{
+				if (!a_event || !a_event->equipped || !a_event->actor || !a_event->actor->IsPlayerRef() || !State().skyrimFoodFeeds) {
+					return RE::BSEventNotifyControl::kContinue;
+				}
+				auto* item = RE::TESForm::LookupByID<RE::AlchemyItem>(a_event->baseObject);
+				if (!item || item->IsPoison()) {
+					return RE::BSEventNotifyControl::kContinue;
+				}
+				float stamina = 0.0f, restores = 0.0f;
+				for (auto* effect : item->effects) {
+					auto* base = effect ? effect->baseEffect : nullptr;
+					if (!base || base->IsDetrimental()) {
+						continue;
+					}
+					const float amount = effect->GetMagnitude() * static_cast<float>(std::max<std::uint32_t>(1, effect->GetDuration()));
+					if (base->data.primaryAV == RE::ActorValue::kStamina && base->HasArchetype(RE::EffectArchetypes::ArchetypeID::kValueModifier)) {  // (restore, not fortify)
+						stamina += amount;
+					}
+					if (base->data.primaryAV == RE::ActorValue::kStamina || base->data.primaryAV == RE::ActorValue::kHealth) {
+						restores += amount;
+					}
+				}
+				int points = 0;
+				if (item->IsFood()) {
+					points = std::clamp(2 + static_cast<int>(std::lround(restores / 10.0f)), 2, 10);
+				} else if (stamina > 0.0f) {
+					points = std::clamp(static_cast<int>(std::lround(stamina / 12.5f)), 1, 20);
+				}
+				if (points > 0) {
+					State().fedPoints += static_cast<std::uint32_t>(points);
+					logger::info("hunger: {} gives Minecraft {} hunger points", item->GetName(), points);
+				}
+				return RE::BSEventNotifyControl::kContinue;
+			}
+		};
+
 		class HitSink final : public RE::BSTEventSink<RE::TESHitEvent>
 		{
 		public:
@@ -960,6 +1009,7 @@ namespace skycraft
 			if (auto* events = RE::ScriptEventSourceHolder::GetSingleton()) {
 				events->AddEventSink<RE::TESHitEvent>(HitSink::Get());
 				events->AddEventSink<RE::TESMagicEffectApplyEvent>(HealSink::Get());  // SkyCraft+
+				events->AddEventSink<RE::TESEquipEvent>(FedSink::Get());  // SkyCraft+
 			}
 			ResolveHitPipeline();
 			logger::info("combat hooks installed");

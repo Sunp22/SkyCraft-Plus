@@ -204,6 +204,7 @@ public final class Proto {
 	public static final long SS_SEA_LEVEL = 0x48;
 	public static final long SS_HAND_KINDS = 0x4C; // SkyCraft+ : v29, two bytes (right, left)
 	public static final long SS_SEND_TO_WORLD = 0x4E; // SkyCraft+ : v30, one byte (a DIM_*; 0: none)
+	public static final long SS_FED = 0x4F; // SkyCraft+ : v43, one byte: hunger points Skyrim food and stamina potions gave, counted up
 
 	public static final int SKY_IN_GAME = 1;
 	public static final int SKY_MENU_OPEN = 1 << 1;

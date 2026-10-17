@@ -1790,6 +1790,7 @@ namespace skycraft
 				return tamriel ? tamriel->GetDefaultWaterHeight() / float(proto::kUnitsPerBlock) : 0.0f;
 			}();
 			sky.seaLevel = seaLevel;
+			sky.fed = static_cast<std::uint8_t>(st.fedPoints.load());  // SkyCraft+
 			sky.handKinds[0] = rightHand ? HandKind(a_player, false) : proto::kHandNone;
 			sky.handKinds[1] = leftHand ? HandKind(a_player, true) : proto::kHandNone;
 			if (sky.handKinds[0] >= proto::kHandGreatsword && sky.handKinds[0] <= proto::kHandCrossbow) {

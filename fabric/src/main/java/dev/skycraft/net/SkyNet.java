@@ -114,7 +114,7 @@ public final class SkyNet {
 	 * server; a guest's sends it to the host's.
 	 */
 	public record Act(int kind, int code, float a, float b, BlockPos pos, int face, float hx, float hy, float hz) implements CustomPacketPayload {
-		public static final int USE_BLOCK = 0, HEAL = 1, SKYRIM_HIT = 2, SET_HEALTH = 3, HANDS = 4, BLOCK_HIT = 5, INTO = 6;
+		public static final int USE_BLOCK = 0, HEAL = 1, SKYRIM_HIT = 2, SET_HEALTH = 3, HANDS = 4, BLOCK_HIT = 5, INTO = 6, FEED = 7;
 		public static final Type<Act> TYPE = new Type<>(Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "act"));
 		public static final StreamCodec<RegistryFriendlyByteBuf, Act> CODEC = StreamCodec.of((buf, act) -> {
 			buf.writeVarInt(act.kind);
@@ -256,6 +256,12 @@ public final class SkyNet {
 					float before = player.getHealth();
 					player.setHealth(Math.max(1.0F, Math.max(0.0F, Math.min(act.a, 1.0F)) * player.getMaxHealth()));
 					SkyCraft.LOG.info("SkyCraft: health {} -> {} (Skyrim's {}%)", before, player.getHealth(), Math.round(act.a * 100.0F));
+				}
+			}
+			// SkyCraft+ : Skyrim food and stamina potions feed Minecraft's hunger (code: points).
+			case Act.FEED -> {
+				if (player.isAlive()) {
+					player.getFoodData().eat(Math.max(0, Math.min(act.code, 20)), 0.6F);
 				}
 			}
 			case Act.SKYRIM_HIT -> SkyCombat.skyrimMelee(player, act.code, Math.max(0.0F, Math.min(act.a, 1000.0F)), Math.max(0.0F, Math.min(act.b, 8.0F)));

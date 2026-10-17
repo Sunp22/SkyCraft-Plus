@@ -139,7 +139,9 @@ namespace skycraft::proto
 		// SkyCraft+ : a save made in the Nether or the End (v30): while not 0 (a Dimension), Minecraft's
 		// player is sent into that world at pos (Skyrim's waits in its empty cell meanwhile).
 		std::uint8_t  sendToWorld;
-		std::uint8_t  pad4F;
+		// SkyCraft+ : Skyrim food and stamina potions feed Minecraft's hunger (v43): every hunger point
+		// they've given, counted up (wrapping); Minecraft adds what's new since it last looked.
+		std::uint8_t  fed;
 	};
 
 	// SkyState::handKinds.
