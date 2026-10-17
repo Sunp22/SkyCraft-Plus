@@ -667,7 +667,7 @@ public final class SkyInventoryPanels {
 				}
 				if (mouseX >= sx - 1 && mouseX < sx + 17 && mouseY >= sy - 1 && mouseY < sy + 17 && !state.dragging) {
 					graphics.fill(sx, sy, sx + 16, sy + 16, 0x80FFFFFF);
-					tooltip = tooltip(item, true);
+					tooltip = tooltip(item);
 				}
 			}
 			if (inventory == null) {
@@ -702,7 +702,7 @@ public final class SkyInventoryPanels {
 				if (mouseX >= x - 1 && mouseX < x + 17 && mouseY >= y - 1 && mouseY < y + 17 && !state.dragging) {
 					graphics.fill(x, y, x + 16, y + 16, 0x80FFFFFF);
 					if (current != null) {
-						List<Component> lines = new ArrayList<>(tooltip(current, false));
+						List<Component> lines = new ArrayList<>(tooltip(current));
 						if (extra != Extra.SHOUT) {
 							lines.add(Component.literal("Click: take off").withStyle(ChatFormatting.DARK_GRAY));
 						}
@@ -786,8 +786,8 @@ public final class SkyInventoryPanels {
 		return item.has(Proto.ITEM_VOICE) ? "V" : null;
 	}
 
-	/** A Skyrim thing's tooltip: its stats and state, and (in the panels) what a click does. */
-	static List<Component> tooltip(SkyLink.SkyItem item, boolean clickHint) {
+	/** A Skyrim thing's tooltip: its stats and state (short, so it hides little of the inventory). */
+	static List<Component> tooltip(SkyLink.SkyItem item) {
 		List<Component> lines = new ArrayList<>();
 		lines.add(Component.literal(item.name()).withStyle(item.has(Proto.ITEM_ENCHANTED) ? ChatFormatting.AQUA : ChatFormatting.WHITE));
 		switch (item.kind()) {
@@ -818,28 +818,6 @@ public final class SkyInventoryPanels {
 		if (state != null) {
 			lines.add(Component.literal(state).withStyle(ChatFormatting.GREEN));
 		}
-		if (!clickHint) {
-			return lines;
-		}
-		String hint = switch (item.kind()) {
-			case Proto.SKY_WEAPON, Proto.SKY_SPELL, Proto.SKY_SCROLL -> item.has(Proto.ITEM_TWO_HANDED) ? "Click: equip" : "Left click: right hand, right click: left hand";
-			case Proto.SKY_APPAREL -> item.has(Proto.ITEM_WORN) ? "Click: take off" : "Click: put on";
-			case Proto.SKY_AMMO -> "Click: ready";
-			case Proto.SKY_POTION -> item.sub() == Proto.P_POISON ? "Click: apply to your weapon" : "Click: drink";
-			case Proto.SKY_FOOD, Proto.SKY_INGREDIENT -> "Click: eat";
-			case Proto.SKY_BOOK -> item.sub() == 1 ? "Click: learn the spell" : "Read it in Skyrim's inventory (I)";
-			case Proto.SKY_SHOUT, Proto.SKY_POWER -> "Click: use it (shout key)";
-			case Proto.SKY_MISC -> item.sub() == 2 ? "Click: hold it in the left hand" : null;
-			default -> null;
-		};
-		if (hint != null) {
-			lines.add(Component.literal(hint).withStyle(ChatFormatting.DARK_GRAY));
-		}
-		lines.add(Component.literal("Drag it into your inventory for a shortcut").withStyle(ChatFormatting.DARK_GRAY));
-		if (item.kind() < Proto.SKY_SPELL) {
-			lines.add(Component.literal("Drag it into a chest to store it there").withStyle(ChatFormatting.DARK_GRAY));
-		}
-		lines.add(Component.literal("Shift-click (controller Y): shortcut in the first free slot").withStyle(ChatFormatting.DARK_GRAY));
 		return lines;
 	}
 

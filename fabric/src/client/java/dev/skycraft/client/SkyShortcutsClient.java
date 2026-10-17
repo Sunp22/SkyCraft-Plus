@@ -134,7 +134,7 @@ public final class SkyShortcutsClient {
 				}
 				return;
 			}
-			List<Component> skyrim = SkyInventoryPanels.tooltip(item, false);
+			List<Component> skyrim = SkyInventoryPanels.tooltip(item);
 			lines.clear();
 			lines.addAll(skyrim);
 			String hint = useHint(item);
