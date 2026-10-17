@@ -360,6 +360,7 @@ public final class SkyDig {
 			case DIG_WEB -> Blocks.COBWEB.defaultBlockState();
 			case DIG_ASH -> Blocks.CONCRETE_POWDER.pick(DyeColor.LIGHT_GRAY).defaultBlockState();
 			case DIG_BEDROCK -> Blocks.BEDROCK.defaultBlockState();
+			case DIG_HAY -> Blocks.HAY_BLOCK.defaultBlockState();  // SkyCraft+
 			default -> Blocks.STONE.defaultBlockState();
 		};
 	}
@@ -707,7 +708,7 @@ public final class SkyDig {
 			case DIG_OAK_LOG, DIG_SPRUCE_LOG, DIG_BIRCH_LOG -> surface;
 			case DIG_PLANKS -> depth < 2.5 ? DIG_PLANKS : DIG_STONE;
 			case DIG_METAL -> depth < 1.5 ? DIG_METAL : DIG_STONE;
-			case DIG_GLASS, DIG_ORGANIC, DIG_CLOTH, DIG_BONE, DIG_WEB -> depth < 1.0 ? surface : DIG_STONE;
+			case DIG_GLASS, DIG_ORGANIC, DIG_CLOTH, DIG_BONE, DIG_WEB, DIG_HAY -> depth < 1.0 ? surface : DIG_STONE;
 			default -> DIG_STONE;
 		};
 	}

@@ -360,6 +360,10 @@ namespace skycraft::Dig
 			}
 			return proto::kDigOakLog;
 		};
+		// SkyCraft+ : hay bales and piles are cloth to Skyrim's sounds, but hay to Minecraft.
+		if (Contains(path, "haybale") || Contains(path, "haypile") || Contains(path, "haystack") || Contains(path, "\\hay")) {
+			return proto::kDigHay;
+		}
 		switch (a_material) {
 		case M::kGrass:
 			return proto::kDigGrass;
