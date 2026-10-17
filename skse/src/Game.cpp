@@ -1629,7 +1629,8 @@ namespace skycraft
 				// Always hidden while Minecraft drives (Minecraft draws the hands). Showing them again
 				// after a fight un-hid arms Skyrim had hidden itself meanwhile (putting weapons away),
 				// and they then floated in view until the model was rebuilt.
-				HideFirstPersonMeshes(a_player, !skyrimHand);
+				// SkyCraft+ : and always in Minecraft's third-person camera, where they'd float in the lens.
+				HideFirstPersonMeshes(a_player, !skyrimHand || detached);
 
 				const float bobRollDeg = std::sin(phase) * bob * 3.0f;
 				idealRotNoRoll = BuildCameraRotation(camHeading, camPitchDeg * kDegToRad, 0.0f);
