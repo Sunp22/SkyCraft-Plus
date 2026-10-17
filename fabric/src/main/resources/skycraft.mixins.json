@@ -43,7 +43,10 @@
     "LivingEntityShortcutMixin",
     "EnderDragonFightMixin",
     "BundleShortcutMixin",
-    "ShulkerBoxSlotShortcutMixin"
+    "ShulkerBoxSlotShortcutMixin",
+    "LandRandomPosMixin",
+    "RandomStrollGoalMixin",
+    "MoveToTargetSinkMixin"
   ],
   "injectors": { "defaultRequire": 1 }
 }
