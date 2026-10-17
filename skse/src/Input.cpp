@@ -131,6 +131,7 @@ namespace skycraft
 			State().skyrimHandsOption = ini.GetBoolValue("Controls", "bSkyrimHands", false);
 			logger::info("Skyrim hands (equip Skyrim gear in a Minecraft hand): {}", State().skyrimHandsOption ? "on" : "off");
 			State().rideAsMinecraft = ini.GetBoolValue("Controls", "bRideAsMinecraft", true);  // SkyCraft+
+			State().minecraftFootsteps = ini.GetBoolValue("Controls", "bMinecraftFootsteps", true);  // SkyCraft+
 			logger::info("riding Skyrim's horses: {}", State().rideAsMinecraft ? "as Minecraft's player" : "as Skyrim's");
 
 			// SkyCraft+ : the Nether and the End.

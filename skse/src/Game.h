@@ -72,6 +72,8 @@ namespace skycraft
 		// SkyCraft+ : riding Skyrim's horses as Minecraft's player ([Controls] bRideAsMinecraft).
 		bool                       rideAsMinecraft{ true };
 		bool                       ridingAsMinecraft{ false };  // this frame: Minecraft's body in the saddle
+		// SkyCraft+ : Skyrim footsteps for Minecraft's walking ([Controls] bMinecraftFootsteps).
+		bool                       minecraftFootsteps{ true };
 		// SkyCraft+ : Minecraft loot chests in Skyrim's dungeons ([Worlds] bLootChests).
 		bool                       lootChestsOption{ true };
 		// SkyCraft+ : the underground. Skyrim's land is more than two blocks above the player (a mine).
@@ -283,6 +285,13 @@ namespace skycraft
 		void PerFrame();
 		// Present: draws them and hands the pictures to Minecraft.
 		void Draw(ID3D11Device* a_device, ID3D11DeviceContext* a_context);
+	}
+
+	// SkyCraft+ : footsteps.
+	namespace Footsteps
+	{
+		// Main thread, every frame: a Skyrim footstep (sound, and the noise the AI hears) every step Minecraft's player walks.
+		void PerFrame(RE::PlayerCharacter* a_player, const proto::McState& a_mc, bool a_driving);
 	}
 
 	// SkyCraft+ : Minecraft loot chests in Skyrim's dungeons.

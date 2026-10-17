@@ -1631,6 +1631,7 @@ namespace skycraft
 				// and they then floated in view until the model was rebuilt.
 				// SkyCraft+ : and always in Minecraft's third-person camera, where they'd float in the lens.
 				HideFirstPersonMeshes(a_player, !skyrimHand || detached);
+				Footsteps::PerFrame(a_player, mc, true);  // SkyCraft+
 
 				const float bobRollDeg = std::sin(phase) * bob * 3.0f;
 				idealRotNoRoll = BuildCameraRotation(camHeading, camPitchDeg * kDegToRad, 0.0f);
@@ -1713,6 +1714,7 @@ namespace skycraft
 				st.feetValid = false;
 				Dig::SetPuppet(nullptr, 0.0f);
 				HideFirstPersonMeshes(a_player, false);
+				Footsteps::PerFrame(a_player, mc, false);  // SkyCraft+
 
 				RestoreFov(RE::PlayerCamera::GetSingleton());
 				if (auto* controller = a_player->GetCharController(); controller && savedGravity >= 0.0f) {
