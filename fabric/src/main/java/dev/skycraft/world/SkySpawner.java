@@ -7,7 +7,9 @@ import java.io.IOException;
 import java.io.Reader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Properties;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -217,7 +219,7 @@ public final class SkySpawner {
 		int x = (int) Math.floor(player.getX() + Math.cos(angle) * distance);
 		int z = (int) Math.floor(player.getZ() + Math.sin(angle) * distance);
 		BlockPos ground = findGround(level, x, (int) Math.floor(player.getY()), z);
-		if (ground == null) {
+		if (ground == null || !walkableTo(level, player, ground)) {
 			return;
 		}
 		Weighted pick = monster ? pickMonster(level, ground, random) : pickAnimal(level, ground, random);
@@ -230,7 +232,7 @@ public final class SkySpawner {
 			double px = ground.getX() + 0.5 + (i == 0 ? 0.0 : random.nextInt(5) - 2);
 			double pz = ground.getZ() + 0.5 + (i == 0 ? 0.0 : random.nextInt(5) - 2);
 			BlockPos at = i == 0 ? ground : findGround(level, (int) Math.floor(px), ground.getY(), (int) Math.floor(pz));
-			if (at == null) {
+			if (at == null || !walkableTo(level, player, at)) {
 				continue;
 			}
 			double y = i == 0 ? floor : SkyCollision.floorUnder(at);
@@ -253,6 +255,76 @@ public final class SkySpawner {
 			mob.addTag(SPAWNED_TAG);
 		}
 		level.tryAddFreshEntityWithPassengers(mob);
+	}
+
+	// SkyCraft+ : no monsters in the walls. Indoors (and in dungeons) a spot only counts if the
+	// player could walk there: Skyrim's ground behind a wall (the outside of a cave, the room next
+	// door, the space between) is floor too, and mobs spawned there were stuck in the walls.
+	private static final HashSet<Long> REACH = new HashSet<>();
+	private static long reachAt = Long.MIN_VALUE;
+	private static @Nullable BlockPos reachFrom;
+	private static final int REACH_RADIUS = 34, REACH_MOST = 12000;
+
+	private static boolean walkableTo(ServerLevel level, ServerPlayer player, BlockPos pos) {
+		if (!SkyWorld.interior() && !SkyWorld.dungeon()) {
+			return true;
+		}
+		long now = level.getServer().getTickCount();
+		BlockPos feet = player.blockPosition();
+		if (now - reachAt > 100 || reachFrom == null || reachFrom.distManhattan(feet) > 6) {
+			reachAt = now;
+			reachFrom = feet;
+			findReach(level, feet);
+		}
+		return REACH.contains(pos.asLong());
+	}
+
+	private static boolean standable(ServerLevel level, BlockPos pos) {
+		return SkyCollision.isKnown(pos.getX(), pos.getY(), pos.getZ()) && !SkyCollision.blocksPath(pos) && !SkyCollision.blocksPath(pos.above())
+			&& !Double.isNaN(SkyCollision.floorUnder(pos)) && level.getBlockState(pos).isAir() && level.getBlockState(pos.above()).isAir();
+	}
+
+	/** Where the player could walk from their feet (a step up, a drop of up to three), near them. */
+	private static void findReach(ServerLevel level, BlockPos feet) {
+		REACH.clear();
+		BlockPos start = null;
+		for (int dy : new int[] { 0, 1, -1, 2, -2 }) {
+			if (standable(level, feet.above(dy))) {
+				start = feet.above(dy);
+				break;
+			}
+		}
+		if (start == null) {
+			return;
+		}
+		ArrayDeque<BlockPos> queue = new ArrayDeque<>();
+		queue.add(start);
+		REACH.add(start.asLong());
+		int[][] sides = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } };
+		while (!queue.isEmpty() && REACH.size() < REACH_MOST) {
+			BlockPos at = queue.poll();
+			for (int[] side : sides) {
+				int x = at.getX() + side[0], z = at.getZ() + side[1];
+				if (Math.abs(x - feet.getX()) > REACH_RADIUS || Math.abs(z - feet.getZ()) > REACH_RADIUS) {
+					continue;
+				}
+				for (int dy : new int[] { 0, 1, -1, -2, -3 }) {
+					BlockPos next = new BlockPos(x, at.getY() + dy, z);
+					if (dy == 1 && SkyCollision.blocksPath(at.above(2))) {
+						continue;  // (no head room to step up)
+					}
+					if (standable(level, next)) {
+						if (REACH.add(next.asLong())) {
+							queue.add(next);
+						}
+						break;
+					}
+					if (dy < 0 && SkyCollision.blocksPath(next)) {
+						break;  // (a wall or floor in the way down)
+					}
+				}
+			}
+		}
 	}
 
 	/**
