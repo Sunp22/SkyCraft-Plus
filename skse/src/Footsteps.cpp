@@ -73,11 +73,16 @@ namespace skycraft::Footsteps
 					}
 				}
 			}
-			if (impact && impact->sound1) {
+			bool played = false;
+			if (auto* descriptor = impact && impact->sound1 ? impact->sound1->soundDescriptor : nullptr) {  // (the sound itself, not its form)
 				RE::BSSoundHandle sound;
-				if (auto* audio = RE::BSAudioManager::GetSingleton(); audio && audio->GetSoundHandle(sound, impact->sound1)) {
+				if (auto* audio = RE::BSAudioManager::GetSingleton(); audio && audio->GetSoundHandle(sound, descriptor, 0x10)) {
 					sound.SetPosition(at);
-					sound.Play();
+					if (auto* body = a_player->Get3D(false)) {
+						sound.SetObjectToFollow(body);
+					}
+					sound.SetVolume(1.0f);
+					played = sound.Play();
 				}
 			}
 			// The noise: the footstep's own sound level (sneaking: silent), as Muffle and the like scale it.
@@ -87,10 +92,10 @@ namespace skycraft::Footsteps
 			if (auto* process = a_player->GetActorRuntimeData().currentProcess; process && value > 0) {
 				process->SetActorsDetectionEvent(a_player, at, value, nullptr);
 			}
-			if (logged < 3) {
+			if (logged < 6) {
 				logged++;
-				logger::info("footsteps: {} on material {:X}: {}, noise {}", set ? set->GetFormEditorID() : "(no footstep set)", static_cast<std::uint32_t>(material),
-					impact && impact->sound1 ? "sound" : "no sound", value);
+				logger::info("footsteps: {} on material {:X}: {}, noise {}", set ? std::format("{:08X}", set->GetFormID()) : std::string("(no footstep set)"), static_cast<std::uint32_t>(material),
+					impact && impact->sound1 ? (played ? "sound played" : "sound didn't play") : "no sound", value);
 			}
 		}
 	}
