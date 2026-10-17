@@ -24,7 +24,7 @@ import org.jspecify.annotations.Nullable;
  * is thrown away (another is picked), and a wander goal doesn't set off for a spot it can't reach.
  * Setting: mobWanderFix in config/skycraft.properties.
  *
- * mobPathLog (on for testing) writes what wandering mobs pick and how their paths turn out to
+ * mobPathLog (off unless asked for) writes what wandering mobs pick and how their paths turn out to
  * latest.log ("wander:" lines), and a summary every 30 seconds.
  */
 public final class SkyWander {
@@ -54,7 +54,7 @@ public final class SkyWander {
 			}
 		}
 		fix = Boolean.parseBoolean(p.getProperty("mobWanderFix", "true").trim());
-		log = Boolean.parseBoolean(p.getProperty("mobPathLog", "true").trim());
+		log = Boolean.parseBoolean(p.getProperty("mobPathLog", "false").trim());
 		SkyCraft.LOG.info("SkyCraft: wandering mobs: fix {}, path log {}", fix ? "on" : "off", log ? "on" : "off");
 	}
 
