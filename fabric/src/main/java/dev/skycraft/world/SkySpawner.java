@@ -57,9 +57,13 @@ public final class SkySpawner {
 	private static boolean spawnVillagers = true;
 	private static int animalCap = 8;
 	private static int monsterCap = 6; // about half of a vanilla night around one player
-	// SkyCraft+ : fewer in Skyrim's dungeons and caves (their own draugr and bandits are there too),
-	// and they come back more slowly.
-	private static int dungeonMonsterCap = 3;
+	// SkyCraft+ : fewer in Skyrim's dungeons and caves (their own draugr and bandits are there too):
+	// a room has one or two (ROOM_MONSTERS within ROOM_RADIUS), the dungeon around the player a few.
+	private static int dungeonMonsterCap = 5;
+	private static final int ROOM_MONSTERS = 2;
+	private static final double ROOM_RADIUS = 12.0;
+	// How dungeon spawns go (the log, once a minute): tries, no ground there, out of reach, room full, spawned.
+	private static final int[] DUNGEON_TRIES = new int[5];
 	private static int villagerCap = 6; // within VILLAGER_RANGE: a city's worth, a few streets apart
 	private static final int VILLAGER_RANGE = 64;
 	private static final List<ResourceKey<VillagerProfession>> JOBS = List.of(VillagerProfession.ARMORER, VillagerProfession.BUTCHER,
@@ -144,7 +148,7 @@ public final class SkySpawner {
 		boolean monsterTime = SkyWorld.dungeon() || (outdoors && SkyWorld.night());
 		boolean inDungeon = !outdoors || SkyWorld.dungeon();
 		int cap = inDungeon ? dungeonMonsterCap : monsterCap;
-		if (spawnMonsters && monsterTime && !SkyWorld.settlement() && (!inDungeon || server.getTickCount() % 60 == 0) && count(level, host, MobCategory.MONSTER) < cap) {
+		if (spawnMonsters && monsterTime && !SkyWorld.settlement() && count(level, host, MobCategory.MONSTER) < cap) {
 			trySpawn(level, host, random, true);
 		}
 		// SkyCraft+ : the underground. Its caves have monsters of their own, at any hour.
@@ -225,7 +229,27 @@ public final class SkySpawner {
 		int x = (int) Math.floor(player.getX() + Math.cos(angle) * distance);
 		int z = (int) Math.floor(player.getZ() + Math.sin(angle) * distance);
 		BlockPos ground = findGround(level, x, (int) Math.floor(player.getY()), z);
-		if (ground == null || !walkableTo(level, player, ground)) {
+		boolean dungeon = monster && (indoors || SkyWorld.dungeon());
+		if (dungeon) {
+			DUNGEON_TRIES[0]++;
+			if (level.getServer().getTickCount() % 1200 == 0) {
+				SkyCraft.LOG.info("SkyCraft: dungeon spawns this minute: {} tries, {} no ground, {} out of reach ({} spots in reach), {} room full, {} spawned",
+					DUNGEON_TRIES[0], DUNGEON_TRIES[1], DUNGEON_TRIES[2], REACH.size(), DUNGEON_TRIES[3], DUNGEON_TRIES[4]);
+				java.util.Arrays.fill(DUNGEON_TRIES, 0);
+			}
+		}
+		if (ground == null) {
+			DUNGEON_TRIES[1] += dungeon ? 1 : 0;
+			return;
+		}
+		if (!walkableTo(level, player, ground)) {
+			DUNGEON_TRIES[2] += dungeon ? 1 : 0;
+			return;
+		}
+		int room = dungeon ? level.getEntitiesOfClass(Mob.class, new AABB(ground).inflate(ROOM_RADIUS),
+			mob -> mob.isAlive() && mob.getType().getCategory() == MobCategory.MONSTER).size() : 0;
+		if (dungeon && room >= ROOM_MONSTERS) {
+			DUNGEON_TRIES[3]++;
 			return;
 		}
 		Weighted pick = monster ? pickMonster(level, ground, random) : pickAnimal(level, ground, random);
@@ -233,6 +257,9 @@ public final class SkySpawner {
 			return;
 		}
 		int group = pick.minGroup() + random.nextInt(pick.maxGroup() - pick.minGroup() + 1);
+		if (dungeon) {
+			group = Math.min(group, ROOM_MONSTERS - room);
+		}
 		double floor = SkyCollision.floorUnder(ground);
 		for (int i = 0; i < group; i++) {
 			double px = ground.getX() + 0.5 + (i == 0 ? 0.0 : random.nextInt(5) - 2);
@@ -242,25 +269,27 @@ public final class SkySpawner {
 				continue;
 			}
 			double y = i == 0 ? floor : SkyCollision.floorUnder(at);
-			spawn(level, pick.type(), px, y, pz, random, !monster);
+			if (spawn(level, pick.type(), px, y, pz, random, !monster) && dungeon) {
+				DUNGEON_TRIES[4]++;
+			}
 		}
 	}
 
-	private static void spawn(ServerLevel level, EntityType<? extends Mob> type, double x, double y, double z, RandomSource random, boolean animal) {
+	private static boolean spawn(ServerLevel level, EntityType<? extends Mob> type, double x, double y, double z, RandomSource random, boolean animal) {
 		Mob mob = type.create(level, EntitySpawnReason.NATURAL);
 		if (mob == null) {
-			return;
+			return false;
 		}
 		mob.snapTo(x, y + 0.01, z, random.nextFloat() * 360.0F, 0.0F);
 		if (!level.noCollision(mob)) {
 			mob.discard();
-			return;
+			return false;
 		}
 		mob.finalizeSpawn(level, level.getCurrentDifficultyAt(mob.blockPosition()), EntitySpawnReason.NATURAL, null);
 		if (animal) {
 			mob.addTag(SPAWNED_TAG);
 		}
-		level.tryAddFreshEntityWithPassengers(mob);
+		return level.tryAddFreshEntityWithPassengers(mob);
 	}
 
 	// SkyCraft+ : no monsters in the walls. Indoors (and in dungeons) a spot only counts if the
