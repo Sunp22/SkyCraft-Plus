@@ -46,7 +46,8 @@
     "ShulkerBoxSlotShortcutMixin",
     "LandRandomPosMixin",
     "RandomStrollGoalMixin",
-    "MoveToTargetSinkMixin"
+    "MoveToTargetSinkMixin",
+    "GroundPathNavigationMixin"
   ],
   "injectors": { "defaultRequire": 1 }
 }

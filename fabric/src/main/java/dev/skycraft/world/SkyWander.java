@@ -14,7 +14,9 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Mobs wandering about on Skyrim's ground kept climbing: up a town's stairs, onto its highest
- * terrace, and piled up there for good (seen with villagers and cats). Minecraft picks a wander
+ * terrace, and piled up there for good (seen with villagers and cats). Mainly: every path's
+ * destination was sent up to the sky before planning (GroundPathNavigationMixin), so every mob
+ * walked to the highest point it could reach. Also: Minecraft picks a wander
  * spot at random and, if the spot is inside something solid, moves it straight up until it's
  * clear. Inside a Skyrim wall, cliff or building that's its top, so mobs kept aiming at rooftops
  * and wall tops and walked as close as they could get: the highest point around, which they then
@@ -54,6 +56,11 @@ public final class SkyWander {
 		fix = Boolean.parseBoolean(p.getProperty("mobWanderFix", "true").trim());
 		log = Boolean.parseBoolean(p.getProperty("mobPathLog", "true").trim());
 		SkyCraft.LOG.info("SkyCraft: wandering mobs: fix {}, path log {}", fix ? "on" : "off", log ? "on" : "off");
+	}
+
+	/** Destinations onto Skyrim's ground, not the sky (GroundPathNavigationMixin). */
+	public static boolean surfaceFix() {
+		return fix();
 	}
 
 	public static boolean fix() {
@@ -98,7 +105,8 @@ public final class SkyWander {
 
 	/** A wander goal's spot and the path to it (RandomStrollGoalMixin); true = don't go (it can't be reached). */
 	public static boolean skipStroll(Mob mob, double x, double y, double z, @Nullable Path path) {
-		boolean reach = path != null && path.canReach();
+		// Reached, or ending within a couple of blocks of it (Skyrim's floors aren't whole blocks).
+		boolean reach = path != null && (path.canReach() || path.getDistToTarget() <= 2.0F);
 		if (logging()) {
 			strolls++;
 			track(mob);
@@ -111,8 +119,9 @@ public final class SkyWander {
 				level++;
 			}
 			Node end = path == null ? null : path.getEndNode();
-			line("{} at ({}, {}, {}) strolls to ({}, {}, {}), {} {}: {}", name(mob), Math.round(mob.getX()), String.format("%.1f", mob.getY()), Math.round(mob.getZ()),
+			line("{} at ({}, {}, {}) strolls to ({}, {}, {}), {} {}, planned to y {}: {}", name(mob), Math.round(mob.getX()), String.format("%.1f", mob.getY()), Math.round(mob.getZ()),
 				Math.round(x), String.format("%.1f", y), Math.round(z), dy >= 0 ? "up" : "down", String.format("%.1f", Math.abs(dy)),
+				path == null ? "-" : path.getTarget().getY(),
 				path == null ? "no path" : reach ? "reachable (" + path.getNodeCount() + " steps)"
 					: "can't reach, path ends at y " + (end == null ? "?" : end.y) + " " + String.format("%.1f", path.getDistToTarget()) + " blocks short");
 		}
@@ -132,13 +141,14 @@ public final class SkyWander {
 		}
 		track(mob);
 		brainPaths++;
-		boolean reach = path != null && path.canReach();
+		boolean reach = path != null && (path.canReach() || path.getDistToTarget() <= 2.0F);
 		if (!reach) {
 			brainPartial++;
 		}
 		Node end = path == null ? null : path.getEndNode();
-		line("{} at ({}, {}, {}) walks to ({}, {}, {}) [{}]: {}", name(mob), Math.round(mob.getX()), String.format("%.1f", mob.getY()), Math.round(mob.getZ()), target.getX(),
+		line("{} at ({}, {}, {}) walks to ({}, {}, {}) [{}], planned to y {}: {}", name(mob), Math.round(mob.getX()), String.format("%.1f", mob.getY()), Math.round(mob.getZ()), target.getX(),
 			target.getY(), target.getZ(), mob.getBrain().getActiveNonCoreActivity().map(Object::toString).orElse("?"),
+			path == null ? "-" : path.getTarget().getY(),
 			path == null ? "no path" : reach ? "reachable (" + path.getNodeCount() + " steps)"
 				: "can't reach, path ends at y " + (end == null ? "?" : end.y) + " " + String.format("%.1f", path.getDistToTarget()) + " blocks short");
 	}
