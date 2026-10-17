@@ -75,7 +75,7 @@ public final class SkyUnderground {
 	private static final int MAX_WAITING = 20000;
 
 	private static boolean enabled = true;
-	private static int caveMonsterCap = 10;
+	private static int caveMonsterCap = 6;
 
 	/**
 	 * Cells whose neighbours are to be revealed (a cave opening up), for one Skyrim world: nearest
@@ -128,7 +128,7 @@ public final class SkyUnderground {
 		boolean caves = Boolean.parseBoolean(p.getProperty("caveMonsters", "true").trim());
 		int cap = 10;
 		try {
-			cap = Math.max(0, Integer.parseInt(p.getProperty("caveMonsterCap", "10").trim()));
+			cap = Math.max(0, Integer.parseInt(p.getProperty("caveMonsterCap", "6").trim()));
 		} catch (NumberFormatException e) {
 			// keep the default
 		}

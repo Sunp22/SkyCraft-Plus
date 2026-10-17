@@ -57,6 +57,9 @@ public final class SkySpawner {
 	private static boolean spawnVillagers = true;
 	private static int animalCap = 8;
 	private static int monsterCap = 6; // about half of a vanilla night around one player
+	// SkyCraft+ : fewer in Skyrim's dungeons and caves (their own draugr and bandits are there too),
+	// and they come back more slowly.
+	private static int dungeonMonsterCap = 3;
 	private static int villagerCap = 6; // within VILLAGER_RANGE: a city's worth, a few streets apart
 	private static final int VILLAGER_RANGE = 64;
 	private static final List<ResourceKey<VillagerProfession>> JOBS = List.of(VillagerProfession.ARMORER, VillagerProfession.BUTCHER,
@@ -97,9 +100,10 @@ public final class SkySpawner {
 		spawnVillagers = Boolean.parseBoolean(p.getProperty("spawnVillagers", "true").trim());
 		animalCap = parseInt(p.getProperty("animalCap"), animalCap);
 		monsterCap = parseInt(p.getProperty("monsterCap"), monsterCap);
+		dungeonMonsterCap = parseInt(p.getProperty("dungeonMonsterCap"), dungeonMonsterCap);
 		villagerCap = parseInt(p.getProperty("villagerCap"), villagerCap);
-		SkyCraft.LOG.info("SkyCraft: spawning animals {} (up to {}), monsters {} (up to {}), villagers in towns {} (up to {})", spawnAnimals, animalCap,
-			spawnMonsters, monsterCap, spawnVillagers, villagerCap);
+		SkyCraft.LOG.info("SkyCraft: spawning animals {} (up to {}), monsters {} (up to {}, {} in dungeons), villagers in towns {} (up to {})", spawnAnimals, animalCap,
+			spawnMonsters, monsterCap, dungeonMonsterCap, spawnVillagers, villagerCap);
 	}
 
 	private static int parseInt(@Nullable String s, int fallback) {
@@ -138,7 +142,9 @@ public final class SkySpawner {
 			trySpawnVillager(level, host, random);
 		}
 		boolean monsterTime = SkyWorld.dungeon() || (outdoors && SkyWorld.night());
-		if (spawnMonsters && monsterTime && !SkyWorld.settlement() && count(level, host, MobCategory.MONSTER) < monsterCap) {
+		boolean inDungeon = !outdoors || SkyWorld.dungeon();
+		int cap = inDungeon ? dungeonMonsterCap : monsterCap;
+		if (spawnMonsters && monsterTime && !SkyWorld.settlement() && (!inDungeon || server.getTickCount() % 60 == 0) && count(level, host, MobCategory.MONSTER) < cap) {
 			trySpawn(level, host, random, true);
 		}
 		// SkyCraft+ : the underground. Its caves have monsters of their own, at any hour.
