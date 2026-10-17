@@ -49,6 +49,14 @@ first, install the zip the same way, and start a **new Minecraft world** to get 
   and it goes back into your Skyrim (it's how you hand Skyrim gear to a friend, too). Quest items
   and things you made or enchanted yourself stay in Skyrim. (`skyrimStorage` in
   `skycraft.properties`.)
+- **Skyrim armor in Minecraft's armor slots:** helmets, cuirasses and boots go in Minecraft's
+  head, chest and feet slots (drag them there or click them in the panel), are worn in Skyrim
+  too, and give Minecraft armor points by their rating. On your body they look like the Minecraft
+  armor closest to them (leather up to netherite). Gauntlets, necklace, ring and the shout in use
+  have slots of their own beside your player (`skyrimArmorSlots`).
+- **Skyrim poisons on Minecraft weapons:** use a poison while holding a Minecraft weapon and its
+  next hit deals the poison's damage (undead mobs included).
+- **Skyrim food and stamina potions fill Minecraft's hunger bar** (`bSkyrimFoodFeeds`).
 
 **Skyrim combat works on Minecraft mobs**
 - Skyrim melee, spells (Flames, bolts, beams), shouts and arrows hit Minecraft mobs, and fire
@@ -63,7 +71,14 @@ first, install the zip the same way, and start a **new Minecraft world** to get 
 - Minecraft follows Skyrim's day and night and its weather.
 - Animals and monsters spawn on Skyrim's ground, and villagers live in Skyrim's towns.
 - Mobs walk Skyrim's terrain properly, and Skyrim's NPCs walk on, step up and path around your
-  blocks.
+  blocks. Animals and villagers wander around instead of piling up on the highest spot nearby.
+- In Skyrim's dungeons and caves, one or two Minecraft monsters to a room (`dungeonMonsterCap`),
+  never stuck in the walls.
+- **Minecraft loot chests in Skyrim's dungeons, caves and camps:** one partway in and one beside
+  the boss chest, on a little pad of Minecraft ground, with five tiers of loot by the dungeon's
+  level, from desert temple to End city, and food in all of them (`bLootChests`, `lootChests`).
+- **Your footsteps make Skyrim's sounds**, and enemies hear you walk (sneak to stay quiet)
+  (`bMinecraftFootsteps`).
 
 **The real Minecraft underground**
 - Dig down anywhere and you're in real Minecraft terrain: caves, ores at the right depths,
@@ -107,6 +122,7 @@ first, install the zip the same way, and start a **new Minecraft world** to get 
   Skyrim saves.
 - Each Skyrim interior keeps its own builds, animals and dropped items.
 - Sign text and name tags show in Skyrim.
+- Skyrim's hay bales dig into Minecraft hay bales.
 - Multiplayer: you see the Minecraft stand-in for each other's Skyrim weapons, and each other
   inside interiors. Skyrim's own world (NPCs, quests) stays separate for each player.
 - Everything new can be turned off in `SkyCraft.ini` and `skycraft.properties`.
@@ -119,7 +135,6 @@ We know about these and are working on them:
   that one spot and doesn't work: break a frame block and light it again.
 - Structures (beta) can sit oddly where they meet Skyrim's land: seams, slopes, bits of Skyrim
   showing through.
-- Mobs sometimes take odd routes over Skyrim's curved ground.
 - Two players in different interiors at the same time share the host's builds there.
 
 Made with the help of an AI coding assistant (Claude) and play-tested in game. Bug reports and
