@@ -1,303 +1,231 @@
-# Builds SkyCraft on GitHub's Windows machines and uploads the Vortex/MO2 mod zip.
-#
-# Put this file in your repo as .github/workflows/build.yml. If SkyCraft-Patch.patch is in the root of the repo (Skyrim's own control
-# mode, block collision for it (exact shapes, doors, the shape library), Minecraft's world drawn under Skyrim's menus, and Minecraft's mobs as
-# lock-on targets), it is applied before building, and skipped if the source already has it.
-#
-# A second job ("tdm-patch") builds True Directional Movement from its own source with TrueDirectionalMovement-VirtualTargets.patch (also
-# in the root of the repo) applied, and uploads it as its own zip: TrueDirectionalMovement.dll for SKSE\\Plugins, to be installed over TDM's,
-# the way TDM's Improved Camera patch is. SkyCraft needs THAT dll to lock on to Minecraft's mobs: it hands them over as TDM's virtual
-# targets. Without it SkyCraft still works, but there is no lock-on to mobs (SkyCraft.log says so). If the patch isn't in the repo the
-# job does nothing.
-# Run it from the repo's Actions tab ("Build SkyCraft" -> Run workflow), or it runs on every push.
-#
-# The first run takes a long time (vcpkg compiles the C++ dependencies, Gradle fetches Minecraft);
-# later runs reuse caches and are much faster.
+name: Build (NeoForge 1.21.1)
 
-name: Build SkyCraft
+# Put this file at  .github/workflows/build.yml
+# and neoforge-1.21.1.patch at the repository root of your fork.
+#
+# On every run it applies the patch (unless the tree is already ported), builds with
+# Java 21 + Gradle, and uploads the jar and the full build log. Run it manually with
+# "push_patched_branch" ticked to commit the ported source to a branch you can keep
+# fixing by hand.
 
 on:
-  workflow_dispatch:
   push:
-    branches: [main, master]
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      push_patched_branch:
+        description: "Commit the patched source to the 'neoforge-1.21.1' branch"
+        type: boolean
+        default: false
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PATCH_FILE: neoforge-1.21.1.patch
+  PORT_BRANCH: neoforge-1.21.1
 
 jobs:
   build:
-    # The project's CMake preset needs the "Visual Studio 18 2026" generator. windows-2025 has had
-    # Visual Studio 2026 since June 2026. If a future image drops it, try windows-2025-vs2026.
-    runs-on: windows-2025
-    timeout-minutes: 120
-    env:
-      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\.vcpkg-cache
-      VCPKG_DISABLE_METRICS: "1"
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
-      # Before checkout, so files keep the line endings they have in the repo.
-      - name: Keep line endings as they are in the repo
-        run: git config --global core.autocrlf false
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Check out the source (with the CommonLibSSE-NG submodule, if the repo has it)
-        uses: actions/checkout@v5
-        with:
-          submodules: recursive
-
-      - name: Apply SkyCraft-Patch.patch (world reset, mobs, real-crate block collision, mob lock-on) if it is in the repo
-        shell: bash
+      - name: Apply NeoForge 1.21.1 patch
+        id: patch
         run: |
-          # The docs aren't part of the build, so a change upstream there must not stop it.
-          opts=(--exclude=README.md '--exclude=docs/*')
-          # A patch whose setting name is already in the source has been applied (or committed): skip
-          # it. (Checking by reversing the patch doesn't work once a later patch has changed the same lines.)
-          apply_patch() {
-            local patch=$1 marker=$2 file=$3
-            if [ ! -f "$patch" ]; then
-              echo "No $patch in the repo; skipping it."
-            elif grep -q "$marker" "$file"; then
-              echo "The source already has what $patch adds; nothing to apply."
-            elif git apply "${opts[@]}" --check "$patch"; then
-              git apply "${opts[@]}" "$patch"
-              echo "Applied $patch."
-            else
-              echo "::error::$patch doesn't apply to this source. The repo has probably changed since the patch was made."
-              exit 1
-            fi
-          }
-          apply_patch SkyCraft-Patch.patch LockOn::Install skse/src/main.cpp
-
-      # A repo made from "Download ZIP" has no submodule contents. Fetch CommonLibSSE-NG ourselves
-      # then (the branch's latest commit, not the exact one the author built with).
-      - name: Make sure CommonLibSSE-NG is there
-        shell: bash
-        run: |
-          dir=skse/extern/CommonLibSSE-NG
-          if [ -f "$dir/CMakeLists.txt" ]; then
-            echo "CommonLibSSE-NG came with the checkout."
-          else
-            echo "CommonLibSSE-NG is missing; cloning the ng branch."
-            rm -rf "$dir"
-            git clone --recursive --branch ng https://github.com/alandtse/CommonLibVR.git "$dir"
+          if [ -f src/main/resources/META-INF/neoforge.mods.toml ]; then
+            echo "Tree is already ported to NeoForge - skipping patch."
+            echo "applied=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
-
-      - name: Set up JDK 25 (Minecraft 26.x needs it)
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "25"
-
-      - name: Create the vcpkg cache folder
-        run: New-Item -ItemType Directory -Force "$env:VCPKG_DEFAULT_BINARY_CACHE" | Out-Null
-
-      - name: Restore the vcpkg cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          key: vcpkg-${{ runner.os }}-${{ hashFiles('skse/vcpkg.json', 'skse/CMakePresets.json') }}-${{ github.run_id }}
-          restore-keys: |
-            vcpkg-${{ runner.os }}-${{ hashFiles('skse/vcpkg.json', 'skse/CMakePresets.json') }}-
-            vcpkg-${{ runner.os }}-
-
-      - name: Restore the Gradle cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('fabric/gradle.properties', 'fabric/build.gradle', 'fabric/settings.gradle', 'fabric/gradle/wrapper/gradle-wrapper.properties') }}-${{ github.run_id }}
-          restore-keys: |
-            gradle-${{ runner.os }}-${{ hashFiles('fabric/gradle.properties', 'fabric/build.gradle', 'fabric/settings.gradle', 'fabric/gradle/wrapper/gradle-wrapper.properties') }}-
-            gradle-${{ runner.os }}-
-
-      # The CMake preset looks for vcpkg in .tools/vcpkg (the README's "Building from source").
-      # Bootstrapping downloads vcpkg.exe from GitHub's releases, which now and then answers 502 for a
-      # minute or two. Both network steps are retried, waiting a little longer each time.
-      - name: Get vcpkg
-        run: |
-          function Retry([string]$what, [scriptblock]$action) {
-            for ($i = 1; $i -le 5; $i++) {
-              & $action
-              if ($LASTEXITCODE -eq 0) { return }
-              Write-Host "$what failed (attempt $i of 5)."
-              if ($i -lt 5) { Start-Sleep -Seconds (20 * $i) }
-            }
-            throw "$what failed 5 times"
-          }
-          Retry "Cloning vcpkg" {
-            if (Test-Path .tools\vcpkg) { Remove-Item -Recurse -Force .tools\vcpkg }
-            git clone https://github.com/microsoft/vcpkg .tools\vcpkg
-          }
-          Retry "Bootstrapping vcpkg" {
-            .tools\vcpkg\bootstrap-vcpkg.bat -disableMetrics
-          }
-
-      # Done here as well as inside package.ps1, which hides CMake's configure output: if a
-      # dependency fails to build, the reason is in this step's log.
-      - name: Configure the SKSE plugin (vcpkg builds its dependencies here)
-        working-directory: skse
-        run: |
-          cmake --preset default
-          if ($LASTEXITCODE) { throw "CMake couldn't configure the SKSE plugin" }
-
-      # Builds both halves and packs dist\ exactly as the author's release does.
-      - name: Build and package
-        run: |
-          powershell -ExecutionPolicy Bypass -File tools\package.ps1
-          if ($LASTEXITCODE) { throw "tools\package.ps1 failed" }
-
-      - name: Check the controls switch and world reset made it into the build
-        shell: bash
-        run: |
-          if [ -f SkyCraft-Patch.patch ] || grep -q sToggleKey skse/src/Input.cpp; then
-            grep -aq sToggleKey skse/build/RelWithDebInfo/SkyCraft.dll \
-              && echo "SkyCraft.dll has the controls switch." \
-              || { echo "::error::SkyCraft.dll was built without the controls switch."; exit 1; }
-          fi
-
-      - name: Check the block collision and mob lock-on made it into the build
-        shell: bash
-        run: |
-          if [ -f SkyCraft-Patch.patch ] || grep -q LockOn::Install skse/src/main.cpp; then
-            grep -aq "Block crates:" skse/build/RelWithDebInfo/SkyCraft.dll \
-              && echo "SkyCraft.dll has the real-crate block collision." \
-              || { echo "::error::SkyCraft.dll was built without the real-crate block collision."; exit 1; }
-            grep -aq "lock-on: " skse/build/RelWithDebInfo/SkyCraft.dll \
-              && echo "SkyCraft.dll has the mob lock-on." \
-              || { echo "::error::SkyCraft.dll was built without the mob lock-on."; exit 1; }
-            # The old simulated collision (a box holding the player up by hand) must be gone.
-            if grep -aq "Skyrim control: Minecraft block collision" skse/build/RelWithDebInfo/SkyCraft.dll; then
-              echo "::error::SkyCraft.dll still has the simulated block collision (is an old SkyCraft-Patch.patch in the repo?)."; exit 1
-            fi
-            grep -aqE "patch revision (2[4-9]|[3-9][0-9])" skse/build/RelWithDebInfo/SkyCraft.dll \
-              && echo "SkyCraft.dll is patch revision 24 or newer." \
-              || { echo "::error::SkyCraft.dll was built without patch revision 24 or newer (is the newest SkyCraft-Patch.patch in the repo?)."; exit 1; }
-            grep -aq "Block collision: on" skse/build/RelWithDebInfo/SkyCraft.dll \
-              && echo "SkyCraft.dll has the block collision models." \
-              || { echo "::error::SkyCraft.dll was built without the block collision models."; exit 1; }
-          fi
-
-      - name: Upload the mod
-        uses: actions/upload-artifact@v4
-        with:
-          name: SkyCraft-for-Vortex
-          path: |
-            dist/SkyCraft-*.zip
-            dist/skycraft-fabric-*.jar
-          if-no-files-found: error
-          retention-days: 30
-
-  # True Directional Movement with virtual targets (see TrueDirectionalMovement-VirtualTargets.patch). Built from TDM's own
-  # source, the way TDM's own workflow does it, and packed as a small mod that goes over TDM's DLL.
-  tdm-patch:
-    runs-on: windows-2022  # TDM's preset uses the "Visual Studio 17 2022" generator
-    timeout-minutes: 90
-    env:
-      # TDM's source, and the revision of it the patch is made for. If TDM changes and the patch stops applying, put the
-      # commit the patch was made for here (the job says so when it can't apply it).
-      TDM_REPO: ersh1/TrueDirectionalMovement
-      TDM_REF: master
-      VCPKG_COMMIT_ID: cd61e1e26a038e82d6550a3ebbe0fbbfe7da78e3  # the one TDM's own workflow uses
-
-    steps:
-      - name: Keep line endings as they are
-        run: git config --global core.autocrlf false
-
-      - name: Check out SkyCraft (for the patch)
-        uses: actions/checkout@v5
-        with:
-          path: skycraft
-
-      - name: Look for TrueDirectionalMovement-VirtualTargets.patch
-        id: have
-        shell: bash
-        run: |
-          if [ -f skycraft/TrueDirectionalMovement-VirtualTargets.patch ]; then
-            echo "have=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "have=false" >> "$GITHUB_OUTPUT"
-            echo "No TrueDirectionalMovement-VirtualTargets.patch in the repo; nothing to build."
-          fi
-
-      - name: Check out True Directional Movement (with its CommonLibSSE-NG submodule)
-        if: steps.have.outputs.have == 'true'
-        uses: actions/checkout@v5
-        with:
-          repository: ${{ env.TDM_REPO }}
-          ref: ${{ env.TDM_REF }}
-          path: tdm
-          submodules: recursive
-
-      - name: Apply the virtual targets patch
-        if: steps.have.outputs.have == 'true'
-        shell: bash
-        working-directory: tdm
-        run: |
-          patch=../skycraft/TrueDirectionalMovement-VirtualTargets.patch
-          if grep -q SetVirtualTargets src/DirectionalMovementHandler.cpp; then
-            echo "TDM's source already has virtual targets; nothing to apply."
-          elif git apply --check "$patch"; then
-            git apply "$patch"
-            echo "Applied the patch to TDM $(git rev-parse --short HEAD)."
-          else
-            echo "::error::TrueDirectionalMovement-VirtualTargets.patch doesn't apply to TDM $(git rev-parse --short HEAD). TDM has probably changed since the patch was made; set TDM_REF in the workflow to the commit it was made for, or have the patch redone."
+          if [ ! -f "$PATCH_FILE" ]; then
+            echo "::error::$PATCH_FILE not found in the repository root."
             exit 1
           fi
+          git apply --index --whitespace=nowarn "$PATCH_FILE"
+          echo "applied=true" >> "$GITHUB_OUTPUT"
+          echo "Patch applied: $(git diff --cached --name-only | wc -l) files changed."
 
-      - name: Set up vcpkg (installs no packages itself)
-        if: steps.have.outputs.have == 'true'
-        uses: lukka/run-vcpkg@v11
+      - name: Drop stale dev-run data
+        run: |
+          rm -rf run-data
+          # The restored Gradle cache can contain old ForgeGradle 1.20.1 artifacts (some corrupt),
+          # which pollute the API dump below.
+          rm -rf "$HOME/.gradle/caches/forge_gradle"
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
         with:
-          vcpkgDirectory: ${{ runner.workspace }}/b/vcpkg
-          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
-          vcpkgJsonGlob: tdm/vcpkg.json
+          distribution: temurin
+          java-version: "21"
 
-      # TDM's preset turns every warning into an error (/WX); here they stay warnings, so a harmless one can't stop the build.
-      - name: Configure True Directional Movement
-        if: steps.have.outputs.have == 'true'
-        working-directory: tdm
-        shell: pwsh
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build
+        id: build
+        continue-on-error: true
         run: |
-          cmake --preset github-actions "-DCMAKE_CXX_FLAGS=/EHsc /MP /W4"
-          if ($LASTEXITCODE) { throw "CMake couldn't configure True Directional Movement" }
+          chmod +x gradlew
+          set -o pipefail
+          # javac stops at 100 errors by default, which hides most of the port's problems.
+          cat > "$RUNNER_TEMP/allerrors.init.gradle" <<'EOF'
+          allprojects {
+              tasks.withType(JavaCompile).configureEach {
+                  options.compilerArgs += ['-Xmaxerrs', '100000', '-Xmaxwarns', '0']
+              }
+          }
+          EOF
+          ./gradlew build --no-daemon --stacktrace -I "$RUNNER_TEMP/allerrors.init.gradle" 2>&1 | tee build.log
 
-      - name: Build True Directional Movement
-        if: steps.have.outputs.have == 'true'
-        working-directory: tdm
-        shell: pwsh
+      - name: Dump dependency API (class lists and signatures)
+        if: always()
         run: |
-          cmake --build build --config Release
-          if ($LASTEXITCODE) { throw "True Directional Movement didn't build" }
+          mkdir -p api-dump
+          find "$HOME/.gradle" "$PWD/.gradle" build -name '*.jar' ! -name '*-sources.jar' 2>/dev/null | grep -v -e forge_gradle -e '1\.20\.1' > api-dump/jars.txt || true
+          CP=$(paste -sd: api-dump/jars.txt)
+          for key in ha1mEyJS geckolib curios; do
+            for j in $(grep -i "$key" api-dump/jars.txt); do
+              echo "## $j"
+              unzip -Z1 "$j" 2>/dev/null | grep '\.class$' | sed 's/\.class$//; s|/|.|g'
+            done > "api-dump/classes-$key.txt"
+          done
+          for c in \
+            net.minecraft.client.gui.screens.Screen \
+            net.minecraft.client.gui.screens.inventory.AbstractContainerScreen \
+            net.minecraft.client.gui.screens.inventory.CraftingScreen \
+            net.minecraft.client.gui.screens.recipebook.RecipeBookComponent \
+            net.minecraft.client.gui.screens.recipebook.RecipeCollection \
+            net.minecraft.client.gui.screens.recipebook.RecipeBookTabButton \
+            net.minecraft.client.gui.screens.recipebook.RecipeButton \
+            net.minecraft.client.gui.screens.recipebook.RecipeBookPage \
+            net.minecraft.client.gui.screens.recipebook.OverlayRecipeComponent \
+            net.minecraft.client.gui.screens.recipebook.AbstractFurnaceRecipeBookComponent \
+            net.minecraft.client.gui.screens.inventory.AbstractFurnaceScreen \
+            net.minecraft.client.gui.screens.inventory.InventoryScreen \
+            net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen \
+            net.minecraft.client.gui.screens.PauseScreen \
+            net.minecraft.client.gui.screens.OptionsScreen \
+            net.minecraft.client.gui.screens.OptionsSubScreen \
+            net.minecraft.client.gui.screens.ShareToLanScreen \
+            net.minecraft.client.gui.components.StateSwitchingButton \
+            net.minecraft.client.gui.components.ImageButton \
+            net.minecraft.client.gui.components.CycleButton \
+            net.minecraft.client.gui.components.AbstractWidget \
+            net.minecraft.client.gui.components.Button \
+            net.minecraft.client.gui.GuiGraphics \
+            net.minecraft.client.gui.Gui \
+            net.minecraft.world.inventory.AbstractContainerMenu \
+            net.minecraft.world.inventory.InventoryMenu \
+            net.minecraft.world.inventory.RecipeBookMenu \
+            net.minecraft.world.inventory.CraftingMenu \
+            net.minecraft.world.inventory.AbstractFurnaceMenu \
+            net.minecraft.world.inventory.ResultSlot \
+            net.minecraft.world.item.crafting.RecipeManager \
+            net.minecraft.world.item.crafting.RecipeHolder \
+            net.minecraft.world.item.crafting.CraftingInput \
+            net.minecraft.world.item.crafting.CraftingRecipe \
+            net.minecraft.client.ClientRecipeBook \
+            net.minecraft.stats.RecipeBook \
+            net.minecraft.client.gui.screens.inventory.tooltip.TooltipRenderUtil \
+            net.minecraft.world.entity.player.Player \
+            net.minecraft.client.player.LocalPlayer \
+            net.minecraft.client.gui.screens.recipebook.GhostRecipe \
+            net.minecraft.client.gui.screens.recipebook.RecipeUpdateListener \
+            net.minecraft.recipebook.PlaceRecipe \
+            net.minecraft.world.entity.player.StackedContents \
+            net.minecraft.client.gui.components.Renderable \
+            net.minecraft.client.gui.components.EditBox \
+            net.minecraft.client.gui.screens.inventory.EffectRenderingInventoryScreen \
+            software.bernie.geckolib.renderer.GeoItemRenderer \
+            com.zigythebird.playeranim.api.PlayerAnimationFactory \
+            com.zigythebird.playeranim.api.PlayerAnimationAccess \
+            com.zigythebird.playeranim.animation.PlayerAnimationController \
+            ; do
+            javap -protected -cp "$CP" "$c" > "api-dump/$c.txt" 2>&1 || true
+          done
 
-      - name: Pack the mod
-        if: steps.have.outputs.have == 'true'
-        shell: pwsh
-        run: |
-          $dll = "tdm\build\src\Release\TrueDirectionalMovement.dll"
-          if (-not (Test-Path $dll)) { throw "$dll wasn't built" }
-          $stage = "tdm-pack"
-          New-Item -ItemType Directory -Force "$stage\SKSE\Plugins" | Out-Null
-          Copy-Item $dll "$stage\SKSE\Plugins\TrueDirectionalMovement.dll"
-          Copy-Item tdm\COPYING "$stage\COPYING"
-          Copy-Item tdm\EXCEPTIONS "$stage\EXCEPTIONS"
-          Copy-Item skycraft\TrueDirectionalMovement-VirtualTargets.patch "$stage\TrueDirectionalMovement-VirtualTargets.patch"
-          @"
-          True Directional Movement with virtual targets (for SkyCraft)
-
-          Install over True Directional Movement (it needs TDM's other files); this DLL replaces TDM's.
-          It is TDM $(git -C tdm rev-parse --short HEAD) with TrueDirectionalMovement-VirtualTargets.patch applied, which lets a mod hand
-          TDM things to lock on to that aren't actors (SkyCraft hands it Minecraft's mobs). Nothing else changes.
-          True Directional Movement is by Ersh, GPL-3.0 with its modding exception (COPYING, EXCEPTIONS). The source is
-          https://github.com/ersh1/TrueDirectionalMovement plus the patch included here.
-          "@ | Set-Content "$stage\README.txt"
-          New-Item -ItemType Directory -Force dist-tdm | Out-Null
-          Compress-Archive -Path "$stage\*" -DestinationPath "dist-tdm\SkyCraft-TDM-VirtualTargets-patch.zip"
-
-      - name: Upload the patch mod
-        if: steps.have.outputs.have == 'true'
+      - name: Upload API dump
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: SkyCraft-TDM-VirtualTargets-patch
-          path: dist-tdm/SkyCraft-TDM-VirtualTargets-patch.zip
+          name: api-dump
+          path: api-dump
+          if-no-files-found: ignore
+
+      - name: Summarise compile errors
+        if: always()
+        run: |
+          {
+            echo "## Build result: ${{ steps.build.outcome }}"
+            echo
+            if grep -qE "\.java:[0-9]+: error:" build.log; then
+              echo "### Errors by message (top 40)"
+              echo '```'
+              grep -E "\.java:[0-9]+: error:" build.log | sed -E 's/.*error: //' | sort | uniq -c | sort -rn | head -40
+              echo '```'
+              echo
+              echo "### Errors by file (top 40)"
+              echo '```'
+              grep -E "\.java:[0-9]+: error:" build.log | sed -E 's|.*/src/main/java/||; s/:[0-9]+: error:.*//' | sort | uniq -c | sort -rn | head -40
+              echo '```'
+              echo
+              echo "Total compile errors: $(grep -cE '\.java:[0-9]+: error:' build.log)"
+            elif grep -qE "Could not (resolve|find|GET)" build.log; then
+              echo "### Dependency resolution problem"
+              echo '```'
+              grep -E "Could not (resolve|find|GET)|> Could not" build.log | head -20
+              echo '```'
+              echo "Check the dependency versions in gradle.properties / build.gradle."
+            elif [ "${{ steps.build.outcome }}" = "success" ]; then
+              echo "Build succeeded."
+            else
+              echo "See the attached build.log."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload jar
+        if: steps.build.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: penumbra_phantasm-neoforge-1.21.1
+          path: build/libs/*.jar
           if-no-files-found: error
-          retention-days: 30
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: ignore
+
+      - name: Push ported source to a branch
+        if: >-
+          github.event_name == 'workflow_dispatch' &&
+          inputs.push_patched_branch &&
+          steps.patch.outputs.applied == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$PORT_BRANCH"
+          git rm -q --cached "$PATCH_FILE" || true
+          rm -f "$PATCH_FILE"
+          git commit -m "Port to NeoForge 1.21.1 (automated patch)"
+          git push --force origin "$PORT_BRANCH"
+          echo "Pushed ported source to branch '$PORT_BRANCH'." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail the job if the build failed
+        if: steps.build.outcome == 'failure'
+        run: |
+          echo "::error::Gradle build failed - see the summary and build.log artifact."
+          exit 1
